@@ -1,0 +1,5 @@
+bin
+.vs
+obj
+/StringBreaker.sln.DotSettings.user
+/Properties/launchSettings.json
