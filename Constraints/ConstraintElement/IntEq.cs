@@ -41,10 +41,17 @@ public class IntEq : IntConstraint {
 
     protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> substitution,
         HashSet<Constraint> newSideConstraints) {
+        var bounds = Poly.GetBounds(node);
+        if (!bounds.Contains(0))
+            return SimplifyResult.Conflict;
+        if (bounds.IsUnit)
+            return SimplifyResult.Satisfied;
+        Poly = Poly.Simplify(node);
         if (Poly.IsConst(out Len val))
             return val == 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
-        if (Poly.IsUniLinear(out NonTermInt? v, out val))
-            return node.AddExactIntBound(v, val);
+        int sig;
+        if ((sig = Poly.IsUniLinear(out NonTermInt? v, out val)) != 0)
+            return node.AddExactIntBound(v!, sig == 1 ? -val : val);
         return SimplifyResult.Proceed;
         /*var bounds = Poly.GetBounds(node);
         return !bounds.Contains(0) ? SimplifyResult.Conflict : SimplifyResult.Proceed;*/

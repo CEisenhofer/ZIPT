@@ -359,10 +359,20 @@ public sealed class StrEq : StrEqBase {
             if (p1.Ground && p2.Ground)
                 return new GPowerGPowerIntrModifier(v1, v2, p1, p2, false);
             if (p1.Ground)
-                return new GPowerPowerIntrModifier(v1, v2, p1, p2, false);
+                return new CombinedModifier(
+                    new GPowerIntrModifier(v1, p1, false),
+                    new ConstNielsenModifier(v2, v1, false)
+                );
+            //return new GPowerPowerIntrModifier(v1, v2, p1, p2, false);
             if (p2.Ground)
-                return new GPowerPowerIntrModifier(v2, v1, p2, p1, false);
-            return new PowerPowerIntrModifier(v1, v2, p1, p2, false);
+                return new CombinedModifier(
+                    new GPowerIntrModifier(v2, p2, false),
+                    new ConstNielsenModifier(v1, v2, false)
+                );
+                // return new GPowerPowerIntrModifier(v2, v1, p2, p1, false);
+            return
+                new VarNielsenModifier(v1, v2, false);
+            //return new PowerPowerIntrModifier(v1, v2, p1, p2, false);
         }
         if (p1 is not null) {
             (p1, p2) = (p2, p1);
@@ -382,7 +392,7 @@ public sealed class StrEq : StrEqBase {
         Str? p = TryGetPowerSplitBase(v, s, true);
         if (p is null)
             return new ConstNielsenModifier(v, s.Peek(true), false);
-        if (s.Ground)
+        if (p.Ground)
             return new GPowerIntrModifier(v, p, false);
         return new PowerIntrModifier(v, p, false);
     }
@@ -419,10 +429,10 @@ public sealed class StrEq : StrEqBase {
             return ret;
         if ((ret = SplitPowerElim(node, t2, s1)) is not null)
             return ret;
-        if ((ret = SplitPowerIntr(t1, s2)) is not null)
-            return ret;
-        if ((ret = SplitPowerIntr(t2, s1)) is not null)
-            return ret;
+        // if ((ret = SplitPowerIntr(t1, s2)) is not null)
+        //     return ret;
+        // if ((ret = SplitPowerIntr(t2, s1)) is not null)
+        //     return ret;
         if (t2 is not StrVarToken && (ret = SplitPowerUnwind(node, t1)) is not null)
             return ret;
         if (t2 is not StrVarToken && (ret = SplitPowerUnwind(node, t2)) is not null)

@@ -98,6 +98,15 @@ public class Poly : MSet<StrictMonomial> {
         return ret;
     }
 
+    public Poly Simplify(NielsenNode node) {
+        Poly ret = new();
+        foreach (var m in this) {
+            var p = m.t.Simplify(node);
+            ret.Add(p.monomial, p.coeff * m.occ);
+        }
+        return ret;
+    }
+
     public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
         foreach (var c in this) {
             c.t.CollectSymbols(vars, alphabet);
@@ -141,33 +150,33 @@ public class Poly : MSet<StrictMonomial> {
         return true;
     }
 
-    public bool IsUniLinear([NotNullWhen(true)] out NonTermInt? v, out Len val) {
+    public int IsUniLinear(out NonTermInt? v, out Len val) {
         val = 0;
         v = null;
-        if (IsEmpty() || Count > 1)
-            return false;
+        if (IsEmpty() || Count > 2)
+            return 0;
         var m1 = this.First();
         if (Count == 1) {
             // p := x
-            if (m1.t.Count != 1 || m1.occ != 1) 
-                return false;
+            if (m1.t.Count != 1 || (m1.occ != 1 && m1.occ != -1)) 
+                return 0;
             v = m1.t.First().t;
-            return true;
+            return m1.occ == 1 ? 1 : -1;
         }
         // p := x + c
         var m2 = this.Skip(1).First();
 
-        if (m2.t.IsEmpty() != m1.t.IsEmpty())
-            return false;
+        if (m2.t.IsEmpty() == m1.t.IsEmpty())
+            return 0;
         if (m2.t.IsEmpty())
             (m1, m2) = (m2, m1);
         // m1 is the constant
         // m2 is the variable
-        if (m2.occ != 1 || m2.t.Count != 1)
-            return false;
+        if ((m2.occ != 1 && m2.occ != -1) || m2.t.Count != 1)
+            return 0;
         v = m2.t.First().t;
         val = m1.occ;
-        return true;
+        return m2.occ == 1 ? 1 : -1;
     }
 
     public override string ToString() {

@@ -24,7 +24,6 @@ public class StrictMonomial : MSet<NonTermInt> {
                 else
                     return Interval.Full;
             }
-            res = new Interval();
             Interval curr = c.occ * bounds;
             res = res.MergeMultiplication(curr);
             if (res.IsFull)
@@ -61,6 +60,21 @@ public class StrictMonomial : MSet<NonTermInt> {
             result = Poly.MulPoly(result, p);
         }
         return result;
+    }
+
+    public (Len coeff, StrictMonomial monomial) Simplify(NielsenNode node) {
+        StrictMonomial mon = new();
+        Len coeff = 1;
+        foreach (var c in this) {
+            if (node.IntBounds.TryGetValue(c.t, out var val) && val.IsUnit) {
+                for (int i = 0; i < c.occ; i++) {
+                    coeff *= val.Min;
+                }
+            }
+            else
+                mon.Add(c.t, c.occ);
+        }
+        return (coeff, mon);
     }
 
     public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {

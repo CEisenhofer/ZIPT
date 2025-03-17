@@ -17,11 +17,8 @@ public class NumUnwindingModifier : ModifierBase {
         c.Parent!.SideConstraints.Add(new IntEq(Num.Clone()));
 
         c = node.MkChild(node, []);
-        var sc = new Poly();
-        sc.AddPoly(new Poly(1));
-        sc.AddPoly(Num.Clone());
-        c.AddConstraints(new IntLe(sc)); // 1 - N1 <= 0
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        c.AddConstraints(new IntLe(new Poly(1), Num.Clone())); // 1 <= N1
+        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), Num.Clone()));
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

@@ -27,7 +27,7 @@ public static class Program {
         }
 
         // Global.SetParameter("proof", "true");
-        Global.SetParameter("smt.up.persist_clauses", "false");
+        // Global.SetParameter("smt.up.persist_clauses", "false");
 
         if (File.Exists(args[0])) {
             Console.WriteLine(args[0]);

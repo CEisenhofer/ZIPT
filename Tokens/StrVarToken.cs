@@ -90,7 +90,7 @@ public sealed class StrVarToken : StrToken, IDisposable {
     public override Str Apply(Subst subst) => subst.ResolveVar(this);
     public override Str Apply(Interpretation subst) => subst.ResolveVar(this);
 
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? auxSubst)> GetPrefixes() {
+    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes() {
         // P(x) := y with x = yz, |y| < |x|
         // TODO
         StrVarToken y = CreateFreshAux(Name);

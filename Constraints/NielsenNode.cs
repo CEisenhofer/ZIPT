@@ -146,14 +146,48 @@ public class NielsenNode {
     }
 
     public SimplifyResult AddExactIntBound(NonTermInt v, Len val) {
+        if (v is LenVar && val.IsNeg)
+            return SimplifyResult.Conflict;
         if (!IntBounds.TryGetValue(v, out var bounds)) {
             IntBounds.Add(v, new Interval(val, val));
-            return SimplifyResult.Satisfied;
+            return SimplifyResult.Restart;
         }
         if (val > bounds.Max || val < bounds.Min)
             return SimplifyResult.Conflict;
+        if (bounds.IsUnit)
+            return SimplifyResult.Satisfied;
         IntBounds[v] = new Interval(val, val);
-        return SimplifyResult.Satisfied;
+        return SimplifyResult.Restart;
+    }
+
+    public SimplifyResult AddLowerIntBound(NonTermInt v, Len val) {
+        if (v is LenVar && val.IsNeg)
+            val = 0;
+        if (!IntBounds.TryGetValue(v, out var bounds)) {
+            IntBounds.Add(v, new Interval(val, Len.PosInf));
+            return SimplifyResult.Restart;
+        }
+        if (val > bounds.Max)
+            return SimplifyResult.Conflict;
+        if (val <= bounds.Min)
+            return SimplifyResult.Satisfied;
+        IntBounds[v] = new Interval(val, bounds.Max);
+        return SimplifyResult.Restart;
+    }
+
+    public SimplifyResult AddHigherIntBound(NonTermInt v, Len val) {
+        if (v is LenVar && val.IsNeg)
+            return SimplifyResult.Conflict;
+        if (!IntBounds.TryGetValue(v, out var bounds)) {
+            IntBounds.Add(v, new Interval(v is LenVar ? 0 : Len.NegInf, val));
+            return SimplifyResult.Restart;
+        }
+        if (val < bounds.Min)
+            return SimplifyResult.Conflict;
+        if (val >= bounds.Max)
+            return SimplifyResult.Satisfied;
+        IntBounds[v] = new Interval(bounds.Min, val);
+        return SimplifyResult.Restart;
     }
 
     public bool ConsistentIntVal(IntVar var, Len v) => 
@@ -384,6 +418,7 @@ public class NielsenNode {
             sb.Append("\t")
                 .Append(node.Id)
                 .Append(" [label=\"")
+                .Append(node.Id).Append("\\n")
                 .Append(node.ToHTMLString())
                 .Append('"');
             if (node.IsConflict)

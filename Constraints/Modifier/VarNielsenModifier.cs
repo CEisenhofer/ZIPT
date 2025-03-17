@@ -16,9 +16,9 @@ public class VarNielsenModifier : DirectedNielsenModifier {
 
     public override void Apply(NielsenNode node) {
         // V1 = ""
-        // V2 = "" && |V1| > 0
-        // V1 = V1V2 && |V1| > 0
-        // V2 = V2V1 && |V1| > 0 && |V2| > 0
+        // V2 = "" && |V1| >= 1
+        // V1 = V1V2 && |V1| >= 1
+        // V2 = V2V1 && |V1| >= 1 && |V2| >= 1
         var subst = new Subst(Var1);
         var c = node.MkChild(node, [subst]);
         foreach (var cnstr in c.AllStrConstraints) {
@@ -29,11 +29,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         foreach (var cnstr in c.AllStrConstraints) {
             cnstr.Apply(subst);
         }
-        var sc = new Poly();
-        sc.AddPoly(new Poly(1));
-        sc.AddPoly(new Poly(new LenVar(Var1)));
-        c.AddConstraints(new IntLe(sc)); // 1 - |V1| <= 0
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        c.AddConstraints(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
 
         Str s = Backwards ? [Var1, Var2] : [Var2, Var1];
         subst = new Subst(Var1, s);
@@ -41,11 +40,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         foreach (var cnstr in c.AllStrConstraints) {
             cnstr.Apply(subst);
         }
-        sc = new Poly();
-        sc.AddPoly(new Poly(1));
-        sc.AddPoly(new Poly(new LenVar(Var1)));
-        c.AddConstraints(new IntLe(sc)); // 1 - |V1| <= 0
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        c.AddConstraints(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
 
         s = Backwards ? [Var2, Var1] : [Var1, Var2];
         subst = new Subst(Var2, s);
@@ -53,16 +51,12 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         foreach (var cnstr in c.AllStrConstraints) {
             cnstr.Apply(subst);
         }
-        sc = new Poly();
-        sc.AddPoly(new Poly(1));
-        sc.AddPoly(new Poly(new LenVar(Var1)));
-        c.AddConstraints(new IntLe(sc)); // 1 - |V1| <= 0
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
-        sc = new Poly();
-        sc.AddPoly(new Poly(1));
-        sc.AddPoly(new Poly(new LenVar(Var2)));
-        c.AddConstraints(new IntLe(sc)); // 1 - |V2| <= 0
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        c.AddConstraints(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
+        c.AddConstraints(
+            new IntLe(new Poly(1), new Poly(new LenVar(Var2)))); // 1 <= |V2|
+        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), new Poly(new LenVar(Var2))));
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
