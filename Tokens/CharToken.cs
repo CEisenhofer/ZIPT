@@ -5,22 +5,15 @@ using StringBreaker.Constraints.ConstraintElement;
 
 namespace StringBreaker.Tokens;
 
-public sealed class CharToken : StrToken {
+public sealed class CharToken : UnitToken {
 
     public char Value { get; }
 
     public CharToken(char value) =>
         Value = value;
 
-    public override bool Ground => true;
-    public override bool IsNullable(NielsenNode node) => false;
-
     public override Str Apply(Subst subst) => [this];
-    public override Str Apply(Interpretation subst) => [this];
-
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes() =>
-        // P(a) := {}
-        [([], [], null)];
+    public override Str Apply(Interpretation itp) => [this];
 
     public override Expr ToExpr(NielsenGraph graph) {
         Expr? e = graph.Propagator.GetCachedStrExpr(this);
@@ -31,8 +24,6 @@ public sealed class CharToken : StrToken {
         graph.Propagator.SetCachedExpr(this, e);
         return e;
     }
-
-    public override bool RecursiveIn(StrVarToken v) => false;
 
     protected override int CompareToInternal(StrToken other) {
         Debug.Assert(other is CharToken);

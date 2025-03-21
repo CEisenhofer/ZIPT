@@ -13,7 +13,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
     public Str Base { get; }
     public Poly Power { get; }
 
-    public GPowerIntrModifier(StrVarToken var, Str @base, bool backward) : base(backward) {
+    public GPowerIntrModifier(StrVarToken var, Str @base, bool forward) : base(forward) {
         Debug.Assert(@base.Ground);
         Var = var;
         Base = @base;
@@ -24,21 +24,21 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         // V1 / Base^Power Base' with Base' being a syntactic prefix of Base
 
         var power = new PowerToken(Base, Power);
-        var prefixes = Base.GetPrefixes();
+        var prefixes = Base.GetPrefixes(Forwards);
         
         foreach (var p in prefixes) {
             Str s = new Str(power);
-            s.AddRange(p.str, Backwards);
-            var subst = new Subst(Var, s);
+            s.AddRange(p.str, !Forwards);
+            var subst = new SubstVar(Var, s);
             Debug.Assert(p.varDecomp is null);
             var c = node.MkChild(node, [subst]);
-            foreach (var cnstr in c.AllStrConstraints) {
+            foreach (var cnstr in c.AllConstraints) {
                 cnstr.Apply(subst);
             }
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);
             var lowerBound = new Poly();
-            lowerBound.SubPoly(Power);
+            lowerBound.Sub(Power);
             c.AddConstraints(new IntLe(lowerBound)); // -Power <= 0 => Power >= 0
             c.Parent!.SideConstraints.Add(new IntLe(lowerBound));
         }
@@ -49,7 +49,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         int cmp = Base.Count.CompareTo(other.Base.Count); // TODO: Get a better heuristic (power nesting, variables in powers, ...)
         if (cmp != 0)
             return cmp;
-        cmp = Backwards.CompareTo(other.Backwards);
+        cmp = Forwards.CompareTo(other.Forwards);
         return cmp != 0 ? cmp : Var.CompareTo(other.Var);
     }
 

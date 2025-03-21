@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using StringBreaker.Constraints.Modifier;
+using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
@@ -13,8 +14,8 @@ public sealed class StrNonEq : StrEqBase {
     public override StrNonEq Clone() => new(LHS, RHS);
 
     protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> newSubst,
-        HashSet<Constraint> newSideConstr) {
-        while (LHS.NonEmpty() && RHS.NonEmpty()) {
+        HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
+        while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             var lhs1 = LHS.First();
             var rhs1 = RHS.First();
             Debug.Assert(lhs1 is not null);
@@ -27,7 +28,7 @@ public sealed class StrNonEq : StrEqBase {
             LHS.DropFirst();
             RHS.DropFirst();
         }
-        while (LHS.NonEmpty() && RHS.NonEmpty()) {
+        while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             var lhs1 = LHS.Last();
             var rhs1 = RHS.Last();
             Debug.Assert(lhs1 is not null);

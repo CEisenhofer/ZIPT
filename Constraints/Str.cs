@@ -1,6 +1,8 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Specialized;
+using System.Diagnostics;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
+using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
@@ -10,6 +12,7 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
 
     public Str() { }
 
+    public Str(int capacity) : base(capacity) { }
     public Str(StrToken tokens) : base([tokens]) { }
     public Str(ICollection<StrToken> tokens) : base(tokens) { }
     public Str(params StrToken[] tokens) : base(tokens) { }
@@ -26,24 +29,10 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
         return result;
     }
 
-    public Str Apply(Interpretation subst) {
+    public Str Apply(Interpretation itp) {
         Str result = [];
         foreach (var token in this) {
-            result.AddLastRange(token.Apply(subst));
-        }
-        return result;
-    }
-
-    public Str ApplyFirst(StrVarToken v, Str repl) {
-        bool found = false;
-        Str result = [];
-        foreach (var token in this) {
-            if (!found && token.Equals(v)) {
-                result.AddLastRange(repl);
-                found = true;
-                continue;
-            }
-            result.Add(token);
+            result.AddLastRange(token.Apply(itp));
         }
         return result;
     }
@@ -62,21 +51,32 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
         return new Str(result.Reverse().ToList());
     }
 
+    public Str Rotate(int idx) {
+        Debug.Assert(idx >= 0 && idx < Count);
+        if (idx == 0)
+            return Clone();
+        Str result = new Str(Count);
+        for (int i = idx; i < Count; i++) {
+            result.AddLast(this[i]);
+        }
+        for (int i = 0; i < idx; i++) {
+            result.AddLast(this[i]);
+        }
+        return result;
+    }
+
     // Proper prefixes
-    public List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes() {
+    public List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(u_1...u_n) := P(u_1) | u_1 P(u_2) | ... | u_1...u_{n-1} P(u_n)
-        List<(Str str, List<IntConstraint> sideConstraints, Subst varDecomp)> ret = [];
+        List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> ret = [];
         Str prefix = [];
-        List<IntConstraint> cnstrs = [];
         for (int i = 0; i < Count; i++) {
-            var current = this[i].GetPrefixes();
+            var current = Peek(dir, i).GetPrefixes(dir);
             for (int j = 0; j < current.Count; j++) {
-                current[j].str.AddFirstRange(prefix);
-                current[j].sideConstraints.AddRange(cnstrs);
+                current[j].str.AddRange(prefix, dir);
             }
             ret.AddRange(current);
-            prefix.Add(this[i]);
-            cnstrs.AddRange(current[^1].sideConstraints);
+            prefix.Add(Peek(dir, i), !dir);
         }
         return ret;
     }
@@ -91,7 +91,7 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
         return last;
     }
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         foreach (var token in this) {
             switch (token) {
                 case StrVarToken v:
@@ -100,9 +100,12 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
                 case CharToken c:
                     alphabet.Add(c);
                     break;
+                case SymCharToken s:
+                    sChars.Add(s);
+                    break;
                 case PowerToken p:
-                    p.Base.CollectSymbols(vars, alphabet);
-                    p.Power.CollectSymbols(vars, alphabet);
+                    p.Base.CollectSymbols(vars, sChars, iVars, alphabet);
+                    p.Power.CollectSymbols(vars, sChars, iVars, alphabet);
                     break;
                 default:
                     throw new NotSupportedException();
@@ -121,24 +124,6 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
 
     public bool Equals(Str other) =>
         Count == other.Count && this.SequenceEqual(other);
-
-    public bool EqualsRotation(int pos, Str s) {
-        Debug.Assert(pos >= 0 && pos <= Count);
-        if (Count != s.Count)
-            return false;
-        if (pos == 0)
-            return Equals(s);
-        int len = Count - pos;
-        for (int i = 0; i < len; i++) {
-            if (!this[i].Equals(s[pos + i]))
-                return false;
-        }
-        for (int i = len; i < Count; i++) {
-            if (!this[i].Equals(s[i - len]))
-                return false;
-        }
-        return true;
-    }
 
     public override int GetHashCode() => 
         this.Aggregate(387815837, (current, token) => current * 941706509 + token.GetHashCode());

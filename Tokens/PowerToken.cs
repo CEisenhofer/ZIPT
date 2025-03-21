@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
@@ -28,7 +29,7 @@ public sealed class PowerToken : StrToken {
         Base = b;
         Power = power;
         if (Base is [PowerToken p])
-            Power = Poly.MulPoly(power, p.Power);
+            Power = Poly.Mul(power, p.Power);
         if (Base.All(o => o is CharToken)) {
             Debug.Assert(Base.Count > 0);
             string lrp = StringUtils.LeastRepeatedPrefix(
@@ -38,7 +39,7 @@ public sealed class PowerToken : StrToken {
             Debug.Assert(Base.Count % lrp.Length == 0);
             Debug.Assert(m >= 1);
             if (m > 1) {
-                Power = Poly.MulPoly(Power, new Poly(m));
+                Power = Poly.Mul(Power, new Poly(m));
                 Base = new Str(lrp.Select(o => (StrToken)new CharToken(o)).ToArray());
             }
             Normalized = true;
@@ -47,10 +48,13 @@ public sealed class PowerToken : StrToken {
             Normalized = false;
     }
 
+    
     public override bool Ground => Base.Ground;
 
     public override bool IsNullable(NielsenNode node) => 
         Power.GetBounds(node).Max > 0 && Base.IsNullable(node);
+        // !(0 < Power) && Base is nullable
+        // !node.IsLt(new Poly(), Power) && Base.IsNullable(node);
 
     public override Str Apply(Subst subst) {
         var @base = Base.Apply(subst);
@@ -59,26 +63,34 @@ public sealed class PowerToken : StrToken {
         return [new PowerToken(@base, Power)];
     }
 
-    public override Str Apply(Interpretation subst) {
-        var @base = Base.Apply(subst);
+    public override Str Apply(Interpretation itp) {
+        var @base = Base.Apply(itp);
         if (@base.IsEmpty())
             return [];
-        return [new PowerToken(@base, Power)];
+        var p = Power.Apply(itp);
+        if (!p.IsConst(out var val) || val > Options.ModelUnwindingBound) 
+            return [new PowerToken(@base, p)];
+        Debug.Assert(!val.IsNeg);
+        if (!val.IsPos)
+            return [];
+        Str result = [];
+        for (int i = 0; i < val; i++) {
+            result.AddLastRange(@base);
+        }
+        return result;
     }
 
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst varDecomp)> GetPrefixes() {
+    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(u^n) := u^m P(u) with 0 <= m < n
         IntVar m = new();
         PowerToken token = new PowerToken(Base, new Poly(m));
         IntLe leastZero = new IntLe(new Poly(0), new Poly(m));
-        var mp = new Poly(m);
-        mp.AddPoly(new Poly(1));
-        IntLe lessThanPower = new IntLe(mp, Power);
+        IntLe lessThanPower = IntLe.MkLt(new Poly(m), Power);
 
-        var prefixes = Base.GetPrefixes();
+        var prefixes = Base.GetPrefixes(dir);
 
         for (int i = 0; i < prefixes.Count; i++) {
-            prefixes[i].str.AddFirst(token);
+            prefixes[i].str.Add(token, dir);
             prefixes[i].sideConstraints.Add(leastZero.Clone());
             prefixes[i].sideConstraints.Add(lessThanPower.Clone());
         }

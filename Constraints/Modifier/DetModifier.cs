@@ -12,7 +12,7 @@ public class DetModifier : ModifierBase {
     public override void Apply(NielsenNode node) {
         var c = node.MkChild(node, Substitutions);
         foreach (var subst in Substitutions) {
-            foreach (var cnstr in c.AllStrConstraints) {
+            foreach (var cnstr in c.AllConstraints) {
                 cnstr.Apply(subst);
             }
         }

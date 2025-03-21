@@ -1,31 +1,19 @@
-﻿using StringBreaker.Tokens;
+﻿using System.ComponentModel;
+using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
 
-public class Subst {
+public abstract class Subst {
 
-    public StrVarToken Var { get; }
-    public Str Str { get; }
+    public abstract bool IsEliminating { get; }
 
-    public bool IsEliminating => !Str.RecursiveIn(Var);
+    public abstract Str ResolveVar(StrVarToken v);
+    public abstract Str ResolveVar(SymCharToken v);
 
-    public Subst(StrVarToken v) {
-        Var = v;
-        Str = [];
-    }
+    public abstract void AddToInterpretation(Interpretation itp);
 
-    public Subst(StrVarToken v, Str s) {
-        Var = v;
-        Str = s;
-    }
+    public abstract override string ToString();
 
-    public Str ResolveVar(StrVarToken v) => v.Equals(Var) ? Str : [v];
-
-    public override string ToString() => $"{Var} / {Str}";
-
-    public override bool Equals(object? obj) =>
-        obj is Subst substitution && Equals(substitution);
-
-    public bool Equals(Subst subst) => Var.Equals(subst.Var) && Str.Equals(subst.Str);
-    public override int GetHashCode() => HashCode.Combine(Var, Str);
+    public abstract override bool Equals(object? obj);
+    public abstract override int GetHashCode();
 }

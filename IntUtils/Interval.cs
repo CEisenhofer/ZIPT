@@ -2,7 +2,7 @@
 
 namespace StringBreaker.IntUtils;
 
-public struct Interval {
+public readonly struct Interval {
     public readonly Len Min;
     public readonly Len Max;
 
@@ -24,6 +24,10 @@ public struct Interval {
 
     public bool Contains(Len v) => 
         Min <= v && v <= Max;
+
+    // Checks if Min <= i.Min && i.Max <= Max
+    public bool Contains(Interval i) =>
+        Min <= i.Min && i.Max <= Max;
 
     public static Interval operator +(Interval i, Len l) => new(i.Min + l, i.Max + l);
     public static Interval operator +(Len l, Interval i) => i + l;
@@ -55,15 +59,15 @@ public struct Interval {
         new(Min + other.Min, Max + other.Max);
 
     public Interval MergeMultiplication(Interval other) {
-        Len min1 = Min * other.Max;
-        Len min2 = other.Min * Max;
+        Len v1 = Min * other.Max;
+        Len v2 = other.Min * Max;
+        Len v3 = Max * other.Max;
+        Len v4 = Min * other.Min;
 
-        Len max1 = Max * other.Max;
-        Len max2 = Min * other.Min;
-
-        Len min = min1 < min2 ? min1 : min2;
-        Len max = max1 > max2 ? max1 : max2;
-        return new Interval(min, max);
+        return new Interval(
+            Len.Min(Len.Min(v1, v2), Len.Min(v3, v4)),
+            Len.Max(Len.Max(v1, v2), Len.Max(v3, v4))
+        );
     }
 
     public static bool Intersect(Interval i1, Interval i2) =>

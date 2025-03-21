@@ -15,5 +15,4 @@ public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
-    public abstract StrConstraint Negate();
 }

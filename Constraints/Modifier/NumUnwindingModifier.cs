@@ -17,12 +17,13 @@ public class NumUnwindingModifier : ModifierBase {
         c.Parent!.SideConstraints.Add(new IntEq(Num.Clone()));
 
         c = node.MkChild(node, []);
-        c.AddConstraints(new IntLe(new Poly(1), Num.Clone())); // 1 <= N1
-        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), Num.Clone()));
+        var sc = IntLe.MkLe(new Poly(1), Num.Clone());
+        c.AddConstraints(sc); // 1 <= N1
+        c.Parent!.SideConstraints.Add(sc.Clone());
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 
         Num.CompareTo(((NumUnwindingModifier)otherM).Num);
 
-    public override string ToString() => $"{Num} = 0 || {Num} > 0";
+    public override string ToString() => $"{Num} = 0 || 1 <= {Num}";
 }

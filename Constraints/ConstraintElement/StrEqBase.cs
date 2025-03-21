@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
@@ -9,15 +10,9 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public Str RHS { get; protected set; }
 
     protected StrEqBase(Str lhs, Str rhs) {
-        if (lhs.CompareTo(rhs) > 0) {
-            LHS = rhs;
-            RHS = lhs;
-        }
-        else {
-            LHS = lhs;
-            RHS = rhs;
-        }
-        Debug.Assert(LHS.CompareTo(RHS) <= 0);
+        LHS = lhs;
+        RHS = rhs;
+        SortStr();
     }
 
     public override bool Equals(object? obj) => obj is StrEqBase other && Equals(other);
@@ -25,8 +20,9 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
     static readonly Dictionary<Type, int> TokenTypeOrder = new() {
         { typeof(PowerToken), 0 },
-        { typeof(CharToken), 1 },
-        { typeof(StrVarToken), 2 },
+        { typeof(SymCharToken), 1 },
+        { typeof(CharToken), 2 },
+        { typeof(StrVarToken), 3 },
     };
 
     protected void SortStr() {
@@ -56,14 +52,15 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         RHS = RHS.Apply(subst);
     }
 
-    public override void Apply(Interpretation subst) {
-        LHS = LHS.Apply(subst);
-        RHS = RHS.Apply(subst);
+    public override void Apply(Interpretation itp) {
+        LHS = LHS.Apply(itp);
+        RHS = RHS.Apply(itp);
     }
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
-        LHS.CollectSymbols(vars, alphabet);
-        RHS.CollectSymbols(vars, alphabet);
+    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+        LHS.CollectSymbols(vars, sChars, iVars, alphabet);
+        RHS.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
     public override bool Contains(StrVarToken v) =>

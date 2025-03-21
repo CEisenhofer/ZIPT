@@ -7,10 +7,11 @@ using StringBreaker.Tokens;
 
 namespace StringBreaker.MiscUtils;
 
+// TODO: Maybe occ should be an int or long...
 public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T : IComparable<T> {
 
     // Should not contain zero entries, but might negative ones!!
-    readonly SortedDictionary<T, Len> occurrences;
+    protected readonly SortedDictionary<T, Len> occurrences;
 
     public MSet() =>
         occurrences = [];
@@ -46,6 +47,8 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
     public void Add(T token) => Add(token, 1);
 
     public void Add(T token, Len add) {
+        if (add.IsZero)
+            return;
         if (occurrences.TryGetValue(token, out var count)) {
             if (count + add == 0)
                 occurrences.Remove(token);

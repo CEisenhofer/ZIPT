@@ -1,5 +1,7 @@
 ﻿using Microsoft.Z3;
+using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
+using System.Xml.Linq;
 
 namespace StringBreaker.Constraints.ConstraintElement;
 
@@ -14,10 +16,10 @@ public abstract class Constraint {
     public abstract override string ToString();
 
     public abstract void Apply(Subst subst);
-    public abstract void Apply(Interpretation subst);
+    public abstract void Apply(Interpretation itp);
 
-    public SimplifyResult Simplify(NielsenNode node, List<Subst> substitution, HashSet<Constraint> newSideConstraints) {
-        var res = SimplifyInternal(node, substitution, newSideConstraints);
+    public SimplifyResult Simplify(NielsenNode node, List<Subst> substitution, HashSet<Constraint> newSideConstraints, ref BacktrackReasons reason) {
+        var res = SimplifyInternal(node, substitution, newSideConstraints, ref reason);
         if (res == SimplifyResult.Conflict)
             Violated = true;
         else if (res == SimplifyResult.Satisfied)
@@ -25,8 +27,9 @@ public abstract class Constraint {
         return res;
     }
 
-    protected abstract SimplifyResult SimplifyInternal(NielsenNode node, 
-        List<Subst> newSubst, HashSet<Constraint> newSideConstr);
+    protected abstract SimplifyResult SimplifyInternal(NielsenNode node,
+        List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason);
     public abstract BoolExpr ToExpr(NielsenGraph graph);
-    public abstract void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
+    public abstract Constraint Negate();
 }

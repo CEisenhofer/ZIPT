@@ -1,4 +1,5 @@
-﻿using StringBreaker.Constraints.ConstraintElement;
+﻿using System.Buffers;
+using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 
 namespace StringBreaker.Constraints.Modifier;
@@ -16,19 +17,14 @@ public class NumCmpModifier : ModifierBase {
     public override void Apply(NielsenNode node) {
 
         var c = node.MkChild(node, []);
-        var sc = new Poly();
-        sc.AddPoly(N1.Clone());
-        sc.SubPoly(N2.Clone());
-        sc.SubPoly(new Poly(1));
-        c.AddConstraints(new IntLe(sc)); // N1 - N2 - 1 <= 0 => N1 <= N2 + 1
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        var sc = IntLe.MkLt(N1.Clone(), N2);
+        c.AddConstraints(sc); // N1 < N2
+        c.Parent!.SideConstraints.Add(sc.Clone());
 
         c = node.MkChild(node, []);
-        sc = new Poly();
-        sc.AddPoly(N2.Clone());
-        sc.SubPoly(N1.Clone());
-        c.AddConstraints(new IntLe(sc)); // N2 - N1 <= 0 => N2 <= N1
-        c.Parent!.SideConstraints.Add(new IntLe(sc.Clone()));
+        sc = IntLe.MkLe(N2.Clone(), N1); // N2 <= N1
+        c.AddConstraints(sc); // N2 - N1 <= 0 => N2 <= N1
+        c.Parent!.SideConstraints.Add(sc.Clone());
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

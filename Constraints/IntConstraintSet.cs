@@ -28,6 +28,7 @@ public class IntConstraintSet<T> : IEnumerable<T>, IIntConstraintSet where T : I
 
     public IEnumerable<IntConstraint> EnumerateConstraints() => constraints;
     public IEnumerable<Constraint> EnumerateBaseConstraints() => constraints;
+    public bool Contains(T cnstr) => constraints.BinarySearch(cnstr) >= 0;
     public void Apply(Subst subst) {
         for (int i = 0; i < Count; i++) {
             constraints[i].Apply(subst);

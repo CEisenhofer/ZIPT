@@ -17,7 +17,7 @@ public static class CollectionExtension {
     public static bool IsEmpty<T>(this IReadOnlyCollection<T> list) =>
         list.Count == 0;
 
-    public static bool NonEmpty<T>(this IReadOnlyCollection<T> list) =>
+    public static bool IsNonEmpty<T>(this IReadOnlyCollection<T> list) =>
         list.Count != 0;
 
     public static void AddRange<T>(this HashSet<T> set, IEnumerable<T> items) {

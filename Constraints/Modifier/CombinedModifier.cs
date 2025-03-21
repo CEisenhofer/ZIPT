@@ -8,7 +8,7 @@ public class CombinedModifier : ModifierBase {
     public ModifierBase[] Modifier { get; }
 
     public CombinedModifier(params ModifierBase[] modifier) {
-        Debug.Assert(modifier.NonEmpty());
+        Debug.Assert(modifier.IsNonEmpty());
         Debug.Assert(modifier.All(o => o is not CombinedModifier));
         Modifier = modifier;
     }

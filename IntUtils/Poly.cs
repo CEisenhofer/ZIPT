@@ -11,6 +11,10 @@ namespace StringBreaker.IntUtils;
 
 public class Poly : MSet<StrictMonomial> {
 
+    public bool IsZero => IsEmpty();
+
+    public Len ConstPart => occurrences.TryGetValue([], out var c) ? c : 0;
+
     public Poly() { }
 
     public Poly(Len l) {
@@ -43,18 +47,34 @@ public class Poly : MSet<StrictMonomial> {
         return poly;
     }
 
-    public void AddPoly(Poly poly) {
+    public void Plus(Poly poly) {
         foreach (var c in poly) {
             Add(c.t, c.occ);
         }
     }
 
-    public void SubPoly(Poly poly) {
+    public void Plus(Len l) {
+        if (l.IsZero)
+            return;
+        var empty = new StrictMonomial();
+        if (occurrences.TryGetValue(empty, out var c)) {
+            var sum = c + l;
+            if (sum.IsZero)
+                occurrences.Remove(empty);
+            else
+                occurrences[empty] = sum;
+            return;
+        }
+        occurrences[empty] = l;
+    }
+
+    public void Sub(Poly poly) {
         foreach (var c in poly) {
             Add(c.t, -c.occ);
         }
     }
 
+    public void Sub(Len l) => Plus(-l);
 
     public Poly Negate() {
         Poly ret = new();
@@ -64,7 +84,7 @@ public class Poly : MSet<StrictMonomial> {
         return ret;
     }
 
-    public static Poly MulPoly(Poly p1, Poly p2) {
+    public static Poly Mul(Poly p1, Poly p2) {
         Poly res = new();
         foreach (var c1 in p1) {
             foreach (var c2 in p2) {
@@ -82,8 +102,8 @@ public class Poly : MSet<StrictMonomial> {
         Poly ret = new();
         foreach (var c in this) {
             Poly p = c.t.Apply(subst);
-            p = MulPoly(p, new Poly(c.occ));
-            ret.AddPoly(p);
+            p = Mul(p, new Poly(c.occ));
+            ret.Plus(p);
         }
         return ret;
     }
@@ -92,8 +112,8 @@ public class Poly : MSet<StrictMonomial> {
         Poly ret = new();
         foreach (var c in this) {
             Poly p = c.t.Apply(subst);
-            p = MulPoly(p, new Poly(c.occ));
-            ret.AddPoly(p);
+            p = Mul(p, new Poly(c.occ));
+            ret.Plus(p);
         }
         return ret;
     }
@@ -107,9 +127,11 @@ public class Poly : MSet<StrictMonomial> {
         return ret;
     }
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
+    public void ElimConst() => occurrences.Remove([]);
+
+    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         foreach (var c in this) {
-            c.t.CollectSymbols(vars, alphabet);
+            c.t.CollectSymbols(vars, sChars, iVars, alphabet);
         }
     }
 

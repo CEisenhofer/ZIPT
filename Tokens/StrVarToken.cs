@@ -88,17 +88,19 @@ public sealed class StrVarToken : StrToken, IDisposable {
         LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
 
     public override Str Apply(Subst subst) => subst.ResolveVar(this);
-    public override Str Apply(Interpretation subst) => subst.ResolveVar(this);
+    public override Str Apply(Interpretation itp) => itp.ResolveVar(this);
 
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes() {
+    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(x) := y with x = yz, |y| < |x|
         // TODO
         StrVarToken y = CreateFreshAux(Name);
         StrVarToken z = CreateFreshAux(Name);
         Poly yl = new(LenVar.MkLenPoly([y]));
         Poly xl = new(LenVar.MkLenPoly([this]));
-        yl.AddPoly(new Poly(1));
-        return [([y], [new IntLe(yl, xl)], new Subst(this, [y, z]))];
+        yl.Plus(1);
+        if (dir)
+            return [([y], [new IntLe(yl, xl)], new SubstVar(this, [y, z]))];
+        return [([y], [new IntLe(yl, xl)], new SubstVar(this, [z, y]))];
     }
 
     public override Expr ToExpr(NielsenGraph graph) {

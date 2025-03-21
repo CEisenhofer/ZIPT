@@ -1,7 +1,10 @@
 ﻿using System.Diagnostics;
-using System.Numerics;
+using System.Net;
+using System.Net.WebSockets;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 using System.Text;
-using System.Xml.Linq;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Constraints.Modifier;
@@ -11,6 +14,22 @@ using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
 
+public enum BacktrackReasons {
+    Unevaluated,
+    Satisfied,
+    // These are actual conflicts
+    SymbolClash,
+    ParikhImage,
+    Subsumption,
+    Arithmetic,
+    SMT,
+    ChildrenFailed,
+    // Those are resolved by iterative deepening
+    DepthLimit,
+    ComplexityLimit,
+    BothLimits,
+}
+
 public class NielsenNode {
 
     public int Id { get; }
@@ -19,10 +38,15 @@ public class NielsenNode {
     public NielsenEdge? Parent { get; } // This is not necessarily the only ingoing edge [null is the unique "root"]
     public List<NielsenEdge>? Outgoing { get; set; } // Acyclic!!
     public bool UnitNode => Outgoing is not null && Outgoing.Count == 1; // There is no assumption literal in the outgoing edge
-    public bool IsConflict { get; set; } // For failure caching
+    public BacktrackReasons Reason { get; set; } = BacktrackReasons.Unevaluated;
+    public bool IsConflict => IsConflictReason(Reason);
+    public bool IsSatisfied => Reason == BacktrackReasons.Satisfied;
+    public bool FullyExpanded => IsConflict || IsSatisfied || (Outgoing is not null && Outgoing.All(o => o.Tgt.FullyExpanded));
 
     public StrConstraintSet<StrEq> StrEq { get; init; } = new([]);
+    public StrConstraintSet<StrNonEq> StrNEq { get; init; } = new([]);
     public IntConstraintSet<IntEq> IntEq { get; init; } = new([]);
+    public IntConstraintSet<IntNonEq> IntNEq { get; init; } = new([]);
     public IntConstraintSet<IntLe> IntLe { get; init; } = new([]);
     public Dictionary<NonTermInt, Interval> IntBounds { get; init; } = []; // x \in [i, j]
 
@@ -31,7 +55,9 @@ public class NielsenNode {
         get
         {
             yield return StrEq;
+            yield return StrNEq;
             yield return IntEq;
+            yield return IntNEq;
             yield return IntLe;
         }
     }
@@ -55,6 +81,7 @@ public class NielsenNode {
         get
         {
             yield return StrEq;
+            yield return StrNEq;
         }
     }
 
@@ -75,6 +102,7 @@ public class NielsenNode {
         get
         {
             yield return IntEq;
+            yield return IntNEq;
             yield return IntLe;
         }
     }
@@ -193,6 +221,68 @@ public class NielsenNode {
     public bool ConsistentIntVal(IntVar var, Len v) => 
         !IntBounds.TryGetValue(var, out var bounds) || bounds.Contains(v);
 
+    // lhs == rhs
+    // No need to copy anything!
+    public bool IsEq(Poly lhs, Poly rhs) {
+        IntEq eq = new(lhs.Clone(), rhs);
+        if (IntEq.Contains(eq))
+            return true;
+        var bounds = eq.Poly.GetBounds(this);
+        return bounds is { IsUnit: true, Min.IsZero: true };
+    }
+
+    // p == 0 || p <= 0 [for implementation syntactic reasons, p == 0 can be true and p <= 0 can be false]
+    // No need to copy anything!
+    public bool IsPowerElim(Poly p) => IsZero(p) || IsNonPos(p);
+
+    // p == 0
+    // No need to copy anything!
+    public bool IsZero(Poly p) => IsEq(p, new Poly());
+
+    // p == 1
+    // No need to copy anything!
+    public bool IsOne(Poly p) => IsEq(p, new Poly(1));
+
+    // lhs <= rhs
+    // lhs - rhs <= 0
+    // No need to copy anything!
+    public bool IsLe(Poly lhs, Poly rhs) {
+        IntLe le = ConstraintElement.IntLe.MkLe(lhs.Clone(), rhs);
+        if (IntLe.Contains(le))
+            return true;
+        var bounds = le.Poly.GetBounds(this);
+        return bounds.Max <= 0;
+    }
+
+    // lhs < rhs
+    // lhs - rhs < 0
+    // lhs - rhs < 0
+    // lhs - rhs + 1 <= 0
+    // No need to copy anything!
+    public bool IsLt(Poly lhs, Poly rhs) {
+        IntLe le = ConstraintElement.IntLe.MkLt(lhs.Clone(), rhs);
+        if (IntLe.Contains(le))
+            return true;
+        var bounds = le.Poly.GetBounds(this);
+        return bounds.Max <= 0;
+    }
+
+    // p < 0
+    // No need to copy anything!
+    public bool IsNeg(Poly p) => IsLt(p, new Poly());
+
+    // p <= 0
+    // No need to copy anything!
+    public bool IsNonPos(Poly p) => IsLe(p, new Poly());
+
+    // p > 0
+    // No need to copy anything!
+    public bool IsPos(Poly p) => IsLt(new Poly(), p);
+
+    // p >= 0
+    // No need to copy anything!
+    public bool IsNonNeg(Poly p) => IsLe(new Poly(), p);
+
     public bool Extend() {
         if (Outgoing is not null)
             return !IsConflict; // We might have already expended it (unit or iterative deepening)
@@ -210,48 +300,64 @@ public class NielsenNode {
         Debug.Assert(Outgoing is null);
         Outgoing = [];
         bestModifier.Apply(this);
-        bool inconsistent = true;
         foreach (var child in Outgoing) {
             Graph.SubSolver.Assert(Graph.Ctx.MkImplies(child.Assumption,
                 Graph.Ctx.MkAnd(child.SideConstraints.Select(o => o.ToExpr(Graph)))));
-            if (!Simplify(child.Tgt))
-                Debug.Assert(child.Tgt.IsConflict);
-            else
-                inconsistent = false;
+            Simplify(child.Tgt);
         }
-        IsConflict = inconsistent;
-        return !inconsistent;
+        return true;
     }
 
-    public static bool Simplify(NielsenNode node) {
+    public static BacktrackReasons Simplify(NielsenNode node) {
+
         List<NielsenNode> nodeChain = [];
-        while (true) {
-            nodeChain.Add(node);
-            DetModifier mod = new();
-            if (!node.Simplify(mod.Substitutions, mod.SideConstraints)) {
-                foreach (var n in nodeChain) {
-                    n.IsConflict = true;
-                }
-                return false;
+
+        void Fail() {
+            foreach (var n in nodeChain) {
+                // Inherit reason for only child
+                n.Reason = BacktrackReasons.ChildrenFailed;
             }
-            if (mod.Trivial)
-                return true;
+        }
+
+        while (true) {
+            DetModifier mod = new();
+            var reason = node.Simplify(mod.Substitutions, mod.SideConstraints);
+            if (reason is not BacktrackReasons.Unevaluated or BacktrackReasons.Satisfied) {
+                node.Reason = reason;
+                Fail();
+                return reason;
+            }
+
+            if (mod.Trivial) {
+                if (node.Graph.AddSumbsumptionCandidate(node)) 
+                    return BacktrackReasons.Unevaluated;
+                node.Reason = BacktrackReasons.Subsumption;
+                Fail();
+                return reason;
+            }
             node.Outgoing = [];
             mod.Apply(node);
             Debug.Assert(node.UnitNode);
+            Debug.Assert(node.Outgoing is not null);
+
+            if (node.Outgoing[0].SideConstraints.IsNonEmpty())
+                node.Graph.SubSolver.Assert(node.Graph.Ctx.MkImplies(node.Outgoing![0].Assumption,
+                    node.Graph.Ctx.MkAnd(mod.SideConstraints.Select(o => o.ToExpr(node.Graph)))));
+
             node = node.Outgoing![0].Tgt;
+            nodeChain.Add(node);
         }
     }
 
-    void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         foreach (var cnstr in AllStrConstraints) {
-            cnstr.CollectSymbols(vars, alphabet);
+            cnstr.CollectSymbols(vars, sChars, iVars, alphabet);
         }
     }
 
     static int simplifyCnt;
 
-    public bool Simplify(List<Subst> substitution, HashSet<Constraint> newSideConstraints) {
+    public BacktrackReasons Simplify(List<Subst> substitution, HashSet<Constraint> newSideConstraints) {
         simplifyCnt++;
         Log.WriteLine("Simplify: " + simplifyCnt);
         HashSet<Constraint> toRemove = [];
@@ -263,9 +369,11 @@ public class NielsenNode {
                     break;
                 if (c1.Satisfied)
                     continue;
-                switch (c1.Simplify(this, substitution, newSideConstraints)) {
+                BacktrackReasons reason = BacktrackReasons.Unevaluated;
+                switch (c1.Simplify(this, substitution, newSideConstraints, ref reason)) {
                     case SimplifyResult.Conflict:
-                        return false;
+                        Debug.Assert(IsActualConflict(reason));
+                        return reason;
                     case SimplifyResult.Satisfied:
                         toRemove.Add(c1);
                         continue;
@@ -282,10 +390,10 @@ public class NielsenNode {
         foreach (var c in toRemove) {
             RemoveConstraint(c);
         }
-        return true;
+        return BacktrackReasons.Unevaluated;
     }
 
-    void RemoveConstraint(Constraint c) {
+    public void RemoveConstraint(Constraint c) {
         foreach (var cnstrSet in AllConstraintSets) {
             if (cnstrSet.Remove(c))
                 return;
@@ -297,7 +405,9 @@ public class NielsenNode {
         Debug.Assert(parent.Outgoing is not null);
         return new NielsenNode(Graph, parent, subst) {
             StrEq = StrEq.Clone(),
+            StrNEq = StrNEq.Clone(),
             IntEq = IntEq.Clone(),
+            IntNEq = IntNEq.Clone(),
             IntLe = IntLe.Clone(),
             IntBounds = new Dictionary<NonTermInt, Interval>(IntBounds),
         };
@@ -339,8 +449,14 @@ public class NielsenNode {
             case StrEq sEq:
                 StrEq.Add(sEq);
                 break;
+            case StrNonEq sNEq:
+                StrNEq.Add(sNEq);
+                break;
             case IntEq iEq:
                 IntEq.Add(iEq);
+                break;
+            case IntNonEq iNEq:
+                IntNEq.Add(iNEq);
                 break;
             case IntLe iLe:
                 IntLe.Add(iLe);
@@ -350,26 +466,126 @@ public class NielsenNode {
         }
     }
 
-    public SimplifyResult Check() {
-        Graph.Current = this;
+    // Checks if stronger is more constrained than this
+    public bool Subsumes(NielsenNode stronger) {
+        Debug.Assert(stronger.StrEq.Equals(StrEq));
+        //if (!BoundsSubsumes(stronger))
+        //    return false;
+        // TODO: Actually we might strengthen this quite a bit
+        return AllStrConstraintSets.SequenceEqual(stronger.AllStrConstraintSets);
+    }
+
+#if false
+    // Not sure, we need this
+    bool BoundsSubsumes(NielsenNode stronger) {
+        if (IntBounds.Count > stronger.IntBounds.Count)
+            return false;
+        foreach (var v in IntBounds) {
+            if (!stronger.IntBounds.TryGetValue(v.Key, out var si))
+                return false;
+            if (!si.Contains(v.Value))
+                return false;
+        }
+        return true;
+    }
+#endif
+
+    public static bool IsConflictReason(BacktrackReasons reason) =>
+        reason is
+            BacktrackReasons.SymbolClash or
+            BacktrackReasons.ParikhImage or
+            BacktrackReasons.SMT or
+            BacktrackReasons.Arithmetic or
+            BacktrackReasons.Subsumption or
+            BacktrackReasons.ChildrenFailed;
+
+    public static bool IsResourceReason(BacktrackReasons reason) =>
+        reason is
+            BacktrackReasons.DepthLimit or
+            BacktrackReasons.ComplexityLimit or
+            BacktrackReasons.BothLimits;
+
+    public static bool IsActualConflict(BacktrackReasons reason) =>
+        IsConflictReason(reason) && reason != BacktrackReasons.ChildrenFailed;
+
+    public static string ReasonToString(BacktrackReasons reason) => reason switch {
+        BacktrackReasons.Unevaluated => "Unevaluated",
+        BacktrackReasons.Satisfied => "Satisfied",
+        BacktrackReasons.SymbolClash => "Symbol Clash",
+        BacktrackReasons.ParikhImage => "Parikh Image",
+        BacktrackReasons.Arithmetic => "Arithmetic",
+        BacktrackReasons.Subsumption => "Subsumption",
+        BacktrackReasons.SMT => "SMT",
+        BacktrackReasons.ChildrenFailed => "Children Failed",
+        BacktrackReasons.DepthLimit => "Depth Limit",
+        BacktrackReasons.ComplexityLimit => "Complexity Limit",
+        BacktrackReasons.BothLimits => "Depth & Complexity Limit",
+        _ => throw new ArgumentOutOfRangeException()
+    };
+
+    static BacktrackReasons MergeChildrenReasons(BacktrackReasons r1, BacktrackReasons r2) {
+        if (r1 == BacktrackReasons.Unevaluated || r2 == BacktrackReasons.Unevaluated)
+            return BacktrackReasons.Unevaluated;
+        if (r1 == BacktrackReasons.Satisfied || r2 == BacktrackReasons.Satisfied)
+            return BacktrackReasons.Satisfied;
+        if (IsResourceReason(r1) && IsResourceReason(r2))
+            return r1 == r2 ? r1 : BacktrackReasons.BothLimits;
+        if (IsResourceReason(r1))
+            return r1;
+        if (IsResourceReason(r2))
+            return r2;
+        return BacktrackReasons.ChildrenFailed;
+    }
+
+    // Unit steps are not countered for depth (or complexity) bound
+    public bool Check(int dep, int comp) {
+        Status res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
+        Debug.Assert(res != Status.UNKNOWN);
+        if (res == Status.UNSATISFIABLE) {
+            Reason = BacktrackReasons.SMT;
+            return false;
+        }
+
         if (!AllStrConstraints.Any()) {
             // We can also just say assumption_child => assumption_parent
             // and assume only the deepest child
-            Status res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
-            Debug.Assert(res != Status.UNKNOWN);
-            return res == Status.UNSATISFIABLE ? SimplifyResult.Conflict : SimplifyResult.Satisfied;
+            Reason = BacktrackReasons.Satisfied;
+            Graph.SatNodes.Add(this);
+            return true;
+        }
+        if (comp > Graph.ComplexityBound) {
+            Reason = BacktrackReasons.ComplexityLimit;
+            return false;
+        }
+        if (dep > Graph.DepthBound) {
+            Reason = BacktrackReasons.DepthLimit;
+            return false;
         }
         if (!Extend())
-            return SimplifyResult.Conflict;
+            return true;
+        bool first = true;
+        BacktrackReasons reason = Reason;
         Debug.Assert(Outgoing is not null);
+        bool sat = false;
         foreach (var outgoing in Outgoing) {
-            if (outgoing.Tgt.IsConflict)
-                continue;
-            if (outgoing.Tgt.Check() == SimplifyResult.Satisfied)
-                return SimplifyResult.Satisfied;
-            Graph.Current = this;
+            if (outgoing.Tgt is { IsConflict: false, IsSatisfied: false }) {
+                if (outgoing.Tgt.Check(dep + 1, comp)) {
+                    Reason = BacktrackReasons.Satisfied;
+                    sat = true;
+                    if (!Options.FullGraphExpansion)
+                        return true;
+                    reason = MergeChildrenReasons(reason, BacktrackReasons.Satisfied);
+                }
+            }
+            if (first) {
+                reason = outgoing.Tgt.Reason;
+                first = false;
+            }
+            else
+                reason = MergeChildrenReasons(reason, outgoing.Tgt.Reason);
         }
-        return SimplifyResult.Conflict;
+        Reason = reason;
+        return sat;
     }
 
     public override string ToString() {
@@ -380,7 +596,7 @@ public class NielsenNode {
                 sb.Append('\t').Append(cnstr).AppendLine();
             }
         }
-        if (IntBounds.NonEmpty()) {
+        if (IntBounds.IsNonEmpty()) {
             sb.AppendLine("Bounds:");
             foreach (var (v, i) in IntBounds) {
                 sb.Append('\t').Append(i.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ").Append(i.Max).AppendLine();
@@ -394,16 +610,16 @@ public class NielsenNode {
 
     public string ToHTMLString() {
         StringBuilder sb = new();
-        if (AllStrConstraints.Any()) {
+        if (AllConstraints.Any()) {
             sb.Append("Cnstr:\\n");
             foreach (var cnstr in AllConstraints) {
                 sb.Append(DotEscapeStr(cnstr.ToString())).Append("\\n");
             }
         }
-        if (IntBounds.NonEmpty()) {
+        if (IntBounds.IsNonEmpty()) {
             sb.Append("Bounds:\\n");
             foreach (var (v, i) in IntBounds) {
-                sb.Append(i.Min).Append(" <= ").Append(DotEscapeStr(v.ToString())).Append(" <= ").Append(i.Max).Append("\\n");
+                sb.Append(i.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.Max).Append("\\n");
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();

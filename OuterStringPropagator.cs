@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Numerics;
 using System.Text;
@@ -21,6 +22,10 @@ public class OuterStringPropagator : UserPropagator {
     public readonly FuncDecl PowerFct;
 
     public readonly FuncDecl LenFct;
+
+    public readonly Dictionary<CharToken, ParikhInfo> ParikInfo = [];
+    public readonly Dictionary<FuncDecl, InvParikhInfo> InvParikInfo = [];
+
 
     public readonly Expr Epsilon;
 
@@ -79,13 +84,21 @@ public class OuterStringPropagator : UserPropagator {
         ExprToIntToken.Add((IntExpr)e.Dup(), t);
     }
 
-    public IntExpr GetPowerConst() =>
-        (IntExpr)Ctx.MkUserPropagatorFuncDecl(
-            Ctx.MkFreshConst("n", StringSort).FuncDecl.Name.ToString(),
-            [], Ctx.IntSort).Apply();
+    public ParikhInfo GetParikhInfo(CharToken c) {
+        if (!ParikInfo.TryGetValue(c, out ParikhInfo? info)) {
+            info = new ParikhInfo(c, this);
+            ParikInfo.Add(c, info);
+        }
+        return info;
+    }
 
     public IntExpr MkLen(Expr e) =>
         (IntExpr)LenFct.Apply(e);
+
+    public IntExpr MkParikh(CharToken c, Expr e) {
+        var info = GetParikhInfo(c);
+        return (IntExpr)info.Total.Apply(e);
+    }
 
     public Expr MkConcat(Expr e1, Expr e2) {
         if (e1.Equals(Epsilon))
@@ -175,9 +188,9 @@ public class OuterStringPropagator : UserPropagator {
             foreach (var v in vars) {
                 // TODO: So far I ignore occurrences in power (though; I do not know if we really want them in there anyway)
                 uint cnt1 = (uint)s1.Count(o => o is NonTermToken v2 && v2.Equals(v));
-                modRaw.Add(cnt1);
+                modRaw.Plus(cnt1);
                 uint cnt2 = (uint)s2.Count(o => o is NonTermToken v2 && v2.Equals(v));
-                modRaw.Add(cnt2);
+                modRaw.Plus(cnt2);
             }
 
             foreach (uint m in modRaw) {
@@ -189,7 +202,7 @@ public class OuterStringPropagator : UserPropagator {
                         while (n % i == 0) {
                             n /= (uint)i;
                         }
-                        mod.Add((uint)i);
+                        mod.Plus((uint)i);
                     }
                 }
             }*/
@@ -203,7 +216,7 @@ public class OuterStringPropagator : UserPropagator {
                         while (n % i == 0) {
                             n /= i;
                         }
-                        mod.Add(i);
+                        mod.Plus(i);
                     }
                 }
             }
@@ -220,9 +233,18 @@ public class OuterStringPropagator : UserPropagator {
             }
 #endif
             }
+            var eq = new StrEq(s1r, s2r);
+            HashSet<StrVarToken> vars = [];
+            HashSet<SymCharToken> sChars = [];
+            HashSet<IntVar> iVars = [];
+            HashSet<CharToken> alph = [];
+            eq.CollectSymbols(vars, sChars, iVars, alph);
 
-            Root.AddConstraints(new StrEq(s1r, s2r)); // u = v
+            Root.AddConstraints(eq); // u = v
             Root.AddConstraints(new IntEq(LenVar.MkLenPoly(s1r), LenVar.MkLenPoly(s2r))); // u = v => |u| = |v|
+            foreach (var a in alph) {
+                Root.AddConstraints(new IntEq(Parikh.MkParikhPoly(a, s1r), Parikh.MkParikhPoly(a, s2r))); // u = v => |u|_a = |v|_a
+            }
             reportedEqs.Add((e1, e2));
             undoStack.Add(() => reportedEqs.Pop());
         }
@@ -251,30 +273,101 @@ public class OuterStringPropagator : UserPropagator {
         }
     }
 
-    public Str? TryParseStr(Expr expr) {
-        if (!expr.Sort.Equals(StringSort))
+    public Constraint? TryParse(BoolExpr expr) {
+        switch (expr.FuncDecl.DeclKind) {
+            case Z3_decl_kind.Z3_OP_EQ:
+                return expr.Arg(0) is IntExpr
+                    ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
+                    : ParseStrEq(expr.Args[0], expr.Args[1]);
+            case Z3_decl_kind.Z3_OP_NOT:
+                return TryParse((BoolExpr)expr.Args[0])?.Negate();
+            case Z3_decl_kind.Z3_OP_LE:
+                return ParseLe((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
+            case Z3_decl_kind.Z3_OP_GE:
+                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
+            case Z3_decl_kind.Z3_OP_LT:
+                return ParseLt((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
+            case Z3_decl_kind.Z3_OP_GT:
+                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
+            default:
+                throw new NotImplementedException();
+        }
+    }
+
+    public StrEq? ParseStrEq(Expr left, Expr right) {
+        var lhs = TryParseStr(left);
+        if (lhs is null)
             return null;
-        if (expr.Equals(Epsilon))
-            return [];
-        if (expr.FuncDecl.Equals(ConcatFct)) {
-            List<StrToken> res = [];
-            for (uint i = 0; i < expr.NumArgs; i++) {
-                if (TryParseStr(expr.Arg(i)) is not { } str)
-                    return null;
-                res.AddRange(str);
+        var rhs = TryParseStr(right);
+        return rhs is null ? null : new StrEq(lhs, rhs);
+    }
+
+    public IntEq? ParseIntEq(IntExpr left, IntExpr right) {
+        var lhs = TryParseInt(left);
+        if (lhs is null)
+            return null;
+        var rhs = TryParseInt(right);
+        return rhs is null ? null : new IntEq(lhs, rhs);
+    }
+
+    public IntLe? ParseLe(IntExpr left, IntExpr right) {
+        var lhs = TryParseInt(left);
+        if (lhs is null)
+            return null;
+        var rhs = TryParseInt(right);
+        return rhs is null ? null : IntLe.MkLe(lhs, rhs);
+    }
+
+    public IntLe? ParseLt(IntExpr left, IntExpr right) {
+        var lhs = TryParseInt(left);
+        if (lhs is null)
+            return null;
+        var rhs = TryParseInt(right);
+        return rhs is null ? null : IntLe.MkLt(lhs, rhs);
+    }
+
+    public Str? TryParseStr(Expr expr) {
+        if (expr.Sort.Equals(StringSort)) {
+            // Custom Z3
+            if (expr.Equals(Epsilon))
+                return [];
+            if (expr.FuncDecl.Equals(ConcatFct)) {
+                List<StrToken> res = [];
+                for (uint i = 0; i < expr.NumArgs; i++) {
+                    if (TryParseStr(expr.Arg(i)) is not { } str)
+                        return null;
+                    res.AddRange(str);
+                }
+                return new Str(res);
             }
-            return new Str(res);
+            if (expr.FuncDecl.Equals(PowerFct)) {
+                Str? @base = TryParseStr(expr.Arg(0));
+                if (@base is null)
+                    return null;
+                Poly? poly = TryParseInt((IntExpr)expr.Arg(1));
+                Debug.Assert(poly is not null);
+                return new Str([new PowerToken(@base, poly)]);
+            }
+            if (ExprToStrToken.TryGetValue(expr, out StrToken? s))
+                return [s];
         }
-        if (expr.FuncDecl.Equals(PowerFct)) {
-            Str? @base = TryParseStr(expr.Arg(0));
-            if (@base is null)
-                return null;
-            Poly? poly = TryParseInt((IntExpr)expr.Arg(1));
-            Debug.Assert(poly is not null);
-            return new Str([new PowerToken(@base, poly)]);
+        else if (expr.Sort is SeqSort) {
+            // Native Z3
+            if (expr.IsString)
+                return new Str(expr.String.Select(o => (StrToken)new CharToken(o)).ToArray());
+            if (expr.IsConst)
+                return new Str([StrVarToken.GetOrCreate(expr.FuncDecl.Name.ToString())]);
+            if (expr.IsConcat) {
+                Str r = [];
+                foreach (var arg in expr.Args) {
+                    Str? q = TryParseStr(arg);
+                    if (q is null)
+                        return null;
+                    r.AddLastRange(q);
+                }
+                return r;
+            }
         }
-        if (ExprToStrToken.TryGetValue(expr, out StrToken? s)) 
-            return [s];
         throw new NotSupportedException();
     }
 
@@ -287,6 +380,20 @@ public class OuterStringPropagator : UserPropagator {
             Str? str = TryParseStr(expr.Arg(0));
             return str is null ? null : LenVar.MkLenPoly(str);
         }
+        if (InvParikInfo.TryGetValue(expr.FuncDecl, out var parikhInfo)) {
+            var s = TryParseStr((IntExpr)expr.Arg(0));
+            if (s is null)
+                return null;
+            if (parikhInfo.IsTotal)
+                return Parikh.MkParikhPoly(parikhInfo.Info.Char, s);
+            throw new NotImplementedException();
+        }
+        if (expr.FuncDecl.Equals(LenFct)) {
+            Str? str = TryParseStr(expr.Arg(0));
+            return str is null ? null : LenVar.MkLenPoly(str);
+        }
+        if (ExprToIntToken.TryGetValue(expr, out var v))
+            return new Poly(v);
         if (expr.IsAdd) {
             var polys = new Poly[expr.NumArgs];
             for (uint i = 0; i < expr.NumArgs; i++) {
@@ -299,7 +406,7 @@ public class OuterStringPropagator : UserPropagator {
                 return new Poly();
             Poly poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
-                poly.AddPoly(polys[i]);
+                poly.Plus(polys[i]);
             }
             return poly;
         }
@@ -317,7 +424,7 @@ public class OuterStringPropagator : UserPropagator {
                 return new Poly();
             Poly poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
-                poly.SubPoly(polys[i]);
+                poly.Sub(polys[i]);
             }
             return poly;
         }
@@ -333,7 +440,7 @@ public class OuterStringPropagator : UserPropagator {
                 return new Poly(1);
             Poly poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
-                poly = Poly.MulPoly(poly, polys[i]);
+                poly = Poly.Mul(poly, polys[i]);
             }
             return poly;
         }
@@ -351,34 +458,51 @@ public class OuterStringPropagator : UserPropagator {
         return e.FuncDecl.Apply(e.Args.Select(o => CreateFresh(o, oldToNew)).ToArray());
     }
 
-    public Interpretation GetModel(bool complete = true) {
+    public bool GetModel(out Interpretation itp) {
+        
+        HashSet<StrVarToken> initSVars = [];
+        HashSet<SymCharToken> initSymChars = [];
+        HashSet<IntVar> initIVars = [];
+        HashSet<CharToken> initAlphabet = [];
+        Graph.Root.CollectSymbols(initSVars, initSymChars, initIVars, initAlphabet);
+
+        Debug.Assert(Graph.SatNodes.IsNonEmpty());
+        var satNode = Graph.SatNodes[0];
+
+        if (satNode.Parent is not null)
+            Graph.SubSolver.Check(satNode.Parent!.Assumption);
+        else
+            Graph.SubSolver.Check();
+
         var model = Graph.SubSolver.Model;
-        Interpretation interpretation = new();
+        itp = new Interpretation();
         foreach (var c in model.Consts) {
             if (c.Key.Apply() is not IntExpr i)
                 continue;
             if (!ExprToIntToken.TryGetValue(i, out var v))
                 continue;
-            interpretation.AddIntVal(v, ((IntNum)c.Value).BigInteger);
-            if (!Graph.Current.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
+            itp.Add(v, ((IntNum)c.Value).BigInteger);
+            if (!satNode.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
                 Console.WriteLine("Z3 Model is not consistent with internal bounds on " + v);
         }
         Debug.Assert(model is not null);
         
-        foreach (var parent in Graph.Current.EnumerateParents()) {
+        foreach (var parent in satNode.EnumerateParents()) {
             foreach (var subst in parent.Subst) {
-                interpretation.AddBackwards(subst);
+                subst.AddToInterpretation(itp);
             }
         }
 
-        if (complete)
-            interpretation.Complete();
+        if (Options.ModelCompletion)
+            itp.Complete(initAlphabet);
 
         bool modelCheck = true;
-        foreach (var cnstr in Root.AllStrConstraints) {
+        var allConstraints = Root.AllConstraints.Select(o => o.Clone());
+        foreach (var cnstr in allConstraints) {
             var orig = cnstr.Clone();
-            cnstr.Apply(interpretation);
-            if (cnstr.Simplify(Graph.Current, [], []) == SimplifyResult.Satisfied)
+            cnstr.Apply(itp);
+            BacktrackReasons reason = BacktrackReasons.Unevaluated;
+            if (cnstr.Simplify(satNode, [], [], ref reason) == SimplifyResult.Satisfied)
                 continue;
             modelCheck = false;
             Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
@@ -386,6 +510,8 @@ public class OuterStringPropagator : UserPropagator {
 
         Console.WriteLine(modelCheck ? "Model seems fine" : "ERROR: Created invalid model");
 
-        return interpretation;
+        itp.ProjectTo(initSVars, initSymChars, initIVars);
+
+        return modelCheck;
     }
 }

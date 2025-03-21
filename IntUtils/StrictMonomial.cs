@@ -41,9 +41,9 @@ public class StrictMonomial : MSet<NonTermInt> {
             var b = c.t.Apply(subst);
             var p = b;
             for (int i = 1; i < c.occ; i++) {
-                p = Poly.MulPoly(p, b);
+                p = Poly.Mul(p, b);
             }
-            result = Poly.MulPoly(result, p);
+            result = Poly.Mul(result, p);
         }
         return result;
     }
@@ -55,9 +55,9 @@ public class StrictMonomial : MSet<NonTermInt> {
             var b = c.t.Apply(subst);
             var p = b;
             for (int i = 1; i < c.occ; i++) {
-                p = Poly.MulPoly(p, b);
+                p = Poly.Mul(p, b);
             }
-            result = Poly.MulPoly(result, p);
+            result = Poly.Mul(result, p);
         }
         return result;
     }
@@ -77,9 +77,11 @@ public class StrictMonomial : MSet<NonTermInt> {
         return (coeff, mon);
     }
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+
         foreach (var c in this) {
-            c.t.CollectSymbols(vars, alphabet);
+            c.t.CollectSymbols(vars, sChars, iVars, alphabet);
         }
     }
 

@@ -10,16 +10,28 @@ public class IntLe : IntConstraint {
     public Poly Poly { get; set; }
 
     public IntLe(Poly poly) => Poly = poly;
+
+    // rhs does not need to be cloned
     public IntLe(Poly lhs, Poly rhs) {
-        lhs.SubPoly(rhs);
+        lhs.Sub(rhs);
         Poly = lhs;
     }
+
+    // rhs does not need to be cloned
+    public static IntLe MkLt(Poly lhs, Poly rhs) {
+        var ret = new IntLe(lhs.Clone(), rhs);
+        ret.Poly.Plus(1);
+        return ret;
+    }
+
+    // rhs does not need to be cloned
+    public static IntLe MkLe(Poly lhs, Poly rhs) => new(lhs, rhs);
 
     public override IntConstraint Clone() => 
         new IntLe(Poly.Clone());
 
-    public override bool Equals(object? obj) => 
-        obj is IntLe eq && Poly.Equals(eq.Poly);
+    public override bool Equals(object? obj) =>
+        obj is IntLe le && Equals(le);
 
     public bool Equals(IntLe other) =>
         Poly.Equals(other.Poly);
@@ -33,23 +45,32 @@ public class IntLe : IntConstraint {
     }
 
     public override void Apply(Subst subst) => Poly = Poly.Apply(subst);
-    public override void Apply(Interpretation subst) => Poly = Poly.Apply(subst);
+    public override void Apply(Interpretation itp) => Poly = Poly.Apply(itp);
 
     protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> substitution,
-        HashSet<Constraint> newSideConstraints) {
+        HashSet<Constraint> newSideConstraints, ref BacktrackReasons reason) {
         var bounds = Poly.GetBounds(node);
-        if (bounds.Max.IsNeg)
-            return SimplifyResult.Conflict;
-        if (bounds.Min >= 0)
+        if (!bounds.Max.IsPos)
             return SimplifyResult.Satisfied;
+        if (bounds.Min.IsPos) {
+            reason = BacktrackReasons.Arithmetic;
+            return SimplifyResult.Conflict;
+        }
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out Len val))
-            return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
+        if (Poly.IsConst(out Len val)) {
+            if (val <= 0)
+                return SimplifyResult.Satisfied;
+            reason = BacktrackReasons.Arithmetic;
+            return SimplifyResult.Conflict;
+        }
         int sig;
         if ((sig = Poly.IsUniLinear(out NonTermInt? v, out val)) != 0) {
-            return sig == 1 
+            var res = sig == 1 
                 ? node.AddHigherIntBound(v!, val) 
                 : node.AddLowerIntBound(v!, val);
+            if (res == SimplifyResult.Conflict)
+                reason = BacktrackReasons.Arithmetic;
+            return res;
         }
         return SimplifyResult.Proceed;
         /*if (Poly.IsUniLinear(out IntVar? v, out val))
@@ -61,9 +82,13 @@ public class IntLe : IntConstraint {
 
     public override BoolExpr ToExpr(NielsenGraph graph) =>
         graph.Ctx.MkLe(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) {
-        throw new NotImplementedException();
-    }
+    
+    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>
+        Poly.CollectSymbols(vars, sChars, iVars, alphabet);
+
+    public override IntConstraint Negate() =>
+        MkLt(new Poly(), Poly);
 
     public override int CompareToInternal(IntConstraint other) =>
         Poly.CompareTo(((IntLe)other).Poly);

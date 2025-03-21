@@ -11,7 +11,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
     public Str Base { get; }
     public Poly Power { get; }
 
-    public PowerIntrModifier(StrVarToken var, Str @base, bool backward) : base(backward) {
+    public PowerIntrModifier(StrVarToken var, Str @base, bool forward) : base(forward) {
         Debug.Assert(!@base.Ground);
         Var = var;
         Base = @base;
@@ -22,22 +22,22 @@ public class PowerIntrModifier : DirectedNielsenModifier {
         // V1 / Base^Power Base'
         // To avoid repeatedly making 0-step power introductions, we explicitly make the split on 0 and > 0 repetitions
         // e.g., xy = yx => x / (y'y'')^n y' && y = y'y'' && |y'| < |y|
-        //       (y'y'')^n y'y'y'' = y'y''(y'y'')^n y' && 0 < |y''|
+        //       (y'y'')^n y'y''y'y'' = y'y''(y'y'')^n y'y'' && 0 < |y''|
         //       y'y'' = y''y' && 0 < |y''|
         // Nothing prevents us from splitting on y' / (y'')^m y''' now
 
         var power = new PowerToken(Base, Power);
-        var prefixes = Base.GetPrefixes();
+        var prefixes = Base.GetPrefixes(Forwards);
 
         foreach (var p in prefixes) {
             Str s = new Str(power);
-            s.AddRange(p.str, Backwards);
-            var subst = new Subst(Var, s);
+            s.AddRange(p.str, Forwards);
+            var subst = new SubstVar(Var, s);
             NielsenNode c;
             if (p.varDecomp is null)
                 c = node.MkChild(node, [subst]);
             else {
-                subst = new Subst(Var, s.Apply(p.varDecomp));
+                subst = new SubstVar(Var, s.Apply(p.varDecomp));
                 c = node.MkChild(node, [subst, p.varDecomp]);
             }
             foreach (var cnstr in c.AllStrConstraints) {
@@ -46,7 +46,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);
             var lowerBound = new Poly();
-            lowerBound.SubPoly(Power);
+            lowerBound.Sub(Power);
             c.AddConstraints(new IntLe(lowerBound)); // -Power <= 0 => Power >= 0
             c.Parent!.SideConstraints.Add(new IntLe(lowerBound));
         }
@@ -57,7 +57,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
         int cmp = Base.Count.CompareTo(other.Base.Count); // TODO: Get a better heuristic (power nesting, variables in powers, ...)
         if (cmp != 0)
             return cmp;
-        cmp = Backwards.CompareTo(other.Backwards);
+        cmp = Forwards.CompareTo(other.Forwards);
         return cmp != 0 ? cmp : Var.CompareTo(other.Var);
     }
 
@@ -66,31 +66,31 @@ public class PowerIntrModifier : DirectedNielsenModifier {
 }
 
 class GPowerGPowerIntrModifier : CombinedModifier {
-    public GPowerGPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool backward) : base(
-        new GPowerIntrModifier(v1, p1, backward),
-        new GPowerIntrModifier(v2, p2, backward)) { }
+    public GPowerGPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
+        new GPowerIntrModifier(v1, p1, forward),
+        new GPowerIntrModifier(v2, p2, forward)) { }
 }
 
 class GPowerPowerIntrModifier : CombinedModifier {
-    public GPowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool backward) : base(
-        new GPowerIntrModifier(v1, p1, backward),
-        new PowerIntrModifier(v2, p2, backward)) { }
+    public GPowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
+        new GPowerIntrModifier(v1, p1, forward),
+        new PowerIntrModifier(v2, p2, forward)) { }
 }
 
 class PowerPowerIntrModifier : CombinedModifier {
-    public PowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool backward) : base(
-        new PowerIntrModifier(v1, p1, backward),
-        new PowerIntrModifier(v2, p2, backward)) { }
+    public PowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
+        new PowerIntrModifier(v1, p1, forward),
+        new PowerIntrModifier(v2, p2, forward)) { }
 }
 
 class GPowerIntrConstNielsen : CombinedModifier {
-    public GPowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool backward) : base(
-        new GPowerIntrModifier(v1, p, backward),
-        new ConstNielsenModifier(v2, v1, backward)) { }
+    public GPowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool forward) : base(
+        new GPowerIntrModifier(v1, p, forward),
+        new ConstNielsenModifier(v2, v1, forward)) { }
 }
 
 class PowerIntrConstNielsen : CombinedModifier {
-    public PowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool backward) : base(
-        new PowerIntrModifier(v1, p, backward),
-        new ConstNielsenModifier(v2, v1, backward)) { }
+    public PowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool forward) : base(
+        new PowerIntrModifier(v1, p, forward),
+        new ConstNielsenModifier(v2, v1, forward)) { }
 }

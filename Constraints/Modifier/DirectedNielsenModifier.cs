@@ -2,8 +2,8 @@
 
 public abstract class DirectedNielsenModifier : ModifierBase {
 
-    public bool Backwards { get; }
+    public bool Forwards { get; }
 
-    protected DirectedNielsenModifier(bool backwards) => 
-        Backwards = backwards;
+    protected DirectedNielsenModifier(bool forwards) => 
+        Forwards = forwards;
 }

@@ -24,16 +24,16 @@ public class LenVar : NonTermInt {
         Poly poly = new();
         foreach (var t in s) {
             switch (t) {
-                case CharToken:
-                    poly.AddPoly(new Poly(1));
+                case UnitToken:
+                    poly.Plus(1);
                     break;
                 case StrVarToken v:
-                    poly.AddPoly(new Poly(new LenVar(v)));
+                    poly.Plus(new Poly(new LenVar(v)));
                     break;
                 case PowerToken pt:
                 {
                     var subPoly = MkLenPoly(pt.Base);
-                    poly.AddPoly(Poly.MulPoly(subPoly, pt.Power));
+                    poly.Plus(Poly.Mul(subPoly, pt.Power));
                     break;
                 }
                 default:
@@ -43,13 +43,11 @@ public class LenVar : NonTermInt {
         return poly;
     }
 
-    public override int CompareTo(NonTermInt? other) {
-        if (other is LenVar len)
-            return Var.CompareTo(len.Var);
-        return 0;
-    }
+    public override int CompareToInternal(NonTermInt other) =>
+        Var.CompareTo(((LenVar)other).Var);
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<CharToken> alphabet) => vars.Add(Var);
+    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars,
+        HashSet<CharToken> alphabet) => vars.Add(Var);
 
     public override IntExpr ToExpr(NielsenGraph graph) => 
         graph.Propagator.MkLen(Var.ToExpr(graph));

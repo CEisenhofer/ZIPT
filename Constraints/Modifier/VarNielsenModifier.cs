@@ -9,7 +9,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
     public StrVarToken Var1 { get; }
     public StrVarToken Var2 { get; }
 
-    public VarNielsenModifier(StrVarToken v1, StrVarToken v2, bool backward) : base(backward) {
+    public VarNielsenModifier(StrVarToken v1, StrVarToken v2, bool forward) : base(forward) {
         Var1 = v1;
         Var2 = v2;
     }
@@ -19,49 +19,47 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V2 = "" && |V1| >= 1
         // V1 = V1V2 && |V1| >= 1
         // V2 = V2V1 && |V1| >= 1 && |V2| >= 1
-        var subst = new Subst(Var1);
+        var subst = new SubstVar(Var1);
         var c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
-        subst = new Subst(Var2);
+        subst = new SubstVar(Var2);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
-        c.AddConstraints(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
-        c.Parent!.SideConstraints.Add(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
+        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        c.AddConstraints(sc); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(sc.Clone());
 
-        Str s = Backwards ? [Var1, Var2] : [Var2, Var1];
-        subst = new Subst(Var1, s);
+        Str s = Forwards ? [Var2, Var1] : [Var1, Var2];
+        subst = new SubstVar(Var1, s);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
-        c.AddConstraints(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
-        c.Parent!.SideConstraints.Add(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1))); // 1 <= |V1|
+        c.AddConstraints(sc); 
+        c.Parent!.SideConstraints.Add(sc.Clone());
 
-        s = Backwards ? [Var2, Var1] : [Var1, Var2];
-        subst = new Subst(Var2, s);
+        s = Forwards ? [Var1, Var2] : [Var2, Var1];
+        subst = new SubstVar(Var2, s);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
-        c.AddConstraints(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var1)))); // 1 <= |V1|
-        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), new Poly(new LenVar(Var1))));
-        c.AddConstraints(
-            new IntLe(new Poly(1), new Poly(new LenVar(Var2)))); // 1 <= |V2|
-        c.Parent!.SideConstraints.Add(new IntLe(new Poly(1), new Poly(new LenVar(Var2))));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        c.AddConstraints(sc); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(sc.Clone());
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var2)));
+        c.AddConstraints(sc); // 1 <= |V2|
+        c.Parent!.SideConstraints.Add(sc.Clone());
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
         VarNielsenModifier other = (VarNielsenModifier)otherM;
-        int cmp = Backwards.CompareTo(other.Backwards);
+        int cmp = Forwards.CompareTo(other.Forwards);
         if (cmp != 0)
             return cmp;
         cmp = Var1.CompareTo(other.Var1);

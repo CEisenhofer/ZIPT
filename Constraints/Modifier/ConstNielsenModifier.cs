@@ -7,27 +7,27 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     public StrVarToken Var { get; }
     public StrToken Prefix { get; }
 
-    public ConstNielsenModifier(StrVarToken var, StrToken pr, bool backward) : base(backward) {
+    public ConstNielsenModifier(StrVarToken var, StrToken pr, bool forward) : base(forward) {
         Var = var;
         Prefix = pr;
     }
 
     public override void Apply(NielsenNode node) {
-        var subst = new Subst(Var);
+        var subst = new SubstVar(Var);
         var c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
-        subst = new Subst(Var, Backwards ? [Var, Prefix] : [Prefix, Var]);
+        subst = new SubstVar(Var, Forwards ? [Prefix, Var] : [Var, Prefix]);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllStrConstraints) {
+        foreach (var cnstr in c.AllConstraints) {
             cnstr.Apply(subst);
         }
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
         ConstNielsenModifier other = (ConstNielsenModifier)otherM;
-        int cmp = Backwards.CompareTo(other.Backwards);
+        int cmp = Forwards.CompareTo(other.Forwards);
         if (cmp != 0)
             return cmp;
         cmp = Var.CompareTo(other.Var);
@@ -35,5 +35,5 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     }
 
     public override string ToString() => 
-        $"{Var} / ε || {Var} / {(Backwards ? (Prefix + Var.ToString()) : (Var.ToString() + Prefix))}";
+        $"{Var} / ε || {Var} / {(Forwards ? (Var.ToString() + Prefix) : (Prefix + Var.ToString()))}";
 }

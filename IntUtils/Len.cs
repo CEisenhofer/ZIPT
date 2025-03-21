@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using System.Reflection.Metadata.Ecma335;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
@@ -29,14 +30,29 @@ public readonly struct Len : IComparable<Len> {
         IsInf = false;
     }
 
+    public Len(uint val) {
+        this.val = val;
+        IsInf = false;
+    }
+
     public Len(BigInteger val) {
         this.val = val;
         IsInf = false;
     }
 
     public static implicit operator Len(int val) => new(val);
+    public static implicit operator Len(uint val) => new(val);
 
     public static implicit operator Len(BigInteger val) => new(val);
+
+    public bool TryGetInt(out int v) {
+        v = 0;
+        if (IsInf)
+            return false;
+        v = (int)val;
+        // TODO: Check if it is larger than int.MaxValue or smaller than int.MinValue
+        return true;
+    }
 
     public static Len operator -(Len a) {
         if (a.IsInf)
@@ -69,6 +85,10 @@ public readonly struct Len : IComparable<Len> {
         Debug.Assert(!a.IsInf && !b.IsInf);
         return a.val - b.val;
     }
+
+    public static Len operator++(Len a) => a + 1;
+
+    public static Len operator --(Len a) => a - 1;
 
     public static Len operator *(Len a, Len b) {
         if (a.IsZero || b.IsZero)
@@ -114,6 +134,10 @@ public readonly struct Len : IComparable<Len> {
 
     public static bool operator >=(Len left, Len right) =>
         left.CompareTo(right) >= 0;
+
+    public static explicit operator int(Len v) {
+        throw new NotImplementedException();
+    }
 
     public override bool Equals(object? obj) =>
         obj is Len len && Equals(len);

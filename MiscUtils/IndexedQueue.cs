@@ -81,6 +81,13 @@ public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : 
         Count = val.Count;
     }
 
+    protected IndexedQueue(int capacity) {
+        if (capacity <= 0)
+            capacity = 1;
+        items = new T[capacity];
+        Count = 0;
+    }
+
     void EnsureLen(int len) {
         if (len <= items.Length)
             return;
@@ -105,7 +112,9 @@ public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : 
         CurrentStartPos = 0;
     }
 
-    public void Add(T item) {
+    public void Add(T item) => AddLast(item);
+
+    public void AddLast(T item) {
         EnsureLen(Count + 1);
         items[CurrentEndPos] = item;
         Count++;
@@ -115,7 +124,7 @@ public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : 
         if (dir)
             AddFirst(item);
         else
-            Add(item);
+            AddLast(item);
     }
 
     public void AddFirst(T item) {

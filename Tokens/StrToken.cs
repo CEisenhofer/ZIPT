@@ -11,8 +11,8 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public abstract bool IsNullable(NielsenNode node);
 
     public abstract Str Apply(Subst subst);
-    public abstract Str Apply(Interpretation subst);
-    public abstract List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes();
+    public abstract Str Apply(Interpretation itp);
+    public abstract List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
     public abstract Expr ToExpr(NielsenGraph graph);
 
     public abstract bool RecursiveIn(StrVarToken v);
