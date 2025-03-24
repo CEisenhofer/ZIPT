@@ -40,7 +40,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
                 c = node.MkChild(node, [subst, p.varDecomp]);
             }
-            foreach (var cnstr in c.AllStrConstraints) {
+            foreach (var cnstr in c.AllConstraints) {
                 cnstr.Apply(subst);
             }
             c.AddConstraints(p.sideConstraints);

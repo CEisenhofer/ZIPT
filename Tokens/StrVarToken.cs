@@ -1,42 +1,26 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
 
 namespace StringBreaker.Tokens;
 
-public sealed class StrVarToken : StrToken, IDisposable {
-    public override bool Ground => false;
+public sealed class StrVarToken : NamedStrToken, IDisposable {
 
     static readonly Dictionary<string, StrVarToken> Cache = [];
 
-    public string OriginalName { get; }
-    public string Name => Aux ? $"{OriginalName}${ChildIdx}" : OriginalName;
-    public bool Aux => ChildIdx != 0;
-    public int ChildIdx { get; }
-    public StrVarToken? Parent { get; }
-    StrVarToken? PostExtension { get; set; }
-    IntVar? PowerExtension { get; set; }
+    public override string OriginalName { get; }
 
-    StrVarToken(StrVarToken parent) {
+    StrVarToken(StrVarToken parent) : base(parent) {
         OriginalName = parent.OriginalName;
-        Parent = parent;
-        ChildIdx = parent.ChildIdx + 1;
-        Debug.Assert(ChildIdx > 0);
         Debug.Assert(Cache.ContainsKey(OriginalName));
     }
 
     StrVarToken(string name) {
         Cache.Add(name, this);
         OriginalName = name;
-        ChildIdx = 0;
-        Parent = null;
     }
 
     public void Dispose() {
-        PowerExtension = null;
-        PostExtension = null;
         if (!Aux)
             Cache.Remove(OriginalName);
     }
@@ -48,11 +32,8 @@ public sealed class StrVarToken : StrToken, IDisposable {
         Cache.Clear();
     }
 
-    public StrVarToken GetPostExtension() => 
-        PostExtension ??= new StrVarToken(this);
-
-    public IntVar GetPowerExtension() => 
-        PowerExtension ??= new IntVar();
+    public override StrVarToken GetExtension1() => (StrVarToken)(Extension1 ??= new StrVarToken(this));
+    public override StrVarToken GetExtension2() => (StrVarToken)(Extension2 ??= new StrVarToken(this));
 
     public static StrVarToken GetOrCreate(string var) {
         if (Cache.TryGetValue(var, out StrVarToken? v))
@@ -81,52 +62,14 @@ public sealed class StrVarToken : StrToken, IDisposable {
             : GetFreshName(name);
     }
 
-    public static StrVarToken CreateFreshAux(string name) =>
-        new(GetNextFreshName(name));
-
-    public override bool IsNullable(NielsenNode node) => 
-        LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
-
-    public override Str Apply(Subst subst) => subst.ResolveVar(this);
-    public override Str Apply(Interpretation itp) => itp.ResolveVar(this);
-
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
-        // P(x) := y with x = yz, |y| < |x|
-        // TODO
-        StrVarToken y = CreateFreshAux(Name);
-        StrVarToken z = CreateFreshAux(Name);
-        Poly yl = new(LenVar.MkLenPoly([y]));
-        Poly xl = new(LenVar.MkLenPoly([this]));
-        yl.Plus(1);
-        if (dir)
-            return [([y], [new IntLe(yl, xl)], new SubstVar(this, [y, z]))];
-        return [([y], [new IntLe(yl, xl)], new SubstVar(this, [z, y]))];
-    }
-
     public override Expr ToExpr(NielsenGraph graph) {
         Expr? e = graph.Propagator.GetCachedStrExpr(this);
         if (e is not null)
             return e;
-        e = graph.Ctx.MkFreshConst(Name, graph.Propagator.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(e.FuncDecl.Name.ToString(), [], graph.Propagator.StringSort).Apply();
+
+        FuncDecl f = graph.Ctx.MkFreshConstDecl(Name, graph.Propagator.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Propagator.StringSort).Apply();
         graph.Propagator.SetCachedExpr(this, e);
         return e;
     }
-
-    public override bool RecursiveIn(StrVarToken v) => Equals(v);
-
-    protected override int CompareToInternal(StrToken other) {
-        Debug.Assert(other is StrVarToken);
-        return string.Compare(Name, ((StrVarToken)other).Name, StringComparison.Ordinal);
-    }
-
-    public override bool Equals(StrToken? other) =>
-        other is StrVarToken token && Equals(token);
-
-    public bool Equals(StrVarToken other) =>
-        CompareToInternal(other) == 0;
-
-    public override int GetHashCode() => 509077363 * Name.GetHashCode();
-
-    public override string ToString(NielsenGraph? graph) => Name;
 }

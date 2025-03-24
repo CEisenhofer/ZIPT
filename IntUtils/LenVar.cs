@@ -46,7 +46,7 @@ public class LenVar : NonTermInt {
     public override int CompareToInternal(NonTermInt other) =>
         Var.CompareTo(((LenVar)other).Var);
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars,
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars,
         HashSet<CharToken> alphabet) => vars.Add(Var);
 
     public override IntExpr ToExpr(NielsenGraph graph) => 

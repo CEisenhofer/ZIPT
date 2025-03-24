@@ -14,5 +14,5 @@ public abstract class UnitToken : StrToken {
         // P(a) := {}
         [([], [], null)];
 
-    public sealed override bool RecursiveIn(StrVarToken v) => false;
+    public sealed override bool RecursiveIn(NamedStrToken v) => false;
 }

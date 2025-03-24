@@ -1,27 +1,31 @@
-﻿using StringBreaker.Tokens;
+﻿using Microsoft.Z3;
+using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
 
 public class SubstVar : Subst {
 
-    public StrVarToken Var { get; }
+    public NamedStrToken Var { get; }
     public Str Str { get; }
 
     public override bool IsEliminating => !Str.RecursiveIn(Var);
 
-    public SubstVar(StrVarToken v) {
+    public SubstVar(NamedStrToken v) {
         Var = v;
         Str = [];
     }
 
-    public SubstVar(StrVarToken v, Str s) {
+    public SubstVar(NamedStrToken v, Str s) {
         Var = v;
         Str = s;
     }
 
-    public override Str ResolveVar(StrVarToken v) => v.Equals(Var) ? Str : [v];
+    public override Str ResolveVar(NamedStrToken v) => v.Equals(Var) ? Str : [v];
     public override Str ResolveVar(SymCharToken v) => [v];
     public override void AddToInterpretation(Interpretation itp) => itp.Add(this);
+
+    public override Expr KeyExpr(NielsenGraph graph) => Var.ToExpr(graph);
+    public override Expr ValueExpr(NielsenGraph graph) => Str.ToExpr(graph);
 
     public override string ToString() => $"{Var} / {Str}";
 

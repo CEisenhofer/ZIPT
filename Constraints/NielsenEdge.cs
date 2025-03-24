@@ -4,6 +4,7 @@ using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.MiscUtils;
+using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
 
@@ -12,6 +13,7 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
     public BoolExpr Assumption { get; }
     public IReadOnlyList<Subst> Subst { get; }
     public HashSet<Constraint> SideConstraints { get; } = [];
+    public List<NamedStrToken> BumpedModCount { get; } = [];
     public NielsenNode Tgt { get; }
 
     public string ModStr
@@ -34,6 +36,33 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         Assumption = assumption;
         Subst = subst;
         Tgt = tgt;
+        BumpedModCount = [];
+
+        foreach (var s in subst.OfType<SubstVar>()) {
+            if (s.IsEliminating) 
+                continue;
+            Debug.Assert(!BumpedModCount.Contains(s.Var));
+            BumpedModCount.Add(s.Var);
+        }
+    }
+
+    public void IncModCount(NielsenGraph graph) {
+        foreach (var b in BumpedModCount) {
+            int prev = graph.CurrentModificationCnt.GetValueOrDefault(b);
+            graph.CurrentModificationCnt[b] = prev + 1;
+        }
+    }
+
+    public void DecModCount(NielsenGraph graph) {
+        for (int i = BumpedModCount.Count; i > 0; i--) {
+            NamedStrToken toDec = BumpedModCount[i - 1];
+            int prev = graph.CurrentModificationCnt[toDec];
+            Debug.Assert(prev >= 1);
+            if (prev == 1)
+                graph.CurrentModificationCnt.Remove(toDec);
+            else
+                graph.CurrentModificationCnt[toDec] = prev - 1;
+        }
     }
 
     public override bool Equals(object? obj) =>

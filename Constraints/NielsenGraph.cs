@@ -4,6 +4,7 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.MiscUtils;
+using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
 
@@ -16,6 +17,8 @@ public class NielsenGraph {
     public readonly Solver SubSolver; // Solver for assumption based integer reasoning
     public NielsenNode Root { get; }
     public List<NielsenNode> SatNodes { get; }= [];
+
+    public Dictionary<NamedStrToken, int> CurrentModificationCnt { get; } = [];
 
     // all nodes
     readonly HashSet<NielsenNode> nodes = [];
@@ -34,10 +37,12 @@ public class NielsenGraph {
     public bool Check() {
         if (NielsenNode.Simplify(Root) != BacktrackReasons.Unevaluated)
             return false;
-        SubSolver.Assert(Root.AllIntConstraints.Select(o => o.ToExpr(this)).ToArray());
+        Root.AssertToZ3(Root.AllIntConstraints.Select(o => o.ToExpr(this)));
+        Root.AssertToZ3(Root.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
         DepthBound = Options.ItDeepDepthStart;
         ComplexityBound = Options.ItDeepComplexityStart;
         while (true) {
+            Debug.Assert(CurrentModificationCnt.IsEmpty());
             var res = Root.Check(0, 0);
             if (res && (!Options.FullGraphExpansion || Root.FullyExpanded))
                 return true;
@@ -68,8 +73,11 @@ public class NielsenGraph {
             return true;
         }
         foreach (var l in list) {
-            if (l.Subsumes(node))
+            if (l.Subsumes(node)) {
+                Debug.Assert(node.Outgoing is null);
+                node.SubsumptionParent = l;
                 return false;
+            }
         }
         list.Add(node);
         return true;
@@ -78,6 +86,7 @@ public class NielsenGraph {
     public Str? TryParseStr(Expr e) => Propagator.TryParseStr(e);
 
     public string ToDot() {
+        List<NielsenNode> subsumed = [];
         StringBuilder sb = new();
         sb.AppendLine("digraph G {");
         foreach (var node in nodes) {
@@ -95,6 +104,8 @@ public class NielsenGraph {
             if (node.IsSatisfied)
                 sb.Append(", color=green");
             sb.AppendLine("];");
+            if (node.SubsumptionParent is not null)
+                subsumed.Add(node);
         }
         foreach (var node in nodes) {
             foreach (var edge in node.Outgoing ?? []) {
@@ -106,6 +117,14 @@ public class NielsenGraph {
                     .Append(NielsenNode.DotEscapeStr(edge.ModStr))
                     .AppendLine("\"];");
             }
+        }
+        foreach (var s in subsumed) {
+            Debug.Assert(s.SubsumptionParent is not null);
+            sb.Append("\t")
+                .Append(s.Id)
+                .Append(" -> ")
+                .Append(s.SubsumptionParent!.Id)
+                .AppendLine(" [style=dotted];");
         }
         sb.AppendLine("}");
         return sb.ToString();

@@ -16,9 +16,9 @@ public class Parikh : NonTermInt {
     }
 
     public override bool Equals(object? obj) => obj is Parikh var && Equals(var);
-    public bool Equals(Parikh other) => Var.Equals(other.Var);
+    public bool Equals(Parikh other) => Var.Equals(other.Var) && Sym.Equals(other.Sym);
 
-    public override int GetHashCode() => Var.GetHashCode() * 663059147;
+    public override int GetHashCode() => HashCode.Combine(Var, Sym);
     public override Poly Apply(Subst subst) =>
         MkParikhPoly(Sym, subst.ResolveVar(Var));
     public override Poly Apply(Interpretation subst) =>
@@ -53,7 +53,7 @@ public class Parikh : NonTermInt {
         return cmp != 0 ? cmp : Var.CompareTo(((Parikh)other).Var);
     }
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars,
         HashSet<CharToken> alphabet) {
         vars.Add(Var);

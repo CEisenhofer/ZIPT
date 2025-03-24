@@ -8,10 +8,10 @@ namespace StringBreaker.Constraints;
 public class Interpretation {
 
     public Dictionary<IntVar, Len> IntVal { get; } = [];
-    public Dictionary<StrVarToken, Str> Substitution { get; } = [];
+    public Dictionary<NamedStrToken, Str> Substitution { get; } = [];
     public Dictionary<SymCharToken, UnitToken> CharSubstitution { get; } = [];
 
-    public Str ResolveVar(StrVarToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
+    public Str ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
     public UnitToken ResolveVar(SymCharToken v) => CharSubstitution.GetValueOrDefault(v, v);
     public Poly ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new Poly(i) : new Poly(v);
 
@@ -27,7 +27,7 @@ public class Interpretation {
     }
 
     public void Complete(HashSet<CharToken> alphabet) {
-        HashSet<StrVarToken> vars = [];
+        HashSet<NamedStrToken> vars = [];
         HashSet<SymCharToken> sChars = [];
         HashSet<IntVar> iVars = [];
         var ch = alphabet.IsNonEmpty() ? alphabet.First() : new CharToken('a');
@@ -62,10 +62,10 @@ public class Interpretation {
         }
     }
 
-    public void ProjectTo(HashSet<StrVarToken> initSVars, HashSet<SymCharToken> initSymChars, 
+    public void ProjectTo(HashSet<NamedStrToken> initSVars, HashSet<SymCharToken> initSymChars, 
         HashSet<IntVar> initIVars) {
 
-        HashSet<StrVarToken> toSRemove = [];
+        HashSet<NamedStrToken> toSRemove = [];
         HashSet<SymCharToken> toCRemove = [];
         HashSet<IntVar> toIRemove = [];
         foreach (var v in Substitution.Keys) {
@@ -95,6 +95,7 @@ public class Interpretation {
     public override string ToString() =>
         string.Join(";\n",
             Substitution
+                .OrderBy(o => o.Key.Name)
                 .Select(o => $"{o.Key} / {o.Value}")
                 .Concat(
                     IntVal.Select(o => $"{o.Key} := {o.Value}")));

@@ -77,7 +77,7 @@ public class StrictMonomial : MSet<NonTermInt> {
         return (coeff, mon);
     }
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
 
         foreach (var c in this) {

@@ -157,7 +157,7 @@ public sealed class StrEq : StrEqBase {
             return [];
         }
         // u^0 => ""
-        if (node.IsZero(p.Power)) {
+        if (node.IsPowerElim(p.Power)) {
             Log.WriteLine("Simplify: Drop 0-power " + p);
             return [];
         }
@@ -318,7 +318,7 @@ public sealed class StrEq : StrEqBase {
     }
 
     static bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, Str s, bool dir) {
-        if (!node.IsPowerElim(p.Power))
+        if (!node.IsLt(new Poly(), p.Power))
             return false;
 
         Log.WriteLine("Simplify: >0-unwinding power " + s.Peek(dir));
@@ -331,6 +331,9 @@ public sealed class StrEq : StrEqBase {
     }
 
     SimplifyResult SimplifyDir(NielsenNode node, List<Subst> newSubst, bool dir) {
+        // This can cause problems, as it might unwind/compress the beginning/end over and over again (might even detect it as subsumed)
+        // LHS = LcpCompression(LHS) ?? LHS;
+        // RHS = LcpCompression(RHS) ?? RHS;
         var s1 = LHS;
         var s2 = RHS;
         SortStr(ref s1, ref s2, dir);
@@ -352,18 +355,14 @@ public sealed class StrEq : StrEqBase {
                 }
             }
 
-            LHS = LcpCompression(s1) ?? s1;
-            RHS = LcpCompression(s2) ?? s2;
-            s1 = LHS;
-            s2 = RHS;
-            SortStr(ref s1, ref s2, dir);
-
             if (SimplifyPower(node, s1, s2, dir))
                 continue;
             break;
         }
         return SimplifyResult.Proceed;
     }
+
+    static int lcpCnt;
 
     // We apply the following steps:
     // v' u^m u^n v'' => v' u^{m + n} v''
@@ -372,33 +371,48 @@ public sealed class StrEq : StrEqBase {
     // till fixed point
     public static Str? LcpCompression(Str s) {
         // Apply each at least once and then until the first one fails
+        lcpCnt++;
+#if DEBUG
+        Str orig = s.Clone();
+#endif
         bool changed = false;
-        Str? v = MergeExistingPowers(s);
+        Str? v = MergePowersRight(s);
         if (v is not null) {
             s = v;
             changed = true;
         }
-        v = MergeNewPowers(s);
-        if (v is null)
+        v = MergePowersLeft(s);
+        if (v is null) {
+#if DEBUG
+            Log.WriteLine($"lcp ({lcpCnt}): {orig} => {(changed ? s : "fixed point")}");
+#endif
             return changed ? s : null;
+        }
         s = v;
 
         while (true) {
-            v = MergeExistingPowers(s);
-            if (v is null)
+            v = MergePowersRight(s);
+            if (v is null) {
+#if DEBUG
+                Log.WriteLine($"lcp ({lcpCnt}): {orig} => {s}");
+#endif
                 return s;
+            }
             s = v;
-            v = MergeNewPowers(s);
-            if (v is null)
+            v = MergePowersLeft(s);
+            if (v is null) {
+#if DEBUG
+                Log.WriteLine($"lcp ({lcpCnt}): {orig} => {s}");
+#endif
                 return s;
+            }
             s = v;
         }
     }
 
     // v' u^m u^n v'' => v' u^{m + n} v''
     // v' u^n u v'' => v' u^{n + 1} v''
-    static Str? MergeExistingPowers(Str s) {
-        // TODO: Optimize like MergeNewPowers
+    static Str? MergePowersRight(Str s) {
         Str p = new(s.Count);
         Poly sum = new();
         Str b = [];
@@ -411,7 +425,7 @@ public sealed class StrEq : StrEqBase {
             int cnt = 0;
             for (; cnt < max; cnt++) {
                 for (int j = 0; j < b.Count; j++) {
-                    if (!b[j].Equals(b[pos + b.Count * cnt + j]))
+                    if (!b[j].Equals(s[pos + b.Count * cnt + j]))
                         return cnt;
                 }
             }
@@ -438,9 +452,9 @@ public sealed class StrEq : StrEqBase {
                 b = pow.Base;
                 sum = pow.Power.Clone();
                 int cnt = LookAhead(i + 1);
-                compressed = true;
                 i += b.Count * cnt;
                 sum.Plus(cnt);
+                compressed |= cnt > 0;
                 continue;
             }
             compressed = true;
@@ -456,14 +470,14 @@ public sealed class StrEq : StrEqBase {
     // v' u'' (u'u'')^n v' => v' (u''u')^{n+1} u'' v'
     // We traverse the sequence backwards.
     // If we encounter (u'u'')^n we traverse u'u'' backwards and check how long it works after the power
-    static Str? MergeNewPowers(Str s) {
+    static Str? MergePowersLeft(Str s) {
 
         // Find maximal u'' index
         // Return r: 0 <= r <= b.Count
         int LookAhead(Str b, int pos) {
             int max = Math.Min(s.Count, pos + b.Count);
             for (int i = pos; i < max; i++) {
-                if (!s.Peek(false, pos).Equals(b.Peek(false, i - pos)))
+                if (!s.Peek(false, i).Equals(b.Peek(false, i - pos)))
                     return pos - i;
             }
             return max - pos;
@@ -496,7 +510,7 @@ public sealed class StrEq : StrEqBase {
                 for (int j = 0; j < idx; j++) {
                     b.AddFirst(pow.Base.Peek(false, j));
                 }
-                for (int j = 0; j < b.Count; j++) {
+                for (int j = 0; j < pow.Base.Count; j++) {
                     b.AddLast(pow.Base.Peek(false, j));
                 }
                 r.AddFirst(new PowerToken(b, pow.Power));
@@ -542,7 +556,7 @@ public sealed class StrEq : StrEqBase {
         List<Subst> newSubst, HashSet<Constraint> newSideConstr, 
         ref BacktrackReasons reason) {
         simplifyCount++;
-        Log.WriteLine("Simplify Eq (" + simplifyCount + "): " + LHS + " = " + RHS);
+        Log.WriteLine($"Simplify Eq ({simplifyCount}): {LHS} = {RHS}");
         if (SimplifyDir(node, newSubst, true) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
@@ -689,13 +703,13 @@ public sealed class StrEq : StrEqBase {
         Debug.Assert(!best.IsZero);
         if (best.IsNeg) {
             // split left
-            if (bestLhs <= 0 || bestLhs >= s1.Count || s1.Peek(dir, bestLhs) is not StrVarToken v1 || !best.TryGetInt(out int val1))
+            if (bestLhs <= 0 || bestLhs >= s1.Count || s1.Peek(dir, bestLhs - 1) is not StrVarToken v1 || !best.TryGetInt(out int val1))
                 return null;
-            return new VarPaddingModifier(v1, -val1, dir);
+            return new VarPaddingModifier(v1, -val1, !dir);
         }
-        if (bestRhs <= 0 || bestRhs>= s2.Count || s2.Peek(dir, bestRhs) is not StrVarToken v2 || !best.TryGetInt(out int val2))
+        if (bestRhs <= 0 || bestRhs >= s2.Count || s2.Peek(dir, bestRhs - 1) is not StrVarToken v2 || !best.TryGetInt(out int val2))
             return null;
-        return new VarPaddingModifier(v2, val2, dir);
+        return new VarPaddingModifier(v2, val2, !dir);
     }
 
     ModifierBase? SplitVarVar(Str s1, Str s2, bool dir) {
@@ -737,14 +751,25 @@ public sealed class StrEq : StrEqBase {
         return new PowerIntrConstNielsen(v1, v2, p1, dir);
     }
 
+    ModifierBase? SplitGroundPower(StrToken t, Str s, bool dir) {
+        if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not UnitToken)
+            return null;
+        Str? p = TryGetPowerSplitBase(v, s, dir);
+        if (p is not null && p.Ground)
+            return new GPowerIntrModifier(v, p, dir);
+        return null;
+    }
+
     ModifierBase? SplitVarChar(StrToken t, Str s, bool dir) {
         if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not UnitToken)
             return null;
         Str? p = TryGetPowerSplitBase(v, s, dir);
         if (p is null)
             return new ConstNielsenModifier(v, s.Peek(dir), dir);
-        if (p.Ground)
+        if (p.Ground) {
+            Debug.Assert(false); // This should be excluded before (SplitGroundPower)
             return new GPowerIntrModifier(v, p, dir);
+        }
         return new ConstNielsenModifier(v, s.Peek(dir), dir);
         //return new PowerIntrModifier(v, p, dir);
     }
@@ -752,7 +777,13 @@ public sealed class StrEq : StrEqBase {
     ModifierBase? SplitVarPower(StrToken t, Str s, bool dir) {
         if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not PowerToken { Ground: true } p)
             return null;
-        throw new NotImplementedException();
+
+        Str? b = TryGetPowerSplitBase(v, s, dir);
+        if (b is null)
+            return new PowerSplitModifier(v, p, dir);
+        if (b.Ground)
+            return new GPowerIntrModifier(v, b, dir);
+        return new PowerSplitModifier(v, p, dir);
     }
 
     ModifierBase ExtendDir(bool dir) {
@@ -784,17 +815,21 @@ public sealed class StrEq : StrEqBase {
             return ret;
         if (t1 is not StrVarToken && (ret = SplitPowerUnwind(t2)) is not null)
             return ret;
+        if ((ret = SplitGroundPower(t1, s2, dir)) is not null)
+            return ret;
+        if ((ret = SplitGroundPower(t2, s1, dir)) is not null)
+            return ret;
         if ((ret = SplitEq(s1, s2, dir)) is not null)
+            return ret;
+        if ((ret = SplitVarPower(t1, s2, dir)) is not null)
+            return ret;
+        if ((ret = SplitVarPower(t2, s1, dir)) is not null)
             return ret;
         if ((ret = SplitVarChar(t1, s2, dir)) is not null)
             return ret;
         if ((ret = SplitVarChar(t2, s1, dir)) is not null)
             return ret;
         if ((ret = SplitVarVar(s1, s2, dir)) is not null)
-            return ret;
-        if ((ret = SplitVarPower(t1, s2, dir)) is not null)
-            return ret;
-        if ((ret = SplitVarPower(t2, s1, dir)) is not null)
             return ret;
         if ((ret = SplitPowerUnwind(t1)) is not null)
             return ret;

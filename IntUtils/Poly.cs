@@ -129,7 +129,7 @@ public class Poly : MSet<StrictMonomial> {
 
     public void ElimConst() => occurrences.Remove([]);
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         foreach (var c in this) {
             c.t.CollectSymbols(vars, sChars, iVars, alphabet);
         }

@@ -1,4 +1,7 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices.ComTypes;
+using Microsoft.Z3;
+using StringBreaker.Constraints;
 
 namespace StringBreaker.IntUtils;
 
@@ -73,6 +76,24 @@ public readonly struct Interval {
     public static bool Intersect(Interval i1, Interval i2) =>
         i1.Min >= i2.Min && i1.Min <= i2.Max ||
         i1.Max >= i2.Min && i1.Max <= i2.Max;
+
+    public BoolExpr ToZ3Constraint(NonTermInt v, NielsenGraph graph) {
+        if (IsFull)
+            return graph.Ctx.MkTrue();
+        IntExpr ve = v.ToExpr(graph);
+        if (IsUnit) {
+            Debug.Assert(!Min.IsInf);
+            return graph.Ctx.MkEq(ve, Min.ToExpr(graph));
+        }
+        if (Min.IsNegInf)
+            return graph.Ctx.MkLe(ve, Max.ToExpr(graph));
+        if (Max.IsPosInf)
+            return graph.Ctx.MkGe(ve, Min.ToExpr(graph));
+        return graph.Ctx.MkAnd(
+            graph.Ctx.MkLe(ve, Max.ToExpr(graph)),
+            graph.Ctx.MkGe(ve, Min.ToExpr(graph))
+        );
+    }
 
     public override bool Equals(object? obj) =>
         obj is Interval interval && Equals(interval);

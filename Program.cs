@@ -64,7 +64,13 @@ public static class Program {
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
             using OuterStringPropagator propagator = new(solver);
-            AssertSMTLIB(ctx, solver, propagator, args[0]);
+            try {
+                AssertSMTLIB(ctx, solver, propagator, args[0]);
+            }
+            catch (NotSupportedException ex) {
+                Console.WriteLine("Unsupported feature: " + ex.Message);
+                return;
+            }
             Solve(propagator, timeout);
             return;
         }
@@ -75,11 +81,16 @@ public static class Program {
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
             using OuterStringPropagator propagator = new(solver);
-            AssertSMTLIB(ctx, solver, propagator, file);
             total++;
-            if (Solve(propagator, timeout) is SolveResult.SAT or SolveResult.UNSAT)
-                solved++;
-            GC.Collect(0);
+            try {
+                AssertSMTLIB(ctx, solver, propagator, file);
+                if (Solve(propagator, timeout) is SolveResult.SAT or SolveResult.UNSAT)
+                    solved++;
+                GC.Collect(0);
+            }
+            catch (NotSupportedException ex) {
+                Console.WriteLine("Unsupported feature: " + ex.Message);
+            }
         }
         Console.WriteLine("Solved: " + solved + " / " + total);
     }

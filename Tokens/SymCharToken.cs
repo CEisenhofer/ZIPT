@@ -18,8 +18,8 @@ public sealed class SymCharToken : UnitToken {
         Expr? e = graph.Propagator.GetCachedStrExpr(this);
         if (e is not null)
             return e;
-        e = graph.Ctx.MkFreshConst("'" + nextId + "'", graph.Propagator.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(e.FuncDecl.Name.ToString(), [], graph.Propagator.StringSort).Apply();
+        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Propagator.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Propagator.StringSort).Apply();
         graph.Propagator.SetCachedExpr(this, e);
         return e;
     }

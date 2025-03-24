@@ -58,7 +58,12 @@ public class IntConstraintSet<T> : IEnumerable<T>, IIntConstraintSet where T : I
         var newConstraints = new List<T> {
             Capacity = constraints.Count,
         };
-        newConstraints.AddRange(constraints.Select(c => (T)c.Clone()));
+        foreach (var v in constraints) {
+            // Check again if it is not contained already - the constraints might have changed!
+            int idx = newConstraints.BinarySearch(v);
+            if (idx < 0)
+                newConstraints.Insert(~idx, (T)v.Clone());
+        }
         return new IntConstraintSet<T>(newConstraints);
     }
 

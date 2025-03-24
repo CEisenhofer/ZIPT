@@ -18,13 +18,6 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public override bool Equals(object? obj) => obj is StrEqBase other && Equals(other);
     public bool Equals(StrEqBase? other) => CompareTo(other) == 0;
 
-    static readonly Dictionary<Type, int> TokenTypeOrder = new() {
-        { typeof(PowerToken), 0 },
-        { typeof(SymCharToken), 1 },
-        { typeof(CharToken), 2 },
-        { typeof(StrVarToken), 3 },
-    };
-
     protected void SortStr() {
         Str s1 = LHS, s2 = RHS;
         SortStr(ref s1, ref s2, true);
@@ -42,9 +35,9 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         Debug.Assert(s1.Count > 0);
         Debug.Assert(s2.Count > 0);
 
-        if (TokenTypeOrder[s1.Peek(dir).GetType()] > TokenTypeOrder[s2.Peek(dir).GetType()])
+        if (StrToken.StrTokenOrder[s1.Peek(dir).GetType()] > StrToken.StrTokenOrder[s2.Peek(dir).GetType()])
             (s1, s2) = (s2, s1);
-        Debug.Assert(TokenTypeOrder[s1.Peek(dir).GetType()] <= TokenTypeOrder[s2.Peek(dir).GetType()]);
+        Debug.Assert(StrToken.StrTokenOrder[s1.Peek(dir).GetType()] <= StrToken.StrTokenOrder[s2.Peek(dir).GetType()]);
     }
 
     public override void Apply(Subst subst) {
@@ -57,14 +50,14 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         RHS = RHS.Apply(itp);
     }
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         LHS.CollectSymbols(vars, sChars, iVars, alphabet);
         RHS.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
-    public override bool Contains(StrVarToken v) =>
-        LHS.Any(o => o.RecursiveIn(v)) || RHS.Any(o => o.RecursiveIn(v));
+    public override bool Contains(NamedStrToken namedStrToken) =>
+        LHS.Any(o => o.RecursiveIn(namedStrToken)) || RHS.Any(o => o.RecursiveIn(namedStrToken));
 
     public int CompareTo(StrEqBase? other) {
         if (other is null)

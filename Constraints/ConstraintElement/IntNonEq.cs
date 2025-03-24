@@ -61,7 +61,7 @@ public class IntNonEq : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         graph.Ctx.MkNot(graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0)));
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) => 
         Poly.CollectSymbols(vars, sChars, iVars, alphabet);
 

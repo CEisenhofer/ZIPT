@@ -53,7 +53,7 @@ public class Ite : NonTermInt {
         return cmp != 0 ? cmp : Els.CompareTo(((Ite)other).Els);
     }
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         Cond.CollectSymbols(vars, sChars, iVars, alphabet);
         Then.CollectSymbols(vars, sChars, iVars, alphabet);

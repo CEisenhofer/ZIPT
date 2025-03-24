@@ -22,7 +22,7 @@ public abstract class Constraint {
         var res = SimplifyInternal(node, substitution, newSideConstraints, ref reason);
         if (res == SimplifyResult.Conflict)
             Violated = true;
-        else if (res == SimplifyResult.Satisfied)
+        else if (res is SimplifyResult.Satisfied or SimplifyResult.RestartAndSatisfied)
             Satisfied = true;
         return res;
     }
@@ -30,6 +30,6 @@ public abstract class Constraint {
     protected abstract SimplifyResult SimplifyInternal(NielsenNode node,
         List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason);
     public abstract BoolExpr ToExpr(NielsenGraph graph);
-    public abstract void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
     public abstract Constraint Negate();
 }

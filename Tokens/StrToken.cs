@@ -2,6 +2,7 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
+using StringBreaker.Tokens.AuxTokens;
 
 namespace StringBreaker.Tokens;
 
@@ -15,16 +16,18 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public abstract List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
     public abstract Expr ToExpr(NielsenGraph graph);
 
-    public abstract bool RecursiveIn(StrVarToken v);
+    public abstract bool RecursiveIn(NamedStrToken v);
 
     public override bool Equals(object? other) =>
         other is StrToken token && Equals(token);
 
     // The order is important! The lower one will be used as root in the e-graph
-    static readonly Dictionary<Type, int> order = new() {
-        { typeof(CharToken), 0 },
-        { typeof(PowerToken), 1 },
-        { typeof(StrVarToken), 2 },
+    public static readonly Dictionary<Type, int> StrTokenOrder = new() {
+        { typeof(PowerToken), 0 },
+        { typeof(SymCharToken), 1 },
+        { typeof(CharToken), 2 },
+        { typeof(StrVarToken), 3 },
+        { typeof(StrAtToken), 4 },
     };
 
     public int CompareTo(StrToken? other) {
@@ -32,8 +35,8 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
             return 1;
         if (GetType() == other.GetType())
             return CompareToInternal(other);
-        int val1 = order[GetType()];
-        int val2 = order[other.GetType()];
+        int val1 = StrTokenOrder[GetType()];
+        int val2 = StrTokenOrder[other.GetType()];
         Debug.Assert(val1 != val2);
         return val1.CompareTo(val2);
     }

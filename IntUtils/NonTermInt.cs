@@ -17,7 +17,7 @@ public abstract class NonTermInt : IComparable<NonTermInt> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
-    public abstract void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
     public abstract IntExpr ToExpr(NielsenGraph graph);
     public abstract override string ToString();
 }

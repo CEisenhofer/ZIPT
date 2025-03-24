@@ -19,7 +19,7 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
     public bool Ground => this.All(token => token.Ground);
     public bool IsNullable(NielsenNode node) => this.All(token => token.IsNullable(node));
 
-    public bool RecursiveIn(StrVarToken item) => this.Any(o => o.RecursiveIn(item));
+    public bool RecursiveIn(NamedStrToken item) => this.Any(o => o.RecursiveIn(item));
 
     public Str Apply(Subst subst) {
         Str result = [];
@@ -91,7 +91,7 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
         return last;
     }
 
-    public void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         foreach (var token in this) {
             switch (token) {
                 case StrVarToken v:

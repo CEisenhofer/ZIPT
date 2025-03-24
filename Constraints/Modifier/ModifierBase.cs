@@ -13,17 +13,19 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(DetModifier), TypeOrder.Count);
         // u = "" || n = 0
         TypeOrder.Add(typeof(PowerEpsilonModifier), TypeOrder.Count);
-        // x := ax || x := ""
-        TypeOrder.Add(typeof(ConstNielsenModifier), TypeOrder.Count);
-        // \/ x := u^n postfix(u); u const
+        // \/ x := u^n prefix(u); u const
         TypeOrder.Add(typeof(GPowerIntrModifier), TypeOrder.Count);
-        // \/ x := u^n postfix(u) || \/ y := v^m postfix(v); u, v const
+        // \/ x := u^n prefix(u) || \/ y := v^m prefix(v); u, v const
         TypeOrder.Add(typeof(GPowerGPowerIntrModifier), TypeOrder.Count);
         // lhs = rhs => lhs' = rhs' && lhs'' = rhs''
         TypeOrder.Add(typeof(EqSplitModifier), TypeOrder.Count);
+        // x := ax || x := ""
+        TypeOrder.Add(typeof(ConstNielsenModifier), TypeOrder.Count);
+        // x := b^n' prefix(b) && n' < n || x := b^n x
+        TypeOrder.Add(typeof(PowerSplitModifier), TypeOrder.Count);
         // x := "" || (y := "" && |x| > 0) || (x := y && |x| > 0) || (x := yx && |x| > 0 && |y| > 0) ||( y := xy && |x| > 0 && |y| > 0)
         TypeOrder.Add(typeof(VarNielsenModifier), TypeOrder.Count);
-        // \/ x := u^n postfix(u); u const || y := xy
+        // \/ x := u^n prefix(u); u const || y := xy
         TypeOrder.Add(typeof(GPowerIntrConstNielsen), TypeOrder.Count);
         // n <= m || n > m
         TypeOrder.Add(typeof(NumCmpModifier), TypeOrder.Count);
@@ -31,11 +33,11 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(NumUnwindingModifier), TypeOrder.Count);
         // x := o_1 ... o_{k - 1} || x := o_1 ... o_k x
         TypeOrder.Add(typeof(VarPaddingModifier), TypeOrder.Count);
-        // \/ x := u^n postfix(u); u not const
+        // \/ x := u^n prefix(u); u not const
         TypeOrder.Add(typeof(PowerIntrModifier), TypeOrder.Count);
-        // \/ x := u^n postfix(u); u not const \/ y := xy
+        // \/ x := u^n prefix(u); u not const \/ y := xy
         TypeOrder.Add(typeof(PowerIntrConstNielsen), TypeOrder.Count);
-        // \/ x := u^n postfix(u); u not const || \/ y := v^m postfix(v); u, v not const
+        // \/ x := u^n prefix(u); u not const || \/ y := v^m prefix(v); u, v not const
         TypeOrder.Add(typeof(PowerPowerIntrModifier), TypeOrder.Count);
     }
 

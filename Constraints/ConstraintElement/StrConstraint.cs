@@ -4,7 +4,7 @@ using StringBreaker.Tokens;
 namespace StringBreaker.Constraints.ConstraintElement;
 
 public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
-    public abstract bool Contains(StrVarToken strVarToken);
+    public abstract bool Contains(NamedStrToken namedStrToken);
     public abstract ModifierBase Extend(NielsenNode node);
     public abstract int CompareToInternal(StrConstraint other);
     public int CompareTo(StrConstraint? other) {

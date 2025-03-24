@@ -4,5 +4,6 @@ public enum SimplifyResult {
     Proceed,
     Conflict,
     Satisfied,
+    RestartAndSatisfied,
     Restart,
 }

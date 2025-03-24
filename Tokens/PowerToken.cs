@@ -101,7 +101,7 @@ public sealed class PowerToken : StrToken {
     public override Expr ToExpr(NielsenGraph graph) =>
         graph.Propagator.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
 
-    public override bool RecursiveIn(StrVarToken v) =>
+    public override bool RecursiveIn(NamedStrToken v) =>
         Base.RecursiveIn(v);
 
     protected override int CompareToInternal(StrToken other) {

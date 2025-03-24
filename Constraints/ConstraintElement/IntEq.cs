@@ -1,4 +1,5 @@
-﻿using Microsoft.Z3;
+﻿using System.Diagnostics;
+using Microsoft.Z3;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
@@ -22,7 +23,7 @@ public class IntEq : IntConstraint {
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);
 
-    public bool Equals(IntEq other) =>
+    public bool Equals(IntEq other) => 
         Poly.Equals(other.Poly);
 
     public override int GetHashCode() =>
@@ -60,7 +61,7 @@ public class IntEq : IntConstraint {
             var res = node.AddExactIntBound(v!, sig == 1 ? -val : val);
             if (res == SimplifyResult.Conflict)
                 reason = BacktrackReasons.Arithmetic;
-            return res;
+            return res == SimplifyResult.Restart ? SimplifyResult.RestartAndSatisfied : res;
         }
         return SimplifyResult.Proceed;
         /*var bounds = Poly.GetBounds(node);
@@ -70,7 +71,7 @@ public class IntEq : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
 
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>
         Poly.CollectSymbols(vars, sChars, iVars, alphabet);
 

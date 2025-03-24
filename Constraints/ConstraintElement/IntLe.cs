@@ -66,11 +66,11 @@ public class IntLe : IntConstraint {
         int sig;
         if ((sig = Poly.IsUniLinear(out NonTermInt? v, out val)) != 0) {
             var res = sig == 1 
-                ? node.AddHigherIntBound(v!, val) 
+                ? node.AddHigherIntBound(v!, -val) 
                 : node.AddLowerIntBound(v!, val);
             if (res == SimplifyResult.Conflict)
                 reason = BacktrackReasons.Arithmetic;
-            return res;
+            return res == SimplifyResult.Restart ? SimplifyResult.RestartAndSatisfied : res;
         }
         return SimplifyResult.Proceed;
         /*if (Poly.IsUniLinear(out IntVar? v, out val))
@@ -83,7 +83,7 @@ public class IntLe : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) =>
         graph.Ctx.MkLe(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
     
-    public override void CollectSymbols(HashSet<StrVarToken> vars, HashSet<SymCharToken> sChars, 
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>
         Poly.CollectSymbols(vars, sChars, iVars, alphabet);
 
