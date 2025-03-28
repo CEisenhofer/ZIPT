@@ -10,42 +10,16 @@ namespace StringBreaker.Tokens;
 
 public sealed class PowerToken : StrToken {
 
-    // a(ba)^n b = (ab)^m
-
-    // Do not alter the _content_ of those variables (tokens are immutable)
-
-    // least repeated prefix (lrp) used. e.g., (ab)^2mn instead of ((abab)^n)^m
-    // Note that (abab)^n is normalized (ab)^2n but (ababc)^n stays the same, as we cannot compress the whole body
-    // Further, ((ab)^m ab (ab)^n)^k becomes (ab)^{(1 + m + n)k}
-    // (a(ba)^m b)^n should also become (ab)^{(m + 1)n}
-    // If variables are involved, it is hard to determine the lrp
-    // TODO: Implement the non-trivial cases
-    // TODO: Sometimes it works even though variables are involved. (axb)^n is normalized iff x != (ba)^m
-    bool Normalized { get; }
     public Str Base { get; }
     public Poly Power { get; }
 
     public PowerToken(Str b, Poly power) {
         Base = b;
         Power = power;
-        if (Base is [PowerToken p])
+        if (Base is [PowerToken p]) {
+            Base = p.Base;
             Power = Poly.Mul(power, p.Power);
-        if (Base.All(o => o is CharToken)) {
-            Debug.Assert(Base.Count > 0);
-            string lrp = StringUtils.LeastRepeatedPrefix(
-                new string(Base.OfType<CharToken>().Select(o => o.Value).ToArray()));
-            Debug.Assert(lrp.Length > 0);
-            int m = Base.Count / lrp.Length;
-            Debug.Assert(Base.Count % lrp.Length == 0);
-            Debug.Assert(m >= 1);
-            if (m > 1) {
-                Power = Poly.Mul(Power, new Poly(m));
-                Base = new Str(lrp.Select(o => (StrToken)new CharToken(o)).ToArray());
-            }
-            Normalized = true;
         }
-        else
-            Normalized = false;
     }
 
     
@@ -99,16 +73,14 @@ public sealed class PowerToken : StrToken {
     }
 
     public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Propagator.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
+        graph.Cache.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
 
     public override bool RecursiveIn(NamedStrToken v) =>
         Base.RecursiveIn(v);
 
     protected override int CompareToInternal(StrToken other) {
         int cmp = Base.CompareTo(((PowerToken)other).Base);
-        if (cmp != 0)
-            return cmp;
-        return Power.CompareTo(((PowerToken)other).Power);
+        return cmp != 0 ? cmp : Power.CompareTo(((PowerToken)other).Power);
     }
 
     public override bool Equals(StrToken? other) =>

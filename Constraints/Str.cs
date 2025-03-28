@@ -83,10 +83,10 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
 
     public Expr ToExpr(NielsenGraph graph) {
         if (Count == 0)
-            return graph.Propagator.Epsilon;
+            return graph.Cache.Epsilon;
         Expr last = this[^1].ToExpr(graph);
         for (int i = Count - 1; i > 0; i--) {
-            last = graph.Propagator.ConcatFct.Apply(this[i - 1].ToExpr(graph), last);
+            last = graph.Cache.MkConcat(this[i - 1].ToExpr(graph), last);
         }
         return last;
     }

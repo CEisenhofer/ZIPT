@@ -63,13 +63,13 @@ public sealed class StrVarToken : NamedStrToken, IDisposable {
     }
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Propagator.GetCachedStrExpr(this);
+        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
 
-        FuncDecl f = graph.Ctx.MkFreshConstDecl(Name, graph.Propagator.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Propagator.StringSort).Apply();
-        graph.Propagator.SetCachedExpr(this, e);
+        FuncDecl f = graph.Ctx.MkFreshConstDecl(Name, graph.Cache.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
+        graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }
 }

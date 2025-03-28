@@ -7,9 +7,11 @@ namespace StringBreaker.IntUtils;
 
 public class Ite : NonTermInt {
 
-    Constraint Cond { get; }
-    Poly Then { get; }
-    Poly Els { get; }
+    public Constraint Cond { get; }
+    public Poly Then { get; }
+    public Poly Els { get; }
+
+    public override Len MinLen => Len.NegInf;
 
     public Ite(Constraint cond, Poly then, Poly els) {
         Cond = cond;

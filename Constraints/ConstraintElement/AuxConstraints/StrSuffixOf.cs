@@ -61,7 +61,7 @@ public class StrSuffixOf : StrConstraint {
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Propagator.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
+        (BoolExpr)graph.Cache.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
 
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         S.CollectSymbols(vars, sChars, iVars, alphabet);

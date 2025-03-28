@@ -22,11 +22,11 @@ public sealed class SubStrToken : NamedStrToken {
     public override SubStrToken GetExtension2() => (SubStrToken)(Extension2 ??= new SubStrToken(S, From, Len));
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Propagator.GetCachedStrExpr(this);
+        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        e = graph.Propagator.StrAtFct.Apply(S.ToExpr(graph), From.ToExpr(graph), Len.ToExpr(graph));
-        graph.Propagator.SetCachedExpr(this, e);
+        e = graph.Cache.StrAtFct.Apply(S.ToExpr(graph), From.ToExpr(graph), Len.ToExpr(graph));
+        graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }
 }

@@ -9,6 +9,8 @@ public class IndexOfVar : IntVar {
     public Str Contained { get; }
     public Poly Start { get; }
 
+    public override Len MinLen => -1;
+
     public IndexOfVar(Str s, Str contained, Poly start) {
         S = s;
         Contained = contained;
@@ -16,7 +18,7 @@ public class IndexOfVar : IntVar {
     }
 
     public override IntExpr ToExpr(NielsenGraph graph) => 
-        (IntExpr)graph.Propagator.IndexOfFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph), Start.ToExpr(graph));
+        (IntExpr)graph.Cache.IndexOfFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph), Start.ToExpr(graph));
 
     public sealed override string ToString() => $"indexOf({S},{Contained},{Start})";
 }

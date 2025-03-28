@@ -11,19 +11,33 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
 
     public StrVarToken Var { get; }
     public Str Base { get; }
-    public Poly Power { get; }
 
     public GPowerIntrModifier(StrVarToken var, Str @base, bool forward) : base(forward) {
         Debug.Assert(@base.Ground);
         Var = var;
         Base = @base;
-        Power = new Poly(Var.GetPowerExtension());
     }
 
     public override void Apply(NielsenNode node) {
-        // V1 / Base^Power Base' with Base' being a syntactic prefix of Base
+        // V1 / Base^powerConstant Base' with Base' being a syntactic prefix of Base
+        var powerConstant = new Poly(Var.GetPowerExtension());
 
-        var power = new PowerToken(Base, Power);
+        var b = Base;
+
+        if (Base.All(o => o is UnitToken)) {
+            Debug.Assert(Base.Count > 0);
+            int lrpLen = StringUtils.LeastRepeatedPrefix(Base);
+            Debug.Assert(lrpLen > 0 && lrpLen <= Base.Count);
+            // TODO: Improve
+            while (Base.Count > lrpLen) {
+                Base.DropLast();
+            }
+            b = Base;
+        }
+        else
+            b = StrEqBase.LcpCompression(Base) ?? Base;
+
+        var power = new PowerToken(b, powerConstant);
         var prefixes = Base.GetPrefixes(Forwards);
         
         foreach (var p in prefixes) {
@@ -32,13 +46,11 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
             var subst = new SubstVar(Var, s);
             Debug.Assert(p.varDecomp is null);
             var c = node.MkChild(node, [subst]);
-            foreach (var cnstr in c.AllConstraints) {
-                cnstr.Apply(subst);
-            }
+            c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);
             var lowerBound = new Poly();
-            lowerBound.Sub(Power);
+            lowerBound.Sub(powerConstant);
             c.AddConstraints(new IntLe(lowerBound)); // -Power <= 0 => Power >= 0
             c.Parent!.SideConstraints.Add(new IntLe(lowerBound));
         }
@@ -54,5 +66,5 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
     }
 
     public override string ToString() =>
-        $"{Var} / {Base}^{{{Power}}} [prefix({Base})]";
+        $"{Var} / {Base}^{{{Var.GetPowerExtension()}}} [prefix({Base})]";
 }

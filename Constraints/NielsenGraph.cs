@@ -10,15 +10,18 @@ namespace StringBreaker.Constraints;
 
 public class NielsenGraph {
 
-    public OuterStringPropagator Propagator { get; }
-    public Context Ctx => Propagator.Ctx;
+    public SaturatingStringPropagator OuterPropagator { get; }
+    public Context Ctx => OuterPropagator.Ctx;
+    public ExpressionCache Cache => OuterPropagator.Cache;
     public uint DepthBound { get; private set; }
     public uint ComplexityBound { get; private set; }
+    public StringPropagator InnerStringPropagator { get; }
     public readonly Solver SubSolver; // Solver for assumption based integer reasoning
     public NielsenNode Root { get; }
     public List<NielsenNode> SatNodes { get; }= [];
 
     public Dictionary<NamedStrToken, int> CurrentModificationCnt { get; } = [];
+    public int ModCnt { get; set; }
 
     // all nodes
     readonly HashSet<NielsenNode> nodes = [];
@@ -27,9 +30,10 @@ public class NielsenGraph {
     readonly Dictionary<StrConstraintSet<StrEq>, List<NielsenNode>> subsumptionCandidates = [];
     public int NodeCnt => nodes.Count;
 
-    public NielsenGraph(OuterStringPropagator propagator) {
-        Propagator = propagator;
+    public NielsenGraph(SaturatingStringPropagator outerPropagator) {
+        OuterPropagator = outerPropagator;
         SubSolver = Ctx.MkSimpleSolver();
+        InnerStringPropagator = new LemmaStringPropagator(SubSolver, Cache, this);
         Root = new NielsenNode(this);
         Debug.Assert(Root.Id == 0);
     }
@@ -83,7 +87,7 @@ public class NielsenGraph {
         return true;
     }
 
-    public Str? TryParseStr(Expr e) => Propagator.TryParseStr(e);
+    public Str? TryParseStr(Expr e) => Cache.TryParseStr(e);
 
     public string ToDot() {
         List<NielsenNode> subsumed = [];

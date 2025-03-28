@@ -1,11 +1,11 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.IntUtils;
 
 public abstract class NonTermInt : IComparable<NonTermInt> {
+    public abstract Len MinLen { get; }
     public abstract Poly Apply(Subst subst);
     public abstract Poly Apply(Interpretation subst);
     public abstract int CompareToInternal(NonTermInt other);

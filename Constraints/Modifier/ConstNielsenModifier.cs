@@ -15,14 +15,10 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     public override void Apply(NielsenNode node) {
         var subst = new SubstVar(Var);
         var c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllConstraints) {
-            cnstr.Apply(subst);
-        }
+        c.Apply(subst);
         subst = new SubstVar(Var, Forwards ? [Prefix, Var] : [Var, Prefix]);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllConstraints) {
-            cnstr.Apply(subst);
-        }
+        c.Apply(subst);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

@@ -9,6 +9,7 @@ public class IntVar : NonTermInt {
     
     static int nextId;
     public int Id { get; }
+    public override Len MinLen => Len.NegInf;
 
     public IntVar(int id) => 
         Id = id;
@@ -19,6 +20,7 @@ public class IntVar : NonTermInt {
     public bool Equals(IntVar other) => Id == other.Id;
 
     public override int GetHashCode() => Id.GetHashCode() * 919174721;
+
     public override Poly Apply(Subst subst) => new(new StrictMonomial(this));
     public override Poly Apply(Interpretation subst) => subst.ResolveVar(this);
 
@@ -29,10 +31,10 @@ public class IntVar : NonTermInt {
         HashSet<CharToken> alphabet) => iVars.Add(this);
 
     public override IntExpr ToExpr(NielsenGraph graph) {
-        if (graph.Propagator.GetCachedIntExpr(this) is { } e)
+        if (graph.Cache.GetCachedIntExpr(this) is { } e)
             return e;
         e = graph.Ctx.MkIntConst(ToString());
-        graph.Propagator.SetCachedExpr(this, e);
+        graph.Cache.SetCachedExpr(this, e);
         return e;
     }
 

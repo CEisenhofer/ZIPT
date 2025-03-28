@@ -15,12 +15,12 @@ public sealed class SymCharToken : UnitToken {
     public override Str Apply(Interpretation itp) => [itp.ResolveVar(this)];
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Propagator.GetCachedStrExpr(this);
+        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Propagator.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Propagator.StringSort).Apply();
-        graph.Propagator.SetCachedExpr(this, e);
+        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Cache.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
+        graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }
 

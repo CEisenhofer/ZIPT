@@ -12,9 +12,7 @@ public class VarEpsilonModifier : ModifierBase {
     public override void Apply(NielsenNode node) {
         var c = node.MkChild(node, this);
         node.AddOutgoing(this, c);
-        foreach (var cnstr in c.AllConstraints) {
-            cnstr.Apply(Var);
-        }
+        c.Apply(subst);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

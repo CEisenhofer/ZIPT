@@ -10,140 +10,36 @@ using StringBreaker.Tokens.AuxTokens;
 
 namespace StringBreaker;
 
-public class OuterStringPropagator : UserPropagator {
+public abstract class StringPropagator : UserPropagator {
 
-    bool disposed;
     public readonly Context Ctx;
     public readonly Solver Solver;
-    public readonly Sort StringSort;
-    public readonly FuncDecl ConcatFct;
-    public readonly FuncDecl PowerFct;
+    public readonly ExpressionCache Cache;
 
-    public readonly FuncDecl LenFct;
+    public abstract NielsenGraph Graph { get; }
 
-    public readonly Dictionary<CharToken, ParikhInfo> ParikInfo = [];
-    public readonly Dictionary<FuncDecl, InvParikhInfo> InvParikInfo = [];
+    protected readonly UndoStack undoStack = new();
 
-    public readonly Expr Epsilon;
+    // For each string variable, we store the list of integer-constraints that contain it (e.g., x => { |x| })
+    readonly Dictionary<Expr, List<Expr>> watch = [];
 
-    // The easy functions
-    public readonly FuncDecl StrAtFct;
-    public readonly FuncDecl PrefixOfFct;
-    public readonly FuncDecl SuffixOfFct;
-    public readonly FuncDecl SubstringFct;
+    // This is not necessarily unique. We might have x = ax' and x = b (clearly, this is inconsistent, sure)
+    // However, this is string solver business and not rewriting business
+    // It might still have x = ax' and x = b from different two branches. We don't know which is the current one, so rewrite w.r.t. both
+    readonly Dictionary<Expr, List<Expr>> rewrite = [];
 
-    // The tricky ones
-    // contains, indexOf, (replace, replaceAll)
-    public readonly FuncDecl ContainsFct;
-    public readonly FuncDecl IndexOfFct;
-
-    public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
-    public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
-
-    public readonly Dictionary<IntVar, IntExpr> IntTokenToExpr = [];
-    public readonly Dictionary<IntExpr, IntVar> ExprToIntToken = [];
-
-    readonly UndoStack undoStack = new();
-
-    public readonly NielsenGraph Graph;
-    public NielsenNode Root => Graph.Root;
-
-    List<(Expr lhs, Expr rhs)> reportedEqs = [];
-    List<BoolExpr> reportedFixed = [];
-
-    public OuterStringPropagator(Solver solver) : base(solver) {
+    public StringPropagator(Solver solver, ExpressionCache cache) : base(solver) {
         Solver = solver;
         Ctx = solver.Context;
-
-        Graph = new NielsenGraph(this);
-
-        StringSort = Ctx.MkUninterpretedSort("Str");
-        Epsilon = Ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
-        ConcatFct = Ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
-        PowerFct = Ctx.MkUserPropagatorFuncDecl("power", [StringSort, Ctx.IntSort], StringSort);
-        LenFct = Ctx.MkUserPropagatorFuncDecl("len", [StringSort], Ctx.IntSort);
-
-        StrAtFct = Ctx.MkUserPropagatorFuncDecl("strAt", [StringSort], StringSort);
-        PrefixOfFct = Ctx.MkUserPropagatorFuncDecl("prefixOf", [StringSort, StringSort], Ctx.BoolSort);
-        SuffixOfFct = Ctx.MkUserPropagatorFuncDecl("suffixOf", [StringSort, StringSort], Ctx.BoolSort);
-        SubstringFct = Ctx.MkUserPropagatorFuncDecl("subStr", [StringSort, Ctx.IntSort, Ctx.IntSort], StringSort);
-        
-        ContainsFct = Ctx.MkUserPropagatorFuncDecl("contains", [StringSort, StringSort], Ctx.BoolSort);
-        IndexOfFct = Ctx.MkUserPropagatorFuncDecl("indexOf", [StringSort, StringSort, Ctx.IntSort], Ctx.IntSort);
+        Cache = cache;
 
         Fixed = FixedCB;
         Created = CreatedCB;
         Eq = EqCB;
-        Final = FinalCB;
+        Diseq = DisEqCB;
     }
 
-    public override void Dispose() {
-        if (disposed)
-            return;
-        disposed = true;
-        StrTokenToExpr.Clear();
-        ExprToIntToken.Clear();
-        StrVarToken.DisposeAll();
-        base.Dispose();
-    }
-
-    public Expr? GetCachedStrExpr(StrToken t) {
-        if (t is not NamedStrToken n || !Graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
-        return StrTokenToExpr.GetValueOrDefault((t, mod));
-    }
-
-    public IntExpr? GetCachedIntExpr(IntVar t) => IntTokenToExpr.GetValueOrDefault(t);
-
-    public void SetCachedExpr(StrToken t, Expr e) {
-        if (t is not NamedStrToken n || !Graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
-        StrTokenToExpr.Add((t, mod), e);
-        ExprToStrToken.Add(e, t);
-    }
-
-    public void SetCachedExpr(IntVar t, IntExpr e) {
-        IntTokenToExpr.Add(t, e);
-        ExprToIntToken.Add((IntExpr)e.Dup(), t);
-    }
-
-    public ParikhInfo GetParikhInfo(CharToken c) {
-        if (!ParikInfo.TryGetValue(c, out ParikhInfo? info)) {
-            info = new ParikhInfo(c, this);
-            ParikInfo.Add(c, info);
-        }
-        return info;
-    }
-
-    Expr GetFreshAuxStr() {
-        FuncDecl f = Ctx.MkFreshConstDecl("x", StringSort);
-        Expr e = Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], StringSort).Apply();
-        return e;
-    }
-
-    public IntExpr MkLen(Expr e) =>
-        (IntExpr)LenFct.Apply(e);
-
-    public IntExpr MkParikh(CharToken c, Expr e) {
-        var info = GetParikhInfo(c);
-        return (IntExpr)info.Total.Apply(e);
-    }
-
-    public Expr MkConcat(Expr e1, Expr e2) {
-        if (e1.Equals(Epsilon))
-            return e2;
-        if (e2.Equals(Epsilon))
-            return e1;
-        return ConcatFct.Apply(e1, e2);
-    }
-
-    public Expr MkPower(Expr e, IntExpr n) {
-        if (n.Equals(Ctx.MkInt(0)))
-            return Epsilon;
-        if (n.Equals(Ctx.MkInt(1)))
-            return e;
-        return PowerFct.Apply(e, n);
-    }
+    StrVarToken GetFreshAuxStr() => StrVarToken.GetOrCreate("x");
 
     public override void Push() {
         Log.WriteLine("Push " + undoStack.Level);
@@ -160,6 +56,8 @@ public class OuterStringPropagator : UserPropagator {
         }
     }
 
+    protected virtual void GotNegContains(Expr e) {}
+
     int fixedCnt;
 
     void FixedCB(Expr e, Expr valExpr) {
@@ -169,83 +67,80 @@ public class OuterStringPropagator : UserPropagator {
             bool val = valExpr.IsTrue;
 
             var f = e.FuncDecl;
-            if (f.Equals(PrefixOfFct)) {
+            if (Cache.IsPrefixOf(f)) {
                 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                Expr x = GetFreshAuxStr();
+                Expr x = GetFreshAuxStr().ToExpr(Graph);
 
                 if (val) {
                     // e := prefixOf(u, v)
                     // e |- v = ux
-                    Propagate([e], Ctx.MkEq(v, MkConcat(u, x)));
+                    Propagate([e], Ctx.MkEq(v, Cache.MkConcat(u, x)));
                     return;
                 }
                 // e :=: !prefixOf(u, v)
                 // e |- |u| > |v| || (v = xy && |x| = |u| && x != u)
-                IntExpr lenU = MkLen(u);
-                IntExpr lenV = MkLen(v);
-                Expr y = GetFreshAuxStr();
+                IntExpr lenU = Cache.MkLen(u);
+                IntExpr lenV = Cache.MkLen(v);
+                Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
                         Ctx.MkAnd(
-                            Ctx.MkEq(v, MkConcat(x, y)),
-                            Ctx.MkEq(MkLen(x), MkLen(u)),
+                            Ctx.MkEq(v, Cache.MkConcat(x, y)),
+                            Ctx.MkEq(Cache.MkLen(x), Cache.MkLen(u)),
                             Ctx.MkNot(Ctx.MkEq(u, x))
                         )
                     )
                 );
                 return;
             }
-            if (f.Equals(SuffixOfFct)) {
+            if (Cache.IsSuffixOf(f)) {
 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                Expr x = GetFreshAuxStr();
+                Expr x = GetFreshAuxStr().ToExpr(Graph);
 
                 if (val) {
                     // e := suffixOf(u, v)
                     // e |- v = xu
-                    Propagate([e], Ctx.MkEq(v, MkConcat(x, u)));
+                    Propagate([e], Ctx.MkEq(v, Cache.MkConcat(x, u)));
                     return;
                 }
                 // e :=: !suffixOf(u, v)
                 // e |- |u| > |v| || (v = yx && |x| = |u| && x != u)
-                IntExpr lenU = MkLen(u);
-                IntExpr lenV = MkLen(v);
-                Expr y = GetFreshAuxStr();
+                IntExpr lenU = Cache.MkLen(u);
+                IntExpr lenV = Cache.MkLen(v);
+                Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
                         Ctx.MkAnd(
-                            Ctx.MkEq(v, MkConcat(y, x)),
-                            Ctx.MkEq(MkLen(x), MkLen(u)),
+                            Ctx.MkEq(v, Cache.MkConcat(y, x)),
+                            Ctx.MkEq(Cache.MkLen(x), Cache.MkLen(u)),
                             Ctx.MkNot(Ctx.MkEq(u, x))
                         )
                     )
                 );
                 return;
             }
-            if (f.Equals(ContainsFct)) {
+            if (Cache.IsContains(f)) {
                 if (!val) {
-                    reportedFixed.Add((BoolExpr)e);
-                    undoStack.Add(() => reportedFixed.Pop());
-                    // TODO
-                    throw new NotImplementedException("!contains");
+                    GotNegContains(e);
                     return;
                 }
                 // e := contains(u, v)
                 // e |- |v| = 0 || u = xvy (the first case only to speed up)
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                IntExpr lenV = MkLen(v);
-                Expr x = GetFreshAuxStr();
-                Expr y = GetFreshAuxStr();
+                IntExpr lenV = Cache.MkLen(v);
+                Expr x = GetFreshAuxStr().ToExpr(Graph);
+                Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkEq(lenV, Ctx.MkInt(0)),
-                        Ctx.MkEq(u, MkConcat(x, MkConcat(v, y)))
+                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(v, y)))
                     )
                 );
                 return;
@@ -262,41 +157,41 @@ public class OuterStringPropagator : UserPropagator {
     void CreatedCB(Expr e) {
 
         // Just rewrite complicated function symbols
-        if (e.Sort is not BoolSort && !e.Sort.Equals(StringSort))
+        if (e.Sort is not BoolSort && !e.Sort.Equals(Cache.StringSort) && e.Sort is not IntSort)
             return;
 
         var f = e.FuncDecl;
 
-        if (f.Equals(StrAtFct)) {
+        if (Cache.IsStrAt(f)) {
             // e := strAt(u, i)
             // (i < 0 || i >= |u|) => |e| = 0
             // !(i < 0 || i >= |u|) => (|e| = 1 && u = xey && |x| = i)
             Expr u = e.Arg(0);
             IntExpr i = (IntExpr)e.Arg(1);
-            IntExpr lenU = MkLen(u);
-            IntExpr lenE = MkLen(e);
+            IntExpr lenU = Cache.MkLen(u);
+            IntExpr lenE = Cache.MkLen(e);
             IntExpr zero = Ctx.MkInt(0);
             IntExpr one = Ctx.MkInt(1);
             BoolExpr outsideBounds = Ctx.MkOr(
                 Ctx.MkLt(i, Ctx.MkInt(0)),
                 Ctx.MkGe(i, lenU)
             );
-            Expr x = GetFreshAuxStr();
-            Expr y = GetFreshAuxStr();
-            IntExpr lenX = MkLen(x);
+            Expr x = GetFreshAuxStr().ToExpr(Graph);
+            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            IntExpr lenX = Cache.MkLen(x);
             Propagate([], Ctx.MkImplies(outsideBounds, Ctx.MkEq(lenE, zero)));
             Propagate([],
                 Ctx.MkImplies(Ctx.MkNot(outsideBounds),
                     Ctx.MkAnd(
                         Ctx.MkEq(lenE, one),
                         Ctx.MkEq(lenX, i),
-                        Ctx.MkEq(u, MkConcat(x, MkConcat(e, y)))
+                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(e, y)))
                     )
                 )
             );
             return;
         }
-        if (f.Equals(SubstringFct)) {
+        if (Cache.IsSubstring(f)) {
             // e := subStr(u, from, len)
             // (from < 0 || len <= 0 || from >= |u|) => |e| = 0
             // (from >= 0 && len > 0 && from < |u| && from + len >= |u|) =>
@@ -306,8 +201,8 @@ public class OuterStringPropagator : UserPropagator {
             Expr u = e.Arg(0);
             IntExpr from = (IntExpr)e.Arg(1);
             IntExpr len = (IntExpr)e.Arg(2);
-            IntExpr lenU = MkLen(u);
-            IntExpr lenE = MkLen(e);
+            IntExpr lenU = Cache.MkLen(u);
+            IntExpr lenE = Cache.MkLen(e);
             IntExpr zero = Ctx.MkInt(0);
             Propagate([],
                 Ctx.MkImplies(
@@ -319,9 +214,9 @@ public class OuterStringPropagator : UserPropagator {
                     Ctx.MkEq(lenE, zero)
                 )
             );
-            Expr x = GetFreshAuxStr();
-            Expr y = GetFreshAuxStr();
-            IntExpr lenX = MkLen(x);
+            Expr x = GetFreshAuxStr().ToExpr(Graph);
+            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            IntExpr lenX = Cache.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
                     Ctx.MkAnd(
@@ -331,7 +226,7 @@ public class OuterStringPropagator : UserPropagator {
                         Ctx.MkGe(Ctx.MkAdd(from, len), lenU)
                     ),
                     Ctx.MkAnd(
-                        Ctx.MkEq(u, MkConcat(x, e)),
+                        Ctx.MkEq(u, Cache.MkConcat(x, e)),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkEq(lenE, Ctx.MkSub(lenU, from))
                     )
@@ -345,7 +240,7 @@ public class OuterStringPropagator : UserPropagator {
                         Ctx.MkLt(Ctx.MkAdd(from, len), lenU)
                     ),
                     Ctx.MkAnd(
-                        Ctx.MkEq(u, MkConcat(x, MkConcat(e, y))),
+                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(e, y))),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkEq(lenE, len)
                     )
@@ -353,7 +248,7 @@ public class OuterStringPropagator : UserPropagator {
             );
             return;
         }
-        if (f.Equals(IndexOfFct)) {
+        if (Cache.IsIndexOf(f)) {
             // e := indexOf(u, v, from)
             // from < 0 => e = -1
             // from > |u| + |v| => e = -1
@@ -364,13 +259,13 @@ public class OuterStringPropagator : UserPropagator {
             Expr u = e.Arg(0);
             Expr v = e.Arg(1);
             IntExpr from = (IntExpr)e.Arg(2);
-            IntExpr lenU = MkLen(u);
-            IntExpr lenV = MkLen(v);
+            IntExpr lenU = Cache.MkLen(u);
+            IntExpr lenV = Cache.MkLen(v);
             IntExpr zero = Ctx.MkInt(0);
             IntExpr negOne = Ctx.MkInt(-1);
-            Expr x = GetFreshAuxStr();
-            Expr y = GetFreshAuxStr();
-            IntExpr lenX = MkLen(x);
+            Expr x = GetFreshAuxStr().ToExpr(Graph);
+            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            IntExpr lenX = Cache.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
                     Ctx.MkLt(from, zero),
@@ -385,7 +280,7 @@ public class OuterStringPropagator : UserPropagator {
             );
             Propagate([],
                 Ctx.MkImplies(
-                    Ctx.MkNot((BoolExpr)ContainsFct.Apply(u, v)),
+                    Ctx.MkNot((BoolExpr)Cache.ContainsFct.Apply(u, v)),
                     Ctx.MkEq(e, negOne)
                 )
             );
@@ -409,18 +304,126 @@ public class OuterStringPropagator : UserPropagator {
                     Ctx.MkAnd(
                         Ctx.MkGe((IntExpr)e, zero),
                         Ctx.MkLe((IntExpr)e, Ctx.MkSub(lenU, lenV)),
-                        Ctx.MkEq(u, MkConcat(x, MkConcat(v, y))),
+                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(v, y))),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkNot(
-                            (BoolExpr)ContainsFct.Apply(
-                                SubstringFct.Apply(MkConcat(x, v), zero, Ctx.MkAdd(lenX, lenV, negOne)), v)
+                            (BoolExpr)Cache.ContainsFct.Apply(
+                                Cache.SubstringFct.Apply(Cache.MkConcat(x, v), zero, Ctx.MkAdd(lenX, lenV, negOne)), v)
                         )
                     )
                 )
             );
             return;
         }
+        if (Cache.IsLen(f)) {
+            Expr arg0 = e.Arg(0);
+            FuncDecl f0 = arg0.FuncDecl;
+            if (Cache.IsConcat(f0)) {
+                Stack<Expr> args = [];
+                args.Push(arg0);
+                IntExpr sum = Ctx.MkInt(0);
+                while (args.IsNonEmpty()) {
+                    var arg = args.Pop();
+                    if (Cache.IsConcat(arg.FuncDecl)) {
+                        args.Push(arg.Arg(0));
+                        args.Push(arg.Arg(1));
+                        continue;
+                    }
+                    sum = (IntExpr)Ctx.MkAdd(sum, Cache.MkLen(arg));
+                }
+                Propagate([], Ctx.MkEq(e, sum));
+                return;
+            }
+            if (f0.Equals(Cache.Epsilon.FuncDecl)) {
+                Propagate([], Ctx.MkEq(e, Ctx.MkInt(0)));
+                return;
+            }
+            if (Cache.IsPower(f0)) {
+                Propagate([], Ctx.MkEq(e, Ctx.MkMul(Cache.MkLen(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
+                return;
+            }
+            if (Cache.ExprToStrToken.TryGetValue(arg0, out var s)) {
+                if (s is UnitToken) {
+                    Propagate([], Ctx.MkEq(e, Ctx.MkInt(1)));
+                    return;
+                }
+                Debug.Assert(s is NamedStrToken);
+                if (rewrite.TryGetValue(arg0, out List<Expr>? r)) {
+                    foreach (var r0 in r) {
+                        EqualityPairs eq = new();
+                        eq.Add(arg0, r0);
+                        Propagate([], eq, Ctx.MkEq(e, Cache.MkLen(r0)));
+                    }
+                    return;
+                }
+                Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
+                if (!watch.TryGetValue(arg0, out var list)) {
+                    Expr arg0d = arg0.Dup();
+                    watch.Add(arg0d, list = []);
+                    undoStack.Add(() => watch.Remove(arg0d));
+                }
+                list.Add(e.Dup());
+                undoStack.Add(() => list.RemoveAt(list.Count - 1));
+            }
+            return;
+        }
+        if (Cache.InvParikInfo.TryGetValue(f, out var ipi)) {
+            Expr arg0 = e.Arg(0);
+            FuncDecl f0 = arg0.FuncDecl;
+            if (Cache.IsConcat(f0)) {
+                Stack<Expr> args = [];
+                args.Push(arg0);
+                IntExpr sum = Ctx.MkInt(0);
+                while (args.IsNonEmpty()) {
+                    var arg = args.Pop();
+                    if (Cache.IsConcat(arg.FuncDecl)) {
+                        args.Push(arg.Arg(0));
+                        args.Push(arg.Arg(1));
+                        continue;
+                    }
+                    sum = (IntExpr)Ctx.MkAdd(sum, (IntExpr)ipi.Info.Total.Apply(arg));
+                }
+                Propagate([], Ctx.MkEq(e, sum));
+                return;
+            }
+            if (f0.Equals(Cache.Epsilon.FuncDecl)) {
+                Propagate([], Ctx.MkEq(e, Ctx.MkInt(0)));
+                return;
+            }
+            if (Cache.IsPower(f0)) {
+                Propagate([], Ctx.MkEq(e, Ctx.MkMul((IntExpr)ipi.Info.Total.Apply(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
+                return;
+            }
+            if (Cache.ExprToStrToken.TryGetValue(arg0, out var s)) {
+                if (s is UnitToken) {
+                    Propagate([], Ctx.MkEq(e, Ctx.MkITE(
+                        Ctx.MkEq(s.ToExpr(Graph), ipi.Info.Char.ToExpr(Graph)),
+                        Ctx.MkInt(1), Ctx.MkInt(0))));
+                    return;
+                }
+                Debug.Assert(s is NamedStrToken);
+                if (rewrite.TryGetValue(arg0, out var r)) {
+                    foreach (var r0 in r) {
+                        EqualityPairs eq = new();
+                        eq.Add(arg0, r0);
+                        Propagate([], eq, Ctx.MkEq(e, ipi.Info.Total.Apply(r0)));
+                    }
+                    return;
+                }
+                Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
+                if (!watch.TryGetValue(arg0, out var list)) {
+                    Expr arg0d = arg0.Dup();
+                    watch.Add(arg0d, list = []);
+                    undoStack.Add(() => watch.Remove(arg0d));
+                }
+                list.Add(e.Dup());
+                undoStack.Add(() => list.RemoveAt(list.Count - 1));
+            }
+            return;
+        }
     }
+
+    public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
 
     static int eqCount;
 
@@ -429,20 +432,50 @@ public class OuterStringPropagator : UserPropagator {
             if (e1.Equals(e2))
                 return;
 
-            if (!e1.Sort.Equals(StringSort))
+            if (!e1.Sort.Equals(Cache.StringSort))
                 return;
+
+            Expr? f = null, t = null; // rewriting t := f (t has to some substitutable token - i.e., everything that is not concatenation or power)
+            if (!Cache.ExprToStrToken.TryGetValue(e1, out var s1) || s1 is not NamedStrToken) {
+                if (Cache.ExprToStrToken.TryGetValue(e2, out var s2) && s2 is NamedStrToken) {
+                    f = e2;
+                    t = e1;
+                }
+            }
+            else {
+                if (rewrite.ContainsKey(e1)) {
+                    if (Cache.ExprToStrToken.TryGetValue(e2, out var s2) && s2 is NamedStrToken) {
+                        f = e2;
+                        t = e1;
+                    }
+                }
+                else {
+                    f = e1;
+                    t = e2;
+                }
+            }
+            if (f is not null) {
+                Debug.Assert(t is not null);
+                Expr fc = f.Dup();
+                if (!rewrite.TryGetValue(fc, out var list)) {
+                    rewrite.Add(fc, list = []);
+                    undoStack.Add(() => rewrite.Remove(fc));
+                }
+                list.Add(t.Dup());
+                undoStack.Add(() => list.RemoveAt(list.Count - 1));
+
+                var w = watch.GetValueOrDefault(f, []);
+
+                for (int i = 0; i < w.Count; i++) {
+                    CreatedCB(w[i]);
+                }
+            }
 
             eqCount++;
             Log.WriteLine($"Eq ({eqCount}): {StrToken.ExprToStr(Graph, e1)} = {StrToken.ExprToStr(Graph, e2)}");
 
-            Str? s1r = TryParseStr(e1);
-            Str? s2r = TryParseStr(e2);
-            Debug.Assert(s1r is not null);
-            Debug.Assert(s2r is not null);
-
-            if (s1r.Count > s2r.Count)
-                (s1r, s2r) = (s2r, s1r);
-
+            Str? s1r = Cache.TryParseStr(e1);
+            Str? s2r = Cache.TryParseStr(e2);
             Debug.Assert(s1r is not null);
             Debug.Assert(s2r is not null);
 
@@ -507,24 +540,108 @@ public class OuterStringPropagator : UserPropagator {
             }
 #endif
             }
-            var eq = new StrEq(s1r, s2r);
-            HashSet<NamedStrToken> vars = [];
-            HashSet<SymCharToken> sChars = [];
-            HashSet<IntVar> iVars = [];
-            HashSet<CharToken> alph = [];
-            eq.CollectSymbols(vars, sChars, iVars, alph);
 
-            Root.AddConstraints(eq); // u = v
-            Root.AddConstraints(new IntEq(LenVar.MkLenPoly(s1r), LenVar.MkLenPoly(s2r))); // u = v => |u| = |v|
-            foreach (var a in alph) {
-                Root.AddConstraints(new IntEq(Parikh.MkParikhPoly(a, s1r), Parikh.MkParikhPoly(a, s2r))); // u = v => |u|_a = |v|_a
-            }
-            reportedEqs.Add((e1, e2));
-            undoStack.Add(() => reportedEqs.Pop());
+            EqInternal(s1r, e1, s2r, e2);
         }
         catch (Exception ex) {
             Console.WriteLine("Exception (Eq): " + ex.Message);
         }
+    }
+
+
+    void DisEqCB(Expr e1, Expr e2) {
+        try {
+            if (!e1.Sort.Equals(Cache.StringSort))
+                return;
+            // TODO: Fix for characters. e.g., o1 != o2 clauses infinite recursion!
+
+            StrVarToken x1 = GetFreshAuxStr();
+            Expr x1e = x1.ToExpr(Graph);
+            SymCharToken o1 = new();
+            StrVarToken y1 = GetFreshAuxStr();
+
+            StrVarToken x2 = GetFreshAuxStr();
+            Expr x2e = x2.ToExpr(Graph);
+            SymCharToken o2 = new();
+            StrVarToken y2 = GetFreshAuxStr();
+
+            Str u1 = [x1, o1, y1];
+            Str u2 = [x2, o2, y2];
+
+            Propagate([],
+                Ctx.MkEq(
+                    Ctx.MkNot(Ctx.MkEq(e1, e2)),
+                    Ctx.MkOr(
+                        Ctx.MkNot(Ctx.MkEq(Cache.MkLen(e1), Cache.MkLen(e2))),
+                        Ctx.MkAnd(
+                            Ctx.MkEq(e1, u1.ToExpr(Graph)),
+                            Ctx.MkEq(e2, u2.ToExpr(Graph)),
+                            Ctx.MkEq(Cache.MkLen(x1e), Cache.MkLen(x2e)),
+                            Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Graph), o2.ToExpr(Graph)))
+                        )
+                    )
+                )
+            );
+        }
+        catch (Exception ex) {
+            Console.WriteLine("Exception (DisEq): " + ex.Message);
+        }
+    }
+
+    public Expr CreateFresh(Expr e, Dictionary<Expr, Expr> oldToNew) {
+        if (e.IsConst) {
+            if (oldToNew.TryGetValue(e, out Expr? v))
+                return v;
+            Expr n = e.Context.MkFreshConst(e.FuncDecl.Name.ToString(), e.Sort);
+            oldToNew.Add(e.Dup(), n.Dup());
+            return n;
+        }
+        return e.FuncDecl.Apply(e.Args.Select(o => CreateFresh(o, oldToNew)).ToArray());
+    }
+}
+
+public class SaturatingStringPropagator : StringPropagator {
+
+    public override NielsenGraph Graph { get; }
+    public NielsenNode Root => Graph.Root;
+
+    List<(Expr lhs, Expr rhs)> reportedEqs = [];
+    List<BoolExpr> reportedFixed = [];
+
+    public SaturatingStringPropagator(Solver solver, ExpressionCache cache) : base(solver, cache) {
+        Graph = new NielsenGraph(this);
+        Final = FinalCB;
+    }
+
+    protected override void GotNegContains(Expr e) {
+        reportedFixed.Add((BoolExpr)e);
+        undoStack.Add(() => reportedFixed.Pop());
+        // TODO
+        throw new NotImplementedException("!contains");
+    }
+
+    public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
+
+        var eq = new StrEq(s1, s2);
+        HashSet<NamedStrToken> vars = [];
+        HashSet<SymCharToken> sChars = [];
+        HashSet<IntVar> iVars = [];
+        HashSet<CharToken> alph = [];
+        eq.CollectSymbols(vars, sChars, iVars, alph);
+
+        if (Root.StrEq.Add(eq)) // u = v
+            undoStack.Add(Root.StrEq.Pop);
+        if (Root.IntEq.Add(new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2)))) // u = v => |u| = |v|
+            undoStack.Add(Root.IntEq.Pop);
+        foreach (var a in alph) {
+            if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
+                undoStack.Add(Root.IntEq.Pop);
+        }
+        reportedEqs.Add((e1, e2));
+        undoStack.Add(() =>
+        {
+            reportedEqs.Pop();
+        });
     }
 
     int finalCnt;
@@ -534,7 +651,7 @@ public class OuterStringPropagator : UserPropagator {
             finalCnt++;
             Log.WriteLine("Final (" + finalCnt + ")");
             var res = Graph.Check();
-            if (res) 
+            if (res)
                 return;
             EqualityPairs pair = new();
             foreach (var (lhs, rhs) in reportedEqs) {
@@ -546,6 +663,201 @@ public class OuterStringPropagator : UserPropagator {
             Console.WriteLine("Exception (Final): " + ex.Message);
         }
     }
+
+    public bool GetModel(out Interpretation itp) {
+
+        HashSet<NamedStrToken> initSVars = [];
+        HashSet<SymCharToken> initSymChars = [];
+        HashSet<IntVar> initIVars = [];
+        HashSet<CharToken> initAlphabet = [];
+        Graph.Root.CollectSymbols(initSVars, initSymChars, initIVars, initAlphabet);
+
+        Debug.Assert(Graph.SatNodes.IsNonEmpty());
+        var satNode = Graph.SatNodes[0];
+
+        if (satNode.Parent is not null)
+            Graph.SubSolver.Check(satNode.Parent!.Assumption);
+        else
+            Graph.SubSolver.Check();
+
+        var model = Graph.SubSolver.Model;
+        itp = new Interpretation();
+        foreach (var c in model.Consts) {
+            if (c.Key.Apply() is not IntExpr i)
+                continue;
+            if (!Cache.ExprToIntToken.TryGetValue(i, out var v))
+                continue;
+            itp.Add(v, ((IntNum)c.Value).BigInteger);
+            if (!satNode.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
+                Console.WriteLine("Z3 Model is not consistent with internal bounds on " + v);
+        }
+        Debug.Assert(model is not null);
+
+        foreach (var parent in satNode.EnumerateParents()) {
+            foreach (var subst in parent.Subst) {
+                subst.AddToInterpretation(itp);
+            }
+        }
+
+        if (Options.ModelCompletion)
+            itp.Complete(initAlphabet);
+
+        bool modelCheck = true;
+        var allConstraints = Root.AllConstraints.Select(o => o.Clone());
+        foreach (var cnstr in allConstraints) {
+            var orig = cnstr.Clone();
+            cnstr.Apply(itp);
+            BacktrackReasons reason = BacktrackReasons.Unevaluated;
+            if (cnstr.Simplify(satNode, [], [], ref reason) == SimplifyResult.Satisfied)
+                continue;
+            modelCheck = false;
+            Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
+        }
+
+        Console.WriteLine(modelCheck ? "Model seems fine" : "ERROR: Created invalid model");
+
+        itp.ProjectTo(initSVars, initSymChars, initIVars);
+
+        return modelCheck;
+    }
+}
+
+public class LemmaStringPropagator : StringPropagator {
+
+    public override NielsenGraph Graph { get; }
+
+    public LemmaStringPropagator(Solver solver, ExpressionCache cache, NielsenGraph graph) : base(solver, cache) {
+        Graph = graph;
+    }
+}
+
+public class ExpressionCache : IDisposable {
+
+    bool disposed;
+
+    public readonly Context Ctx;
+    public readonly Sort StringSort;
+
+    public readonly FuncDecl ConcatFct;
+    public readonly FuncDecl PowerFct;
+
+    public bool IsConcat(FuncDecl f) => f.Equals(ConcatFct);
+    public bool IsPower(FuncDecl f) => f.Equals(PowerFct);
+
+    public readonly FuncDecl LenFct;
+
+    public bool IsLen(FuncDecl f) => f.Equals(LenFct);
+
+    public readonly Dictionary<CharToken, ParikhInfo> ParikInfo = [];
+    public readonly Dictionary<FuncDecl, InvParikhInfo> InvParikInfo = [];
+
+    public readonly Expr Epsilon;
+
+    // The easy functions
+    public readonly FuncDecl StrAtFct;
+    public readonly FuncDecl PrefixOfFct;
+    public readonly FuncDecl SuffixOfFct;
+    public readonly FuncDecl SubstringFct;
+
+    public bool IsStrAt(FuncDecl f) => f.Equals(StrAtFct);
+    public bool IsPrefixOf(FuncDecl f) => f.Equals(PrefixOfFct);
+    public bool IsSuffixOf(FuncDecl f) => f.Equals(SuffixOfFct);
+    public bool IsSubstring(FuncDecl f) => f.Equals(SubstringFct);
+
+    // The tricky ones
+    // contains, indexOf, (replace, replaceAll)
+    public readonly FuncDecl ContainsFct;
+    public readonly FuncDecl IndexOfFct;
+
+    public bool IsContains(FuncDecl f) => f.Equals(ContainsFct);
+    public bool IsIndexOf(FuncDecl f) => f.Equals(IndexOfFct);
+
+    public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
+    public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
+
+    public readonly Dictionary<IntVar, IntExpr> IntTokenToExpr = [];
+    public readonly Dictionary<IntExpr, IntVar> ExprToIntToken = [];
+
+    public ExpressionCache(Context ctx) {
+        Ctx = ctx;
+        StringSort = ctx.MkUninterpretedSort("Str");
+        Epsilon = ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
+        ConcatFct = ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
+        PowerFct = ctx.MkUserPropagatorFuncDecl("power", [StringSort, ctx.IntSort], StringSort);
+        LenFct = ctx.MkUserPropagatorFuncDecl("len", [StringSort], ctx.IntSort);
+
+        StrAtFct = ctx.MkUserPropagatorFuncDecl("strAt", [StringSort], StringSort);
+        PrefixOfFct = ctx.MkUserPropagatorFuncDecl("prefixOf", [StringSort, StringSort], ctx.BoolSort);
+        SuffixOfFct = ctx.MkUserPropagatorFuncDecl("suffixOf", [StringSort, StringSort], ctx.BoolSort);
+        SubstringFct = ctx.MkUserPropagatorFuncDecl("subStr", [StringSort, ctx.IntSort, ctx.IntSort], StringSort);
+
+        ContainsFct = ctx.MkUserPropagatorFuncDecl("contains", [StringSort, StringSort], ctx.BoolSort);
+        IndexOfFct = ctx.MkUserPropagatorFuncDecl("indexOf", [StringSort, StringSort, ctx.IntSort], ctx.IntSort);
+    }
+
+    public void Dispose() {
+        if (disposed)
+            return;
+        disposed = true;
+        StrTokenToExpr.Clear();
+        ExprToIntToken.Clear();
+        StrVarToken.DisposeAll();
+    }
+
+    public Expr? GetCachedStrExpr(StrToken t, NielsenGraph graph) {
+        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
+            mod = 0;
+        return StrTokenToExpr.GetValueOrDefault((t, mod));
+    }
+
+    public IntExpr? GetCachedIntExpr(IntVar t) => IntTokenToExpr.GetValueOrDefault(t);
+
+    public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
+        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
+            mod = 0;
+        StrTokenToExpr.Add((t, mod), e);
+        ExprToStrToken.Add(e, t);
+    }
+
+    public void SetCachedExpr(IntVar t, IntExpr e) {
+        IntTokenToExpr.Add(t, e);
+        ExprToIntToken.Add((IntExpr)e.Dup(), t);
+    }
+
+    public ParikhInfo GetParikhInfo(CharToken c) {
+        if (!ParikInfo.TryGetValue(c, out ParikhInfo? info)) {
+            info = new ParikhInfo(c, this);
+            ParikInfo.Add(c, info);
+        }
+        return info;
+    }
+
+
+    public IntExpr MkLen(Expr e) =>
+        (IntExpr)LenFct.Apply(e);
+
+    public IntExpr MkParikh(CharToken c, Expr e) {
+        var info = GetParikhInfo(c);
+        return (IntExpr)info.Total.Apply(e);
+    }
+
+
+    public Expr MkConcat(Expr e1, Expr e2) {
+        if (e1.Equals(Epsilon))
+            return e2;
+        if (e2.Equals(Epsilon))
+            return e1;
+        return ConcatFct.Apply(e1, e2);
+    }
+
+    public Expr MkPower(Expr e, IntExpr n) {
+        if (n.Equals(Ctx.MkInt(0)))
+            return Epsilon;
+        if (n.Equals(Ctx.MkInt(1)))
+            return e;
+        return PowerFct.Apply(e, n);
+    }
+
 
     public Constraint? TryParse(BoolExpr expr) {
         FuncDecl decl = expr.FuncDecl;
@@ -638,12 +950,12 @@ public class OuterStringPropagator : UserPropagator {
     }
 
     public Str? TryParseStr(Expr expr) {
-        FuncDecl decl = expr.FuncDecl;
+        FuncDecl f = expr.FuncDecl;
         if (expr.Sort.Equals(StringSort)) {
             // Custom Z3
             if (expr.Equals(Epsilon))
                 return [];
-            if (decl.Equals(ConcatFct)) {
+            if (IsConcat(f)) {
                 List<StrToken> res = [];
                 for (uint i = 0; i < expr.NumArgs; i++) {
                     if (TryParseStr(expr.Arg(i)) is not { } str)
@@ -652,7 +964,7 @@ public class OuterStringPropagator : UserPropagator {
                 }
                 return new Str(res);
             }
-            if (decl.Equals(PowerFct)) {
+            if (IsPower(f)) {
                 Str? @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
@@ -661,7 +973,7 @@ public class OuterStringPropagator : UserPropagator {
                     return null;
                 return new Str([new PowerToken(@base, p)]);
             }
-            if (decl.Equals(StrAtFct)) {
+            if (IsStrAt(f)) {
                 Str? @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
@@ -670,7 +982,7 @@ public class OuterStringPropagator : UserPropagator {
                     return null;
                 return [new StrAtToken(@base, at)];
             }
-            if (decl.Equals(SubstringFct)) {
+            if (IsSubstring(f)) {
                 Str? @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
@@ -690,7 +1002,7 @@ public class OuterStringPropagator : UserPropagator {
             if (expr.IsString)
                 return new Str(expr.String.Select(o => (StrToken)new CharToken(o)).ToArray());
             if (expr.IsConst)
-                return new Str([StrVarToken.GetOrCreate(decl.Name.ToString())]);
+                return new Str([StrVarToken.GetOrCreate(f.Name.ToString())]);
             if (expr.IsConcat) {
                 Str r = [];
                 foreach (var arg in expr.Args) {
@@ -723,7 +1035,7 @@ public class OuterStringPropagator : UserPropagator {
                 return [new SubStrToken(@base, from, len)];
             }
         }
-        throw new NotSupportedException(decl.Name.ToString());
+        throw new NotSupportedException(f.Name.ToString());
     }
 
     public Poly? TryParseInt(IntExpr expr) {
@@ -810,71 +1122,4 @@ public class OuterStringPropagator : UserPropagator {
         throw new NotSupportedException(expr.FuncDecl.Name.ToString());
     }
 
-    public Expr CreateFresh(Expr e, Dictionary<Expr, Expr> oldToNew) {
-        if (e.IsConst) {
-            if (oldToNew.TryGetValue(e, out Expr? v))
-                return v;
-            Expr n = e.Context.MkFreshConst(e.FuncDecl.Name.ToString(), e.Sort);
-            oldToNew.Add(e.Dup(), n.Dup());
-            return n;
-        }
-        return e.FuncDecl.Apply(e.Args.Select(o => CreateFresh(o, oldToNew)).ToArray());
-    }
-
-    public bool GetModel(out Interpretation itp) {
-        
-        HashSet<NamedStrToken> initSVars = [];
-        HashSet<SymCharToken> initSymChars = [];
-        HashSet<IntVar> initIVars = [];
-        HashSet<CharToken> initAlphabet = [];
-        Graph.Root.CollectSymbols(initSVars, initSymChars, initIVars, initAlphabet);
-
-        Debug.Assert(Graph.SatNodes.IsNonEmpty());
-        var satNode = Graph.SatNodes[0];
-
-        if (satNode.Parent is not null)
-            Graph.SubSolver.Check(satNode.Parent!.Assumption);
-        else
-            Graph.SubSolver.Check();
-
-        var model = Graph.SubSolver.Model;
-        itp = new Interpretation();
-        foreach (var c in model.Consts) {
-            if (c.Key.Apply() is not IntExpr i)
-                continue;
-            if (!ExprToIntToken.TryGetValue(i, out var v))
-                continue;
-            itp.Add(v, ((IntNum)c.Value).BigInteger);
-            if (!satNode.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
-                Console.WriteLine("Z3 Model is not consistent with internal bounds on " + v);
-        }
-        Debug.Assert(model is not null);
-        
-        foreach (var parent in satNode.EnumerateParents()) {
-            foreach (var subst in parent.Subst) {
-                subst.AddToInterpretation(itp);
-            }
-        }
-
-        if (Options.ModelCompletion)
-            itp.Complete(initAlphabet);
-
-        bool modelCheck = true;
-        var allConstraints = Root.AllConstraints.Select(o => o.Clone());
-        foreach (var cnstr in allConstraints) {
-            var orig = cnstr.Clone();
-            cnstr.Apply(itp);
-            BacktrackReasons reason = BacktrackReasons.Unevaluated;
-            if (cnstr.Simplify(satNode, [], [], ref reason) == SimplifyResult.Satisfied)
-                continue;
-            modelCheck = false;
-            Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
-        }
-
-        Console.WriteLine(modelCheck ? "Model seems fine" : "ERROR: Created invalid model");
-
-        itp.ProjectTo(initSVars, initSymChars, initIVars);
-
-        return modelCheck;
-    }
 }

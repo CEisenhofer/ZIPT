@@ -61,7 +61,7 @@ public class StrPrefixOf : StrConstraint {
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Propagator.PrefixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
+        (BoolExpr)graph.Cache.PrefixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
 
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         S.CollectSymbols(vars, sChars, iVars, alphabet);

@@ -23,11 +23,28 @@ public class IntEq : IntConstraint {
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);
 
-    public bool Equals(IntEq other) => 
-        Poly.Equals(other.Poly);
+    public bool Equals(IntEq other) {
+        // Poly == other.Poly || Poly == -other.Poly (this is the same => Normalize)
+        if (!Poly.IsZero && Poly.First().occ.IsNeg) 
+            Poly = Poly.Negate();
+        if (!other.Poly.IsZero && other.Poly.First().occ.IsNeg) 
+            other.Poly = other.Poly.Negate();
+        return Poly.Equals(other.Poly);
+    }
 
-    public override int GetHashCode() =>
-        Poly.GetHashCode();
+    public override int GetHashCode() {
+        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+            Poly = Poly.Negate();
+        return Poly.GetHashCode();
+    }
+
+    public override int CompareToInternal(IntConstraint other) {
+        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+            Poly = Poly.Negate();
+        if (!((IntEq)other).Poly.IsZero && ((IntEq)other).Poly.First().occ.IsNeg)
+            ((IntEq)other).Poly = ((IntEq)other).Poly.Negate();
+        return Poly.CompareTo(((IntEq)other).Poly);
+    }
 
     public override string ToString() {
         Poly.GetPosNeg(out var pos, out var neg);
@@ -77,7 +94,4 @@ public class IntEq : IntConstraint {
 
     public override IntConstraint Negate() =>
         new IntNonEq(Poly.Clone());
-
-    public override int CompareToInternal(IntConstraint other) => 
-        Poly.CompareTo(((IntEq)other).Poly);
 }

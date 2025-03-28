@@ -14,6 +14,9 @@ public readonly struct Interval {
     public bool IsFull => Min == Len.NegInf && Max == Len.PosInf;
     public bool IsUnit => Min == Max;
 
+    public bool HasLow => Min != Len.NegInf;
+    public bool HasHigh => Max != Len.PosInf;
+
     public Interval(Len minMax) {
         Min = minMax;
         Max = minMax;

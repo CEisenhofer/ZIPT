@@ -61,14 +61,14 @@ public class StrContains : StrConstraint {
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Propagator.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
+        (BoolExpr)graph.Cache.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
 
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         S.CollectSymbols(vars, sChars, iVars, alphabet);
         Contained.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
-    public override StrPrefixOf Negate() =>
+    public override StrContains Negate() =>
         new(S.Clone(), Contained.Clone(), !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 

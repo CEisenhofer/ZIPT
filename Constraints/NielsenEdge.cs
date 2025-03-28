@@ -48,12 +48,14 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
 
     public void IncModCount(NielsenGraph graph) {
         foreach (var b in BumpedModCount) {
-            int prev = graph.CurrentModificationCnt.GetValueOrDefault(b);
+            int prev = graph.CurrentModificationCnt.GetValueOrDefault(b, 0);
             graph.CurrentModificationCnt[b] = prev + 1;
         }
+        graph.ModCnt++;
     }
 
     public void DecModCount(NielsenGraph graph) {
+        Debug.Assert(graph.ModCnt > 0);
         for (int i = BumpedModCount.Count; i > 0; i--) {
             NamedStrToken toDec = BumpedModCount[i - 1];
             int prev = graph.CurrentModificationCnt[toDec];
@@ -63,6 +65,7 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
             else
                 graph.CurrentModificationCnt[toDec] = prev - 1;
         }
+        graph.ModCnt--;
     }
 
     public override bool Equals(object? obj) =>

@@ -71,11 +71,16 @@ public class StrConstraintSet<T> : IEnumerable<T>, IStrConstraintSet where T : S
         }
     }
 
-    public void Add(T t) {
+    public bool Add(T t) {
         int idx = constraints.BinarySearch(t);
-        if (idx < 0)
-            constraints.Insert(~idx, t);
+        if (idx >= 0)
+            return false;
+        constraints.Insert(~idx, t);
+        return true;
     }
+
+    public void Pop() => 
+        constraints.RemoveAt(constraints.Count - 1);
 
     public override string ToString() =>
         Satisfied

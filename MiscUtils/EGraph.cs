@@ -3,7 +3,7 @@ using Microsoft.Z3;
 
 namespace StringBreaker.MiscUtils;
 
-class EGraph {
+public class EGraph {
 
     readonly Dictionary<Expr, Expr> parents = [];
 

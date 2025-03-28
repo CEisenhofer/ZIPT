@@ -36,9 +36,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
                 c = node.MkChild(node, [subst, p.varDecomp]);
             }
-            foreach (var cnstr in c.AllConstraints) {
-                cnstr.Apply(subst);
-            }
+            c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);
             c.AddConstraints(IntLe.MkLe(new Poly(0), new Poly(newPow)));
@@ -50,9 +48,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
         subst = new SubstVar(Var, s);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllConstraints) {
-            cnstr.Apply(subst);
-        }
+        c.Apply(subst);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

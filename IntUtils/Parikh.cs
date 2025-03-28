@@ -9,6 +9,7 @@ public class Parikh : NonTermInt {
 
     public CharToken Sym { get; }
     public StrVarToken Var { get; }
+    public override Len MinLen => 0;
 
     public Parikh(CharToken c, StrVarToken v) {
         Sym = c;
@@ -61,7 +62,7 @@ public class Parikh : NonTermInt {
     }
 
     public override IntExpr ToExpr(NielsenGraph graph) => 
-        graph.Propagator.MkParikh(Sym, Var.ToExpr(graph));
+        graph.Cache.MkParikh(Sym, Var.ToExpr(graph));
 
     public override string ToString() => $"|{Var}|[{Sym}]";
 }

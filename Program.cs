@@ -63,7 +63,8 @@ public static class Program {
             Console.WriteLine(args[0]);
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
-            using OuterStringPropagator propagator = new(solver);
+            using ExpressionCache cache = new(ctx);
+            using SaturatingStringPropagator propagator = new(solver, cache);
             try {
                 AssertSMTLIB(ctx, solver, propagator, args[0]);
             }
@@ -80,12 +81,15 @@ public static class Program {
             Console.WriteLine(file);
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
-            using OuterStringPropagator propagator = new(solver);
+            using ExpressionCache cache = new(ctx);
+            using SaturatingStringPropagator propagator = new(solver, cache);
             total++;
             try {
                 AssertSMTLIB(ctx, solver, propagator, file);
                 if (Solve(propagator, timeout) is SolveResult.SAT or SolveResult.UNSAT)
                     solved++;
+                else 
+                    Console.WriteLine("Failed on " + file);
                 GC.Collect(0);
             }
             catch (NotSupportedException ex) {
@@ -95,7 +99,7 @@ public static class Program {
         Console.WriteLine("Solved: " + solved + " / " + total);
     }
 
-    static SolveResult Solve(OuterStringPropagator propagator, ulong timeout) {
+    static SolveResult Solve(SaturatingStringPropagator propagator, ulong timeout) {
         Global.SetParameter("smt.random_seed", "16");
         Global.SetParameter("nlsat.randomize", "false");
         Global.SetParameter("nlsat.seed", "10");
@@ -131,11 +135,13 @@ public static class Program {
         return SolveResult.UNKNOWN;
     }
 
-    static void AssertSMTLIB(Context ctx, Solver solver, OuterStringPropagator propagator, string path) {
+    static void AssertSMTLIB(Context ctx, Solver solver, StringPropagator propagator, string path) {
         string content = File.ReadAllText(path);
         BoolExpr[]? exprs = ctx.ParseSMTLIB2String(content);
         foreach (var expr in exprs) {
-            var cnstr = propagator.TryParse(expr);
+            var cnstr = propagator.Cache.TryParse(expr);
+            if (cnstr is null)
+                throw new NotSupportedException(expr.ToString());
             solver.Assert(cnstr.ToExpr(propagator.Graph));
         }
     }
@@ -164,7 +170,8 @@ public static class Program {
         );
         using Context ctx = new();
         using Solver solver = ctx.MkSimpleSolver();
-        using OuterStringPropagator propagator = new(solver);
+        using ExpressionCache cache = new(ctx);
+        using SaturatingStringPropagator propagator = new(solver, cache);
         solver.Assert(eq.ToExpr(propagator.Graph));
         Solve(propagator, 0);
     }

@@ -85,7 +85,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
         if (e.IsLE)
             return $"({ExprToStr(graph, e.Arg(0))} \u2264 {ExprToStr(graph, e.Arg(1))})";
         if (graph is not null) {
-            if (graph.Propagator.LenFct.Equals(e.FuncDecl))
+            if (graph.Cache.IsLen(e.FuncDecl))
                 return $"|[{ExprToStr(graph, e.Args[0])}]|";
             var s = graph.TryParseStr(e);
             if (s is not null)

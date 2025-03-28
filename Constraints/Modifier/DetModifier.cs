@@ -8,16 +8,16 @@ public class DetModifier : ModifierBase {
     public List<Subst> Substitutions { get; } = [];
     public HashSet<Constraint> SideConstraints { get; } = [];
     public bool Trivial => Substitutions.IsEmpty() && SideConstraints.IsEmpty();
+    public bool Success { get; set; }
 
     public override void Apply(NielsenNode node) {
+        Success = SideConstraints.IsEmpty() || Substitutions.IsNonEmpty();
         var c = node.MkChild(node, Substitutions);
         foreach (var subst in Substitutions) {
-            foreach (var cnstr in c.AllConstraints) {
-                cnstr.Apply(subst);
-            }
+            c.Apply(subst);
         }
         foreach (var cnstr in SideConstraints) {
-            c.AddConstraints(cnstr);
+            Success |= c.AddConstraints(cnstr);
             c.Parent!.SideConstraints.Add(cnstr.Clone());
         }
     }

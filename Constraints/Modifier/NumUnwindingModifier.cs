@@ -3,7 +3,7 @@ using StringBreaker.IntUtils;
 
 namespace StringBreaker.Constraints.Modifier;
 
-public class NumUnwindingModifier : ModifierBase {
+public abstract class NumUnwindingModifier : ModifierBase {
 
     public Poly Num { get; }
 
@@ -26,4 +26,12 @@ public class NumUnwindingModifier : ModifierBase {
         Num.CompareTo(((NumUnwindingModifier)otherM).Num);
 
     public override string ToString() => $"{Num} = 0 || 1 <= {Num}";
+}
+
+class ConstNumUnwindingModifier : NumUnwindingModifier {
+    public ConstNumUnwindingModifier(Poly num) : base(num) { }
+}
+
+class VarNumUnwindingModifier : NumUnwindingModifier {
+    public VarNumUnwindingModifier(Poly num) : base(num) { }
 }

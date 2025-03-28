@@ -7,6 +7,7 @@ namespace StringBreaker.IntUtils;
 public class LenVar : NonTermInt {
 
     StrVarToken Var { get; }
+    public override Len MinLen => 0;
 
     public LenVar(StrVarToken v) =>
         Var = v;
@@ -15,6 +16,7 @@ public class LenVar : NonTermInt {
     public bool Equals(LenVar other) => Var.Equals(other.Var);
 
     public override int GetHashCode() => Var.GetHashCode() * 416749777;
+
     public override Poly Apply(Subst subst) => 
         MkLenPoly(subst.ResolveVar(Var));
     public override Poly Apply(Interpretation subst) =>
@@ -50,7 +52,7 @@ public class LenVar : NonTermInt {
         HashSet<CharToken> alphabet) => vars.Add(Var);
 
     public override IntExpr ToExpr(NielsenGraph graph) => 
-        graph.Propagator.MkLen(Var.ToExpr(graph));
+        graph.Cache.MkLen(Var.ToExpr(graph));
 
     public override string ToString() => $"|{Var}|";
 }

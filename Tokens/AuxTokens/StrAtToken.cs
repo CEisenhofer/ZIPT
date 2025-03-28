@@ -20,11 +20,11 @@ public sealed class StrAtToken : NamedStrToken {
     public override StrAtToken GetExtension2() => (StrAtToken)(Extension2 ??= new StrAtToken(S, I));
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Propagator.GetCachedStrExpr(this);
+        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        e = graph.Propagator.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
-        graph.Propagator.SetCachedExpr(this, e);
+        e = graph.Cache.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
+        graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }
 }

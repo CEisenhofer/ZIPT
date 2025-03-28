@@ -10,11 +10,11 @@ public class ParikhInfo : IDisposable {
     // 1st argument: string; 2nd argument: modulo
     public Dictionary<uint, FuncDecl> Residual { get; }
 
-    public ParikhInfo(CharToken c, OuterStringPropagator propagator) {
+    public ParikhInfo(CharToken c, ExpressionCache cache) {
         Char = c;
-        Context ctx = propagator.Ctx;
-        Total = ctx.MkUserPropagatorFuncDecl("#" + c.Value, [propagator.StringSort], ctx.IntSort);
-        propagator.InvParikInfo.Add(Total, new InvParikhInfo(this));
+        Context ctx = cache.Ctx;
+        Total = ctx.MkUserPropagatorFuncDecl("#" + c.Value, [cache.StringSort], ctx.IntSort);
+        cache.InvParikInfo.Add(Total, new InvParikhInfo(this));
         Residual = [];
     }
 
@@ -25,16 +25,16 @@ public class ParikhInfo : IDisposable {
         }
     }
 
-    public FuncDecl GetResidual(uint mod, OuterStringPropagator propagator) {
+    public FuncDecl GetResidual(uint mod, ExpressionCache cache) {
         if (Residual.TryGetValue(mod, out var decl))
             return decl;
 
-        Context ctx = propagator.Ctx;
+        Context ctx = cache.Ctx;
         Residual.Add(mod,
             decl = ctx.MkUserPropagatorFuncDecl(
-                "#" + Char.Value + "%" + mod, [propagator.StringSort, ctx.IntSort], ctx.IntSort));
+                "#" + Char.Value + "%" + mod, [cache.StringSort, ctx.IntSort], ctx.IntSort));
 
-        propagator.InvParikInfo.Add(decl, new InvParikhInfo(this, mod));
+        cache.InvParikInfo.Add(decl, new InvParikhInfo(this, mod));
         return decl;
     }
 

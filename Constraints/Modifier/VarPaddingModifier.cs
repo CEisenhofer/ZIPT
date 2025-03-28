@@ -28,9 +28,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
             }
             subst = new SubstVar(Var, s);
             c = node.MkChild(node, [subst]);
-            foreach (var cnstr in c.AllConstraints) {
-                cnstr.Apply(subst);
-            }
+            c.Apply(subst);
         }
 
         ch[^1] = new SymCharToken();
@@ -42,9 +40,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
 
         subst = new SubstVar(Var, s);
         c = node.MkChild(node, [subst]);
-        foreach (var cnstr in c.AllConstraints) {
-            cnstr.Apply(subst);
-        }
+        c.Apply(subst);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
