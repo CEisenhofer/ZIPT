@@ -39,8 +39,13 @@ public class NielsenGraph {
     }
 
     public bool Check() {
-        if (NielsenNode.Simplify(Root) != BacktrackReasons.Unevaluated)
+        SatNodes.Clear();
+        if (OuterPropagator.Cancel)
+            throw new Exception("Timeout");
+        if (NielsenNode.Simplify(Root) != BacktrackReasons.Unevaluated) {
+            Debug.Assert(Root.IsConflict);
             return false;
+        }
         Root.AssertToZ3(Root.AllIntConstraints.Select(o => o.ToExpr(this)));
         Root.AssertToZ3(Root.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
         DepthBound = Options.ItDeepDepthStart;
@@ -119,7 +124,10 @@ public class NielsenGraph {
                     .Append(edge.Tgt.Id)
                     .Append(" [label=\"")
                     .Append(NielsenNode.DotEscapeStr(edge.ModStr))
-                    .AppendLine("\"];");
+                    .Append('"');
+                if (edge.Tgt.IsConflict)
+                    sb.Append(", color=red");
+                sb.AppendLine("];");
             }
         }
         foreach (var s in subsumed) {

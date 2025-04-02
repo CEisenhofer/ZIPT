@@ -4,20 +4,22 @@ namespace StringBreaker.Constraints.Modifier;
 
 public class ConstNielsenModifier : DirectedNielsenModifier {
 
-    public StrVarToken Var { get; }
+    public StrVarToken V { get; }
     public StrToken Prefix { get; }
 
-    public ConstNielsenModifier(StrVarToken var, StrToken pr, bool forward) : base(forward) {
-        Var = var;
+    public ConstNielsenModifier(StrVarToken v, StrToken pr, bool forward) : base(forward) {
+        V = v;
         Prefix = pr;
     }
 
     public override void Apply(NielsenNode node) {
-        var subst = new SubstVar(Var);
-        var c = node.MkChild(node, [subst]);
+        // V / "" (progress)
+        // V / Prefix V (no progress)
+        var subst = new SubstVar(V);
+        var c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        subst = new SubstVar(Var, Forwards ? [Prefix, Var] : [Var, Prefix]);
-        c = node.MkChild(node, [subst]);
+        subst = new SubstVar(V, Forwards ? [Prefix, V] : [V, Prefix]);
+        c = node.MkChild(node, [subst], false);
         c.Apply(subst);
     }
 
@@ -26,10 +28,10 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
         int cmp = Forwards.CompareTo(other.Forwards);
         if (cmp != 0)
             return cmp;
-        cmp = Var.CompareTo(other.Var);
+        cmp = V.CompareTo(other.V);
         return cmp != 0 ? cmp : Prefix.CompareTo(other.Prefix);
     }
 
     public override string ToString() => 
-        $"{Var} / ε || {Var} / {(Forwards ? (Var.ToString() + Prefix) : (Prefix + Var.ToString()))}";
+        $"{V} / ε || {V} / {(Forwards ? (V.ToString() + Prefix) : (Prefix + V.ToString()))}";
 }

@@ -22,6 +22,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
     }
 
     public override void Apply(NielsenNode node) {
+        // Eq.LHS[0..LhsIdx] = Eq.RHS[0..RhsIdx] && Eq.LHS[LhsIdx..] = Eq.RHS[RhsIdx..] (progress)
         Str lhs1 = new Str(Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
         Str rhs1 = new Str(Forwards ? RhsIdx : Eq.RHS.Count - RhsIdx);
         Str lhs2 = new Str(!Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
@@ -39,14 +40,20 @@ public class EqSplitModifier : DirectedNielsenModifier {
             rhs2.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
         }
 
-        var c = node.MkChild(node, []);
+        var c = node.MkChild(node, [], true);
         c.RemoveConstraint(Eq);
         var eq1 = new StrEq(lhs1, rhs1);
         var eq2 = new StrEq(lhs2, rhs2);
         c.AddConstraints(eq1);
         c.AddConstraints(eq2);
-        c.Parent!.SideConstraints.Add(eq1.Clone());
-        c.Parent!.SideConstraints.Add(eq2.Clone());
+        IntEq iEq1 = new IntEq(LenVar.MkLenPoly(lhs1), LenVar.MkLenPoly(rhs1));
+        IntEq iEq2 = new IntEq(LenVar.MkLenPoly(lhs2), LenVar.MkLenPoly(rhs2));
+        c.Parent!.SideConstraints.Add(eq1);
+        c.Parent!.SideConstraints.Add(eq2);
+        if (!iEq1.Poly.IsZero)
+            c.Parent!.SideConstraints.Add(iEq1);
+        if (!iEq2.Poly.IsZero)
+            c.Parent!.SideConstraints.Add(iEq2);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

@@ -23,6 +23,8 @@ public class SubstSChar : Subst {
 
     public override Expr KeyExpr(NielsenGraph graph) => Sym.ToExpr(graph);
     public override Expr ValueExpr(NielsenGraph graph) => C.ToExpr(graph);
+    public override IntExpr KeyLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
+    public override IntExpr ValueLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
 
     public override string ToString() => $"{Sym} / {C}";
 

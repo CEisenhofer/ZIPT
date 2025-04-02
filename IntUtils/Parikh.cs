@@ -5,16 +5,11 @@ using StringBreaker.Tokens;
 
 namespace StringBreaker.IntUtils;
 
-public class Parikh : NonTermInt {
+public class Parikh : StrDepIntVar {
 
     public CharToken Sym { get; }
-    public StrVarToken Var { get; }
-    public override Len MinLen => 0;
 
-    public Parikh(CharToken c, StrVarToken v) {
-        Sym = c;
-        Var = v;
-    }
+    public Parikh(CharToken c, StrVarToken v) : base(v) => Sym = c;
 
     public override bool Equals(object? obj) => obj is Parikh var && Equals(var);
     public bool Equals(Parikh other) => Var.Equals(other.Var) && Sym.Equals(other.Sym);

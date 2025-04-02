@@ -1,4 +1,8 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel.Design.Serialization;
+using System.Diagnostics;
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Xml.Linq;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
@@ -15,6 +19,8 @@ public abstract class StringPropagator : UserPropagator {
     public readonly Context Ctx;
     public readonly Solver Solver;
     public readonly ExpressionCache Cache;
+
+    public Dictionary<SymCharToken, HashSet<UnitToken>> reportedDiseq = [];
 
     public abstract NielsenGraph Graph { get; }
 
@@ -42,11 +48,15 @@ public abstract class StringPropagator : UserPropagator {
     StrVarToken GetFreshAuxStr() => StrVarToken.GetOrCreate("x");
 
     public override void Push() {
+        if (Graph.OuterPropagator.Cancel)
+            throw new Exception("Timeout");
         Log.WriteLine("Push " + undoStack.Level);
         undoStack.Push();
     }
 
     public override void Pop(uint n) {
+        if (Graph.OuterPropagator.Cancel)
+            throw new Exception("Timeout");
         try {
             Log.WriteLine("Pop to " + (undoStack.Level - n));
             undoStack.Pop((int)n);
@@ -315,7 +325,7 @@ public abstract class StringPropagator : UserPropagator {
             );
             return;
         }
-        if (Cache.IsLen(f)) {
+        /*if (Cache.IsLen(f)) {
             Expr arg0 = e.Arg(0);
             FuncDecl f0 = arg0.FuncDecl;
             if (Cache.IsConcat(f0)) {
@@ -363,66 +373,99 @@ public abstract class StringPropagator : UserPropagator {
                     undoStack.Add(() => watch.Remove(arg0d));
                 }
                 list.Add(e.Dup());
-                undoStack.Add(() => list.RemoveAt(list.Count - 1));
+                undoStack.Add(() => list.Pop());
             }
             return;
-        }
-        if (Cache.InvParikInfo.TryGetValue(f, out var ipi)) {
-            Expr arg0 = e.Arg(0);
-            FuncDecl f0 = arg0.FuncDecl;
-            if (Cache.IsConcat(f0)) {
-                Stack<Expr> args = [];
-                args.Push(arg0);
-                IntExpr sum = Ctx.MkInt(0);
-                while (args.IsNonEmpty()) {
-                    var arg = args.Pop();
-                    if (Cache.IsConcat(arg.FuncDecl)) {
-                        args.Push(arg.Arg(0));
-                        args.Push(arg.Arg(1));
-                        continue;
-                    }
-                    sum = (IntExpr)Ctx.MkAdd(sum, (IntExpr)ipi.Info.Total.Apply(arg));
-                }
-                Propagate([], Ctx.MkEq(e, sum));
-                return;
-            }
-            if (f0.Equals(Cache.Epsilon.FuncDecl)) {
-                Propagate([], Ctx.MkEq(e, Ctx.MkInt(0)));
-                return;
-            }
-            if (Cache.IsPower(f0)) {
-                Propagate([], Ctx.MkEq(e, Ctx.MkMul((IntExpr)ipi.Info.Total.Apply(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
-                return;
-            }
-            if (Cache.ExprToStrToken.TryGetValue(arg0, out var s)) {
-                if (s is UnitToken) {
-                    Propagate([], Ctx.MkEq(e, Ctx.MkITE(
-                        Ctx.MkEq(s.ToExpr(Graph), ipi.Info.Char.ToExpr(Graph)),
-                        Ctx.MkInt(1), Ctx.MkInt(0))));
-                    return;
-                }
-                Debug.Assert(s is NamedStrToken);
-                if (rewrite.TryGetValue(arg0, out var r)) {
-                    foreach (var r0 in r) {
-                        EqualityPairs eq = new();
-                        eq.Add(arg0, r0);
-                        Propagate([], eq, Ctx.MkEq(e, ipi.Info.Total.Apply(r0)));
-                    }
-                    return;
-                }
-                Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
-                if (!watch.TryGetValue(arg0, out var list)) {
-                    Expr arg0d = arg0.Dup();
-                    watch.Add(arg0d, list = []);
-                    undoStack.Add(() => watch.Remove(arg0d));
-                }
-                list.Add(e.Dup());
-                undoStack.Add(() => list.RemoveAt(list.Count - 1));
-            }
-            return;
-        }
+        }*/
+        // if (Cache.InvParikInfo.TryGetValue(f, out var ipi)) {
+        //     Expr arg0 = e.Arg(0);
+        //     FuncDecl f0 = arg0.FuncDecl;
+        //     if (Cache.IsConcat(f0)) {
+        //         Stack<Expr> args = [];
+        //         args.Push(arg0);
+        //         IntExpr sum = Ctx.MkInt(0);
+        //         while (args.IsNonEmpty()) {
+        //             var arg = args.Pop();
+        //             if (Cache.IsConcat(arg.FuncDecl)) {
+        //                 args.Push(arg.Arg(0));
+        //                 args.Push(arg.Arg(1));
+        //                 continue;
+        //             }
+        //             sum = (IntExpr)Ctx.MkAdd(sum, (IntExpr)ipi.Info.Total.Apply(arg));
+        //         }
+        //         Propagate([], Ctx.MkEq(e, sum));
+        //         return;
+        //     }
+        //     if (f0.Equals(Cache.Epsilon.FuncDecl)) {
+        //         Propagate([], Ctx.MkEq(e, Ctx.MkInt(0)));
+        //         return;
+        //     }
+        //     if (Cache.IsPower(f0)) {
+        //         Propagate([], Ctx.MkEq(e, Ctx.MkMul((IntExpr)ipi.Info.Total.Apply(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
+        //         return;
+        //     }
+        //     if (Cache.ExprToStrToken.TryGetValue(arg0, out var s)) {
+        //         if (s is UnitToken) {
+        //             Propagate([], Ctx.MkEq(e, Ctx.MkITE(
+        //                 Ctx.MkEq(s.ToExpr(Graph), ipi.Info.Char.ToExpr(Graph)),
+        //                 Ctx.MkInt(1), Ctx.MkInt(0))));
+        //             return;
+        //         }
+        //         Debug.Assert(s is NamedStrToken);
+        //         if (rewrite.TryGetValue(arg0, out var r)) {
+        //             foreach (var r0 in r) {
+        //                 EqualityPairs eq = new();
+        //                 eq.Add(arg0, r0);
+        //                 Propagate([], eq, Ctx.MkEq(e, ipi.Info.Total.Apply(r0)));
+        //             }
+        //             return;
+        //         }
+        //         Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
+        //         if (!watch.TryGetValue(arg0, out var list)) {
+        //             Expr arg0d = arg0.Dup();
+        //             watch.Add(arg0d, list = []);
+        //             undoStack.Add(() => watch.Remove(arg0d));
+        //         }
+        //         list.Add(e.Dup());
+        //         undoStack.Add(() => list.Pop());
+        //     }
+        //     return;
+        // }
     }
 
+    protected virtual void AddCharDiseqInternal(SymCharToken su1, UnitToken u2) {}
+
+    void AddCharDiseq(UnitToken u1, UnitToken u2) {
+        if (u1 is not SymCharToken su1) {
+            if (u2 is not SymCharToken)
+                return;
+            (u1, u2) = (u2, u1);
+            su1 = (SymCharToken)u1;
+        }
+
+        AddCharDiseqInternal(su1, u2);
+
+        if (!reportedDiseq.TryGetValue(su1, out var d1)) {
+            d1 = [];
+            reportedDiseq.Add(su1, d1);
+            undoStack.Add(() => reportedDiseq.Remove(su1));
+        }
+        if (d1.Add(u2))
+            undoStack.Add(() => d1.Remove(u2));
+
+        if (u2 is not SymCharToken su2) 
+            return;
+
+        if (!reportedDiseq.TryGetValue(su2, out var d2)) {
+            d2 = [];
+            reportedDiseq.Add(su2, d2);
+            undoStack.Add(() => reportedDiseq.Remove(su2));
+        }
+        if (d2.Add(su1))
+            undoStack.Add(() => d2.Remove(su1));
+    }
+
+    protected virtual void AddCharEqInternal(UnitToken u1, UnitToken u2) {}
     public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
 
     static int eqCount;
@@ -434,6 +477,27 @@ public abstract class StringPropagator : UserPropagator {
 
             if (!e1.Sort.Equals(Cache.StringSort))
                 return;
+
+            eqCount++;
+            Log.WriteLine($"Eq ({eqCount}): {StrToken.ExprToStr(Graph, e1)} = {StrToken.ExprToStr(Graph, e2)}");
+
+            /*
+            if (
+                Cache.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is UnitToken c1 &&
+                Cache.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is UnitToken c2) {
+                if (c1 is CharToken ch1 && c2 is CharToken ch2) {
+                    if (ch1.Equals(ch2)) {
+                        Debug.Assert(false); // Why would Z3 report this?!
+                        return;
+                    }
+                    EqualityPairs eqJust = new();
+                    eqJust.Add(e1, e2);
+                    Propagate([], eqJust, Ctx.MkFalse());
+                    return;
+                }
+                AddCharEqInternal(c1, c2);
+                return;
+            }
 
             Expr? f = null, t = null; // rewriting t := f (t has to some substitutable token - i.e., everything that is not concatenation or power)
             if (!Cache.ExprToStrToken.TryGetValue(e1, out var s1) || s1 is not NamedStrToken) {
@@ -462,24 +526,19 @@ public abstract class StringPropagator : UserPropagator {
                     undoStack.Add(() => rewrite.Remove(fc));
                 }
                 list.Add(t.Dup());
-                undoStack.Add(() => list.RemoveAt(list.Count - 1));
+                undoStack.Add(() => list.Pop());
 
                 var w = watch.GetValueOrDefault(f, []);
 
                 for (int i = 0; i < w.Count; i++) {
                     CreatedCB(w[i]);
                 }
-            }
-
-            eqCount++;
-            Log.WriteLine($"Eq ({eqCount}): {StrToken.ExprToStr(Graph, e1)} = {StrToken.ExprToStr(Graph, e2)}");
+            }*/
 
             Str? s1r = Cache.TryParseStr(e1);
             Str? s2r = Cache.TryParseStr(e2);
             Debug.Assert(s1r is not null);
             Debug.Assert(s2r is not null);
-
-            Console.WriteLine($"Eq: {s1r.ToString(Graph)} = {s2r.ToString(Graph)}");
 
             if (s1r.Count >= 2 && s2r.Count >= 2) {
 #if false
@@ -548,12 +607,47 @@ public abstract class StringPropagator : UserPropagator {
         }
     }
 
+    protected virtual void AddNotEpsilonInternal(Str s) {}
 
     void DisEqCB(Expr e1, Expr e2) {
         try {
             if (!e1.Sort.Equals(Cache.StringSort))
                 return;
             // TODO: Fix for characters. e.g., o1 != o2 clauses infinite recursion!
+
+            if (Cache.Epsilon.Equals(e2))
+                (e1, e2) = (e2, e1);
+
+            if (Cache.Epsilon.Equals(e1)) {
+                if (Cache.ExprToStrToken.TryGetValue(e2, out var t) && t is UnitToken) {
+                    Propagate([], Ctx.MkDistinct(e1, e2));
+                    return;
+                }
+                Propagate([],
+                    Ctx.MkImplies(
+                        Ctx.MkNot(Ctx.MkEq(e1, e2)),
+                        Ctx.MkGt(Cache.MkLen(e2), Ctx.MkInt(0))
+                    )
+                );
+                var s = Cache.TryParseStr(e1);
+                Debug.Assert(s is not null);
+                AddNotEpsilonInternal(s);
+                return;
+            }
+
+            if (
+                Cache.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is UnitToken c1 &&
+                Cache.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is UnitToken c2) {
+                if (c1 is CharToken ch1 && c2 is CharToken ch2) {
+                    if (!ch1.Equals(ch2))
+                        return;
+                    Debug.Assert(false); // Why would Z3 report this?!
+                    Propagate([], Ctx.MkDistinct(e1, e2));
+                    return;
+                }
+                AddCharDiseq(c1, c2);
+                return;
+            }
 
             StrVarToken x1 = GetFreshAuxStr();
             Expr x1e = x1.ToExpr(Graph);
@@ -602,6 +696,8 @@ public abstract class StringPropagator : UserPropagator {
 
 public class SaturatingStringPropagator : StringPropagator {
 
+    public bool Cancel { get; set; }
+
     public override NielsenGraph Graph { get; }
     public NielsenNode Root => Graph.Root;
 
@@ -620,6 +716,32 @@ public class SaturatingStringPropagator : StringPropagator {
         throw new NotImplementedException("!contains");
     }
 
+    protected override void AddCharEqInternal(UnitToken u1, UnitToken u2) {
+        if (Root.StrEq.Add(new StrEq([u1], [u2])))
+            undoStack.Add(Root.StrEq.Pop);
+    }
+
+    protected override void AddCharDiseqInternal(SymCharToken su1, UnitToken u2) {
+        if (!reportedDiseq.TryGetValue(su1, out var d1)) {
+            d1 = [];
+            reportedDiseq.Add(su1, d1);
+            undoStack.Add(() => reportedDiseq.Remove(su1));
+        }
+        if (d1.Add(u2))
+            undoStack.Add(() => d1.Remove(u2));
+
+        if (u2 is not SymCharToken su2)
+            return;
+
+        if (!reportedDiseq.TryGetValue(su2, out var d2)) {
+            d2 = [];
+            reportedDiseq.Add(su2, d2);
+            undoStack.Add(() => reportedDiseq.Remove(su2));
+        }
+        if (d2.Add(su1))
+            undoStack.Add(() => d2.Remove(su1));
+    }
+
     public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
@@ -631,17 +753,23 @@ public class SaturatingStringPropagator : StringPropagator {
 
         if (Root.StrEq.Add(eq)) // u = v
             undoStack.Add(Root.StrEq.Pop);
-        if (Root.IntEq.Add(new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2)))) // u = v => |u| = |v|
+        var la = new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2));
+        if (!la.Poly.IsZero && Root.IntEq.Add(la)) // u = v => |u| = |v|
             undoStack.Add(Root.IntEq.Pop);
-        foreach (var a in alph) {
-            if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
-                undoStack.Add(Root.IntEq.Pop);
-        }
+        // foreach (var a in alph) {
+        //     if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
+        //         undoStack.Add(Root.IntEq.Pop);
+        // }
         reportedEqs.Add((e1, e2));
         undoStack.Add(() =>
         {
             reportedEqs.Pop();
         });
+    }
+
+    protected override void AddNotEpsilonInternal(Str s) {
+        if (Root.IntLe.Add(IntLe.MkLt(new Poly(), LenVar.MkLenPoly(s))))
+            undoStack.Add(Root.IntLe.Pop);
     }
 
     int finalCnt;
@@ -685,7 +813,7 @@ public class SaturatingStringPropagator : StringPropagator {
         foreach (var c in model.Consts) {
             if (c.Key.Apply() is not IntExpr i)
                 continue;
-            if (!Cache.ExprToIntToken.TryGetValue(i, out var v))
+            if (!Cache.ExprToIntToken.TryGetValue(i, out var vt) || vt is not IntVar v)
                 continue;
             itp.Add(v, ((IntNum)c.Value).BigInteger);
             if (!satNode.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
@@ -775,8 +903,8 @@ public class ExpressionCache : IDisposable {
     public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
     public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
 
-    public readonly Dictionary<IntVar, IntExpr> IntTokenToExpr = [];
-    public readonly Dictionary<IntExpr, IntVar> ExprToIntToken = [];
+    public readonly Dictionary<(NonTermInt v, int modifications), IntExpr> IntTokenToExpr = [];
+    public readonly Dictionary<IntExpr, NonTermInt> ExprToIntToken = [];
 
     public ExpressionCache(Context ctx) {
         Ctx = ctx;
@@ -810,7 +938,11 @@ public class ExpressionCache : IDisposable {
         return StrTokenToExpr.GetValueOrDefault((t, mod));
     }
 
-    public IntExpr? GetCachedIntExpr(IntVar t) => IntTokenToExpr.GetValueOrDefault(t);
+    public IntExpr? GetCachedIntExpr(NonTermInt t, NielsenGraph graph) {
+        if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
+            mod = 0;
+        return IntTokenToExpr.GetValueOrDefault((t, mod));
+    }
 
     public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
         if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
@@ -819,8 +951,10 @@ public class ExpressionCache : IDisposable {
         ExprToStrToken.Add(e, t);
     }
 
-    public void SetCachedExpr(IntVar t, IntExpr e) {
-        IntTokenToExpr.Add(t, e);
+    public void SetCachedExpr(NonTermInt t, IntExpr e, NielsenGraph graph) {
+        if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
+            mod = 0;
+        IntTokenToExpr.Add((t, mod), e);
         ExprToIntToken.Add((IntExpr)e.Dup(), t);
     }
 

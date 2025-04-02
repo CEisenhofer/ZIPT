@@ -1,16 +1,13 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Tokens;
+using System.Xml.Linq;
 
 namespace StringBreaker.IntUtils;
 
-public class LenVar : NonTermInt {
+public class LenVar : StrDepIntVar {
 
-    StrVarToken Var { get; }
-    public override Len MinLen => 0;
-
-    public LenVar(StrVarToken v) =>
-        Var = v;
+    public LenVar(StrVarToken v) : base(v) {}
 
     public override bool Equals(object? obj) => obj is LenVar var && Equals(var);
     public bool Equals(LenVar other) => Var.Equals(other.Var);
@@ -48,11 +45,18 @@ public class LenVar : NonTermInt {
     public override int CompareToInternal(NonTermInt other) =>
         Var.CompareTo(((LenVar)other).Var);
 
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars,
-        HashSet<CharToken> alphabet) => vars.Add(Var);
+    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
+        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) => vars.Add(Var);
 
-    public override IntExpr ToExpr(NielsenGraph graph) => 
-        graph.Cache.MkLen(Var.ToExpr(graph));
+    public override IntExpr ToExpr(NielsenGraph graph) {
+        IntExpr? e = graph.Cache.GetCachedIntExpr(this, graph);
+        if (e is not null)
+            return e;
+
+        e = (IntExpr)graph.Ctx.MkFreshConst("len_" + Var, graph.Ctx.IntSort);
+        graph.Cache.SetCachedExpr(this, e, graph);
+        return e;
+    }
 
     public override string ToString() => $"|{Var}|";
 }

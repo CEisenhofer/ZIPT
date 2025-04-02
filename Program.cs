@@ -6,6 +6,7 @@ using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
+using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker;
@@ -50,14 +51,14 @@ public static class Program {
         if (!File.Exists(args[0]) && !Directory.Exists(args[0]))
             Usage();
 
-        ulong timeout = 0;
+        int timeout = 0;
         if (args.Length > 1) {
-            if (!ulong.TryParse(args[1], out timeout))
+            if (!int.TryParse(args[1], out timeout) || timeout < 0)
                 Usage();
         }
 
         // Global.SetParameter("proof", "true");
-        // Global.SetParameter("smt.up.persist_clauses", "false");
+        Global.SetParameter("smt.up.persist_clauses", "false");
 
         if (File.Exists(args[0])) {
             Console.WriteLine(args[0]);
@@ -99,40 +100,58 @@ public static class Program {
         Console.WriteLine("Solved: " + solved + " / " + total);
     }
 
-    static SolveResult Solve(SaturatingStringPropagator propagator, ulong timeout) {
-        Global.SetParameter("smt.random_seed", "16");
-        Global.SetParameter("nlsat.randomize", "false");
-        Global.SetParameter("nlsat.seed", "10");
-        Global.SetParameter("smt.arith.random_initial_value", "false");
-        if (timeout > 0)
-            Console.WriteLine("Timeout: " + timeout + "s");
-        if (timeout != 0)
-            Global.SetParameter("timeout", (timeout * 1000).ToString());
-        var res = propagator.Solver.Check();
-        Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
-        Console.WriteLine("Complexity Bound: " + propagator.Graph.ComplexityBound);
+    static SolveResult Solve(SaturatingStringPropagator propagator, int timeout) {
+        SolveResult result = SolveResult.UNKNOWN;
+        Thread thread = new(() =>
+        {
+            Global.SetParameter("smt.random_seed", "16");
+            Global.SetParameter("nlsat.randomize", "false");
+            Global.SetParameter("nlsat.seed", "10");
+            Global.SetParameter("smt.arith.random_initial_value", "false");
+            if (timeout > 0)
+                Console.WriteLine("Timeout: " + timeout + "s");
+            if (timeout != 0)
+                Global.SetParameter("timeout", ((ulong)timeout * 1000).ToString());
+            SymCharToken.ResetCounter();
+            var res = propagator.Solver.Check();
+            Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
+            Console.WriteLine("Complexity Bound: " + propagator.Graph.ComplexityBound);
 #if DEBUG
-        // Console.WriteLine(propagator.Graph.ToDot());
+            // Console.WriteLine(propagator.Graph.ToDot());
 #endif
-        if (res == Status.SATISFIABLE) {
-            if (Options.GetAndCheckModel) {
-                Console.WriteLine("SAT:");
-                bool succ = propagator.GetModel(out var itp);
-                Console.WriteLine(itp);
+            if (res == Status.SATISFIABLE && propagator.Graph.SatNodes.IsNonEmpty()) {
+                Console.WriteLine("SAT");
+                if (Options.GetAndCheckModel) {
+                    bool succ = propagator.GetModel(out var itp);
+                    Console.WriteLine(itp);
+                    propagator.Solver.Pop(propagator.Solver.NumScopes);
+                    result = succ ? SolveResult.SAT : SolveResult.UNSOUND;
+                    return;
+                }
                 propagator.Solver.Pop(propagator.Solver.NumScopes);
-                return succ ? SolveResult.SAT : SolveResult.UNSOUND;
+                result = SolveResult.SAT;
+                return;
             }
-            Console.WriteLine("SAT");
-            propagator.Solver.Pop(propagator.Solver.NumScopes);
-            return SolveResult.SAT;
+            if (res == Status.UNSATISFIABLE) {
+                Console.WriteLine("UNSAT");
+                // Console.WriteLine(solver.Proof);
+                result = SolveResult.UNSAT;
+                return;
+            }
+            Console.WriteLine("UNKNOWN");
+            result = SolveResult.UNKNOWN;
+        });
+        thread.Start();
+        if (timeout > 0)
+            thread.Join(timeout * 1000);
+        else
+            thread.Join();
+        if (thread.IsAlive) {
+            propagator.Cancel = true;
+            thread.Join();
+            propagator.Cancel = false;
         }
-        if (res == Status.UNSATISFIABLE) {
-            Console.WriteLine("UNSAT");
-            // Console.WriteLine(solver.Proof);
-            return SolveResult.UNSAT;
-        }
-        Console.WriteLine("UNKNOWN");
-        return SolveResult.UNKNOWN;
+        return result;
     }
 
     static void AssertSMTLIB(Context ctx, Solver solver, StringPropagator propagator, string path) {

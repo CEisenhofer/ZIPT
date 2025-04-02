@@ -1,7 +1,6 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
-using System.Diagnostics;
 using StringBreaker.MiscUtils;
 
 namespace StringBreaker.Constraints.Modifier;
@@ -31,10 +30,10 @@ public class PowerSplitModifier : DirectedNielsenModifier {
             s.AddRange(p.str, Forwards);
             subst = new SubstVar(Var, s);
             if (p.varDecomp is null)
-                c = node.MkChild(node, [subst]);
+                c = node.MkChild(node, [subst], true);
             else {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
-                c = node.MkChild(node, [subst, p.varDecomp]);
+                c = node.MkChild(node, [subst, p.varDecomp], true);
             }
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
@@ -47,7 +46,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         s = new Str(Var);
         s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
         subst = new SubstVar(Var, s);
-        c = node.MkChild(node, [subst]);
+        c = node.MkChild(node, [subst], false);
         c.Apply(subst);
     }
 

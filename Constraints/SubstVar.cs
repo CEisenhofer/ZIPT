@@ -1,4 +1,5 @@
 ﻿using Microsoft.Z3;
+using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
@@ -26,6 +27,8 @@ public class SubstVar : Subst {
 
     public override Expr KeyExpr(NielsenGraph graph) => Var.ToExpr(graph);
     public override Expr ValueExpr(NielsenGraph graph) => Str.ToExpr(graph);
+    public override IntExpr KeyLenExpr(NielsenGraph graph) => LenVar.MkLenPoly([Var]).ToExpr(graph);
+    public override IntExpr ValueLenExpr(NielsenGraph graph) => LenVar.MkLenPoly(Str).ToExpr(graph);
 
     public override string ToString() => $"{Var} / {Str}";
 

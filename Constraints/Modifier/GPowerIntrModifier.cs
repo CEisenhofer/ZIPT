@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
@@ -9,18 +8,18 @@ namespace StringBreaker.Constraints.Modifier;
 
 public class GPowerIntrModifier : DirectedNielsenModifier {
 
-    public StrVarToken Var { get; }
+    public StrVarToken V { get; }
     public Str Base { get; }
 
-    public GPowerIntrModifier(StrVarToken var, Str @base, bool forward) : base(forward) {
+    public GPowerIntrModifier(StrVarToken v, Str @base, bool forward) : base(forward) {
         Debug.Assert(@base.Ground);
-        Var = var;
+        V = v;
         Base = @base;
     }
 
     public override void Apply(NielsenNode node) {
-        // V1 / Base^powerConstant Base' with Base' being a syntactic prefix of Base
-        var powerConstant = new Poly(Var.GetPowerExtension());
+        // V / Base^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
+        var powerConstant = new Poly(V.GetPowerExtension());
 
         var b = Base;
 
@@ -43,9 +42,9 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         foreach (var p in prefixes) {
             Str s = new Str(power);
             s.AddRange(p.str, !Forwards);
-            var subst = new SubstVar(Var, s);
+            var subst = new SubstVar(V, s);
             Debug.Assert(p.varDecomp is null);
-            var c = node.MkChild(node, [subst]);
+            var c = node.MkChild(node, [subst], true);
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);
@@ -62,9 +61,9 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         if (cmp != 0)
             return cmp;
         cmp = Forwards.CompareTo(other.Forwards);
-        return cmp != 0 ? cmp : Var.CompareTo(other.Var);
+        return cmp != 0 ? cmp : V.CompareTo(other.V);
     }
 
     public override string ToString() =>
-        $"{Var} / {Base}^{{{Var.GetPowerExtension()}}} [prefix({Base})]";
+        $"{V} / {Base}^{{{V.GetPowerExtension()}}} [prefix({Base})]";
 }

@@ -9,6 +9,8 @@ public sealed class SymCharToken : UnitToken {
     static int nextId;
     public int Id { get; }
 
+    public static void ResetCounter() => nextId = 0;
+
     public SymCharToken() => Id = nextId++;
 
     public override Str Apply(Subst subst) => subst.ResolveVar(this);

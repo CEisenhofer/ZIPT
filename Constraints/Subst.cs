@@ -15,6 +15,8 @@ public abstract class Subst {
 
     public abstract Expr KeyExpr(NielsenGraph graph);
     public abstract Expr ValueExpr(NielsenGraph graph);
+    public abstract IntExpr KeyLenExpr(NielsenGraph graph);
+    public abstract IntExpr ValueLenExpr(NielsenGraph graph);
     public abstract override string ToString();
 
     public abstract override bool Equals(object? obj);

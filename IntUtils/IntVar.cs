@@ -31,10 +31,10 @@ public class IntVar : NonTermInt {
         HashSet<CharToken> alphabet) => iVars.Add(this);
 
     public override IntExpr ToExpr(NielsenGraph graph) {
-        if (graph.Cache.GetCachedIntExpr(this) is { } e)
+        if (graph.Cache.GetCachedIntExpr(this, graph) is { } e)
             return e;
         e = graph.Ctx.MkIntConst(ToString());
-        graph.Cache.SetCachedExpr(this, e);
+        graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }
 

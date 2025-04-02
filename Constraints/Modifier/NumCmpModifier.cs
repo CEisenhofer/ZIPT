@@ -15,13 +15,15 @@ public class NumCmpModifier : ModifierBase {
     }
 
     public override void Apply(NielsenNode node) {
+        // N1 < N2 (progress)
+        // N2 <= N1 (progress)
 
-        var c = node.MkChild(node, []);
+        var c = node.MkChild(node, [], true);
         var sc = IntLe.MkLt(N1.Clone(), N2);
         c.AddConstraints(sc); // N1 < N2
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        c = node.MkChild(node, []);
+        c = node.MkChild(node, [], true);
         sc = IntLe.MkLe(N2.Clone(), N1); // N2 <= N1
         c.AddConstraints(sc); // N2 - N1 <= 0 => N2 <= N1
         c.Parent!.SideConstraints.Add(sc.Clone());

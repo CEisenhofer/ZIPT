@@ -52,6 +52,13 @@ public class NielsenNode {
     public IntConstraintSet<IntNonEq> IntNEq { get; init; } = new([]);
     public IntConstraintSet<IntLe> IntLe { get; init; } = new([]);
 
+    // A node is marked as progress if either
+    // 1) it is root
+    // 2) it results from a node by adding some eliminating substitution (e.g., x / y or x / "" or x / a^n)
+    // 3) it results from a node by adding a strong side constraint (e.g., n = 0 or splitting some equation)
+    // We only check progress nodes and potentially satisfied nodes by a call to Z3
+    public bool ProgressNode { get; }
+
     // x \in [i, j] with i, j const
     public Dictionary<NonTermInt, Interval> IntBounds { get; init; } = [];
 
@@ -131,26 +138,30 @@ public class NielsenNode {
     public NielsenNode(NielsenGraph graph) {
         Graph = graph;
         Id = graph.NodeCnt;
+        ProgressNode = true;
         graph.AddNode(this);
     }
 
-    public NielsenNode(NielsenNode parent, IReadOnlyList<Subst> subst) : this(parent.Graph) {
+    public NielsenNode(NielsenNode parent, IReadOnlyList<Subst> subst, bool progress) : this(parent.Graph) {
         Debug.Assert(parent.Outgoing is not null);
+        ProgressNode = progress;
         Parent = new NielsenEdge(parent,
             (BoolExpr)Graph.Ctx.MkFreshConst("P", Graph.Ctx.BoolSort), subst, this);
         if (Parent.Src.Parent is not null)
             AssertToZ3(Parent.Src.Parent.Assumption);
         parent.Outgoing.Add(Parent);
 
-        Expr[] lhs = new Expr[subst.Count];
+        // Equate the lengths
+        IntExpr[] lhs = new IntExpr[subst.Count];
         for (int i = 0; i < lhs.Length; i++) {
-            lhs[i] = subst[i].KeyExpr(Graph);
+            lhs[i] = subst[i].KeyLenExpr(Graph);
         }
         int modCnt = Graph.ModCnt;
         Parent.IncModCount(Graph);
         for (int i = 0; i < lhs.Length; i++) {
-            var rhs = subst[i].ValueExpr(Graph);
-            AssertToZ3(Graph.OuterPropagator.Ctx.MkEq(lhs[i], rhs));
+            var rhs = subst[i].ValueLenExpr(Graph);
+            if (!lhs[i].Equals(rhs))
+                AssertToZ3(Graph.OuterPropagator.Ctx.MkEq(lhs[i], rhs));
         }
         Parent.DecModCount(Graph);
         Debug.Assert(Graph.ModCnt == modCnt);
@@ -405,9 +416,12 @@ public class NielsenNode {
         }
     }
 
+    static int simplifyChainCnt;
+
     public static BacktrackReasons Simplify(NielsenNode node) {
 
         List<NielsenNode> nodeChain = [node];
+        simplifyChainCnt++;
 
         void Fail() {
             for (var i = nodeChain.Count - 1; i > 0; i--) {
@@ -420,6 +434,9 @@ public class NielsenNode {
         bool failedBefore = false;
 
         while (true) {
+            if (node.Graph.OuterPropagator.Cancel)
+                throw new Exception("Timeout");
+
             DetModifier mod = new();
             var reason = node.Simplify(mod.Substitutions, mod.SideConstraints);
             if (reason is not BacktrackReasons.Unevaluated or BacktrackReasons.Satisfied) {
@@ -491,6 +508,11 @@ public class NielsenNode {
                         toRemove.Add(c1);
                         continue;
                     case SimplifyResult.Proceed:
+                        if (substitution.IsNonEmpty())
+                            // Better we integrate the new information 
+                            // otw., x...x = cxa...axc could give x / cx and x / xc but this "c" might be the same one
+                            // so either try to unify the substitutions, or just apply every substitution as soon as we get it
+                            return BacktrackReasons.Unevaluated;
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -505,15 +527,18 @@ public class NielsenNode {
 
     public void RemoveConstraint(Constraint c) {
         foreach (var cnstrSet in AllConstraintSets) {
-            if (cnstrSet.Remove(c))
+            if (cnstrSet.Remove(c)) {
+                // Because of rewriting there might be more than one occurrence of the same constraint
+                while (cnstrSet.Remove(c)) {}
                 return;
+            }
         }
         Debug.Assert(false);
     }
 
-    public NielsenNode MkChild(NielsenNode parent, IReadOnlyList<Subst> subst) {
+    public NielsenNode MkChild(NielsenNode parent, IReadOnlyList<Subst> subst, bool progress) {
         Debug.Assert(parent.Outgoing is not null);
-        return new NielsenNode(parent, subst) {
+        return new NielsenNode(parent, subst, progress) {
             StrEq = StrEq.Clone(),
             IntEq = IntEq.Clone(),
             IntNEq = IntNEq.Clone(),
@@ -533,7 +558,7 @@ public class NielsenNode {
     public bool EqualContent(NielsenNode other) {
         if (ReferenceEquals(this, other))
             return true;
-        if (StrConstraintCnt != other.StrConstraintCnt || IntBounds.Count != other.IntBounds.Count)
+        if (StrConstraintCnt != other.StrConstraintCnt || IntBounds.Count != other.IntBounds.Count || DisEq.Count != other.DisEq.Count)
             return false;
         foreach (var cnstrPair in AllConstraints.Zip(other.AllConstraints)) {
             if (!cnstrPair.First.Equals(cnstrPair.Second))
@@ -543,9 +568,20 @@ public class NielsenNode {
             if (!other.IntBounds.TryGetValue(v, out var i2) || i != i2)
                 return false;
         }
+        foreach (var (v, d1) in DisEq) {
+            if (!other.DisEq.TryGetValue(v, out var d2))
+                return false;
+            if (d1.Count != d2.Count)
+                return false;
+            if (d1.Any(u => !d2.Contains(u)))
+                return false;
+            
+        }
         return true;
     }
 
+    // We deliberately only check for the constraints and not the bounds/diseqs (we can do this later on the semantic check)
+    // This function is not in sync with Equals(object?), but this is not super important!!
     public override int GetHashCode() =>
         AllConstraintSets.Aggregate(164304773, (i, v) => i + 366005033 * Id);
 
@@ -644,18 +680,38 @@ public class NielsenNode {
 
     // Unit steps are not countered for depth (or complexity) bound
     public bool Check(int dep, int comp) {
-        // TODO: Only ask Z3 if 1) No string constraints or 2) We made progress or 3) Threshold
         if (!Extended) {
-            Status res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
-            Debug.Assert(res != Status.UNKNOWN);
-            if (res == Status.UNSATISFIABLE) {
-                Reason = BacktrackReasons.SMT;
-                return false;
+            Status z3Res = Status.UNKNOWN;
+            if (ProgressNode) {
+                // We made progress - let's check if this is already enough to get an integer conflict
+                // This can be expensive, so we only do this in case the formula simplified "strongly" before
+                // => we ask Z3
+                z3Res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
+                if (z3Res == Status.UNKNOWN)
+                    throw new Exception("unknown");
+
+                Debug.Assert(z3Res != Status.UNKNOWN);
+                if (z3Res == Status.UNSATISFIABLE) {
+                    Reason = BacktrackReasons.SMT;
+                    return false;
+                }
             }
 
             if (!AllStrConstraints.Any()) {
-                // We can also just say assumption_child => assumption_parent
-                // and assume only the deepest child
+                // We might have already checked this if it was a progress node
+                // We need a Z3 result so let's ask if we haven't already
+                if (z3Res == Status.UNKNOWN) {
+                    Debug.Assert(!ProgressNode);
+                    z3Res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
+                }
+                if (z3Res == Status.UNKNOWN)
+                    throw new Exception("unknown");
+                // If Z3 says unsat, we backtrack
+                if (z3Res == Status.UNSATISFIABLE) {
+                    Reason = BacktrackReasons.SMT;
+                    return false;
+                }
+                // Otw. we found a candidate model
                 Reason = BacktrackReasons.Satisfied;
                 Graph.SatNodes.Add(this);
                 return true;

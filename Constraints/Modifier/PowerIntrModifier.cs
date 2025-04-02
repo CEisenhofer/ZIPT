@@ -6,12 +6,16 @@ using StringBreaker.MiscUtils;
 
 namespace StringBreaker.Constraints.Modifier;
 
+// We might want to drop this or change it to an easier form
 public class PowerIntrModifier : DirectedNielsenModifier {
     public StrVarToken Var { get; }
     public Str Base { get; }
     public Poly Power { get; }
 
     public PowerIntrModifier(StrVarToken var, Str @base, bool forward) : base(forward) {
+        throw new NotSupportedException(); // For now, let's not use this
+        // Better: x / u^n x && |x| < |u| (this avoids another power introduction on x)
+        // However, non ground powers are super annoying to deal with
         Debug.Assert(!@base.Ground);
         Var = var;
         Base = @base;
@@ -35,10 +39,10 @@ public class PowerIntrModifier : DirectedNielsenModifier {
             var subst = new SubstVar(Var, s);
             NielsenNode c;
             if (p.varDecomp is null)
-                c = node.MkChild(node, [subst]);
+                c = node.MkChild(node, [subst], false);
             else {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
-                c = node.MkChild(node, [subst, p.varDecomp]);
+                c = node.MkChild(node, [subst, p.varDecomp], false);
             }
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
@@ -56,7 +60,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
         if (cmp != 0)
             return cmp;
         cmp = Forwards.CompareTo(other.Forwards);
-        return cmp != 0 ? cmp : Var.CompareTo(other.Var);
+        return cmp != 0 ? cmp : Var.CompareTo(other.V);
     }
 
     public override string ToString() =>

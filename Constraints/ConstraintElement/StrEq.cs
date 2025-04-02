@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices.JavaScript;
+using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 using StringBreaker.Constraints.Modifier;
@@ -129,6 +131,61 @@ public sealed class StrEq : StrEqBase {
                 }
             }
 
+            if (t2 is NamedStrToken) {
+                (s1, s2) = (s2, s1);
+                (t1, t2) = (t2, t1);
+            }
+            if (t1 is NamedStrToken v1 && t2 is CharToken && s1.Count > 1 && s1.Peek(dir, 1) is CharToken) {
+                Debug.Assert(s2.IsNonEmpty());
+                // uxw = xvw', u & v char only
+                // x / u' x with u' <= u while u' incompatible with v
+                // we do not want to unwind stuff like axx = xbx - this would result in an infinite sequence (the power would eliminate it anyway!)
+                // e.g., xababc w = abc w' sets x / abcx as "ababc" is incompatible with "abc",
+                //       xabca w = abc w' would not reduce at all, and
+                //       xaabca w = abc w' would set x / ax
+                int i = 0;
+                for (; i < s2.Count && s2.Peek(dir, i) is CharToken; i++) {
+
+                    // TODO: Use consistent prefix (requires some resource improvements first though)
+                    int j = 0;
+                    bool failed = false;
+                    for (; j + 1 < s1.Count && j + i < s2.Count; j++) {
+                        StrToken st1 = s1.Peek(dir, j + 1);
+                        StrToken st2 = s2.Peek(dir, j + i);
+                        if (st1 is not CharToken stc1 || st2 is not CharToken stc2)
+                            break;
+                        if (stc1.Equals(stc2))
+                            continue;
+                        failed = true;
+                        break;
+                    }
+                    if (failed)
+                        // The prefix are inconsistent - we can proceed
+                        continue;
+                    break;
+                }
+                if (i > 0) {
+                    // i == 0 => nothing to do.
+
+                    // Check if the next variable is not the variable we started of (unwinding this way would not necessarily terminate)
+                    // => Use power instead
+                    int k = i;
+                    for (; k < s2.Count && s2.Peek(dir, k) is UnitToken; k++) {
+                        // empty body
+                    }
+                    if (k >= s2.Count || !v1.Equals(s2.Peek(dir, k))) {
+                        // t == v1 => we need power introduction 
+                        Str s = new(i + 1);
+                        for (int j = 0; j < i; j++) {
+                            s.Add(s2.Peek(dir, j), !dir);
+                        }
+                        s.Add(v1, !dir);
+                        newSubst.Add(new SubstVar(v1, s));
+                        return SimplifyResult.Proceed;
+                    }
+                }
+            }
+
             if (SimplifyPower(node, s1, s2, dir))
                 continue;
             break;
@@ -149,10 +206,15 @@ public sealed class StrEq : StrEqBase {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
+        if (newSubst.IsNonEmpty())
+            return SimplifyResult.Proceed;
+
         if (SimplifyDir(node, newSubst, newSideConstr, false) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
+        if (newSubst.IsNonEmpty())
+            return SimplifyResult.Proceed;
 
         if (LHS.IsEmpty() && RHS.IsEmpty())
             return SimplifyResult.Satisfied;
@@ -249,16 +311,21 @@ public sealed class StrEq : StrEqBase {
         int bestLhs = 0, bestRhs = 0;
         Poly lhs = new(), rhs = new();
         int lhsIdx = 0; int rhsIdx = 0;
+        // We are only interested for padding in the first time the variables are equal (but we are looking for that case for a minimal constant difference as well)
+        bool firstTimeEqVars = true;
         while (lhsIdx < s1.Count || rhsIdx < s2.Count) {
             if (lhsIdx > 0 || rhsIdx > 0) {
+                // TODO
+                // Set best only if this is the first time the difference is empty
+                // But continue to find potential 0-splits
                 if (lhs.IsZero && rhs.IsZero) {
-                    if (constDiff.Abs() < best) {
+                    if (firstTimeEqVars && constDiff.Abs() < best) {
                         best = constDiff;
                         bestLhs = lhsIdx;
                         bestRhs = rhsIdx;
                     }
                     if (constDiff.IsZero)
-                        return new EqSplitModifier(this, bestLhs, bestRhs, dir);
+                        return new EqSplitModifier(this, lhsIdx, rhsIdx, dir);
                 }
             }
             Poly len;
@@ -270,6 +337,7 @@ public sealed class StrEq : StrEqBase {
                 len = LenVar.MkLenPoly([s1.Peek(dir, lhsIdx++)]);
                 constDiff += len.ConstPart;
                 len.ElimConst();
+                firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
                 if (!len.IsZero) {
                     lhs.Plus(len);
                     Poly.ElimCommon(lhs, rhs);
@@ -281,6 +349,7 @@ public sealed class StrEq : StrEqBase {
             len = LenVar.MkLenPoly([s2.Peek(dir, rhsIdx++)]);
             constDiff -= len.ConstPart;
             len.ElimConst();
+            firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
             if (!len.IsZero) {
                 rhs.Plus(len);
                 Poly.ElimCommon(lhs, rhs);
@@ -289,15 +358,21 @@ public sealed class StrEq : StrEqBase {
         if (best.IsInf)
             return null;
         Debug.Assert(!best.IsZero);
+        int val;
         if (best.IsNeg) {
-            // split left
-            if (bestLhs <= 0 || bestLhs >= s1.Count || s1.Peek(dir, bestLhs - 1) is not StrVarToken v1 || !best.TryGetInt(out int val1))
-                return null;
-            return new VarPaddingModifier(v1, -val1, !dir);
-        }
-        if (bestRhs <= 0 || bestRhs >= s2.Count || s2.Peek(dir, bestRhs - 1) is not StrVarToken v2 || !best.TryGetInt(out int val2))
+            if (bestLhs >= 0 && bestLhs < s1.Count && s1.Peek(dir, bestLhs) is StrVarToken v11 && best.TryGetInt(out val))
+                // ...|x... (=> x / o_1...o_p x)
+                return new VarPaddingModifier(v11, -val, dir);
+            if (bestRhs > 0 && bestRhs <= s2.Count && s2.Peek(dir, bestRhs - 1) is StrVarToken v22 && best.TryGetInt(out val))
+                // ...x|... (=> x / x o_1...o_p x)
+                return new VarPaddingModifier(v22, -val, !dir);
             return null;
-        return new VarPaddingModifier(v2, val2, !dir);
+        }
+        if (bestRhs >= 0 && bestRhs < s2.Count && s2.Peek(dir, bestRhs) is StrVarToken v21 && best.TryGetInt(out val))
+            return new VarPaddingModifier(v21, val, dir);
+        if (bestLhs > 0 && bestLhs <= s1.Count && s1.Peek(dir, bestLhs - 1) is StrVarToken v12 && best.TryGetInt(out val))
+            return new VarPaddingModifier(v12, val, !dir);
+        return null;
     }
 
     ModifierBase? SplitVarVar(Str s1, Str s2, bool dir) {

@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Diagnostics;
 using StringBreaker.Constraints.ConstraintElement;
+using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;
@@ -75,8 +76,7 @@ public class IntConstraintSet<T> : IEnumerable<T>, IIntConstraintSet where T : I
         return true;
     }
 
-    public void Pop() => 
-        constraints.RemoveAt(constraints.Count - 1);
+    public void Pop() => constraints.Pop();
 
     public override string ToString() =>
         Satisfied

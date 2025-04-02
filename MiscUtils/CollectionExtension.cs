@@ -1,13 +1,16 @@
 ﻿using System.Collections;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace StringBreaker.MiscUtils;
 
 public static class CollectionExtension {
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Pop<T>(this List<T> list, int cnt) =>
         list.RemoveRange(list.Count - cnt, cnt);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Pop<T>(this List<T> list) {
         T res = list[^1];
         list.RemoveAt(list.Count - 1);

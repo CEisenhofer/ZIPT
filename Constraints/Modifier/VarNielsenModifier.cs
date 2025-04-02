@@ -6,60 +6,60 @@ namespace StringBreaker.Constraints.Modifier;
 
 public class VarNielsenModifier : DirectedNielsenModifier {
 
-    public StrVarToken Var1 { get; }
-    public StrVarToken Var2 { get; }
+    public StrVarToken V1 { get; }
+    public StrVarToken V2 { get; }
 
     public VarNielsenModifier(StrVarToken v1, StrVarToken v2, bool forward) : base(forward) {
-        Var1 = v1;
-        Var2 = v2;
+        V1 = v1;
+        V2 = v2;
     }
 
     public override void Apply(NielsenNode node) {
-        // V1 = ""
-        // V2 = "" && |V1| >= 1
-        // V1 = V2 && |V1| >= 1 && |V2| >= 1
-        // V1 = V1V2 && |V1| >= 1 && |V2| >= 1
-        // V2 = V2V1 && |V1| >= 1 && |V2| >= 1
-        var subst = new SubstVar(Var1);
-        var c = node.MkChild(node, [subst]);
+        // V1 / "" (progress)
+        // V2 / "" && |V1| >= 1 (progress)
+        // V1 / V2 && |V1| >= 1 && |V2| >= 1 (progress)
+        // V1 / V1V2 && |V1| >= 1 && |V2| >= 1 (no progress)
+        // V2 / V2V1 && |V1| >= 1 && |V2| >= 1 (no progress)
+        var subst = new SubstVar(V1);
+        var c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        subst = new SubstVar(Var2);
-        c = node.MkChild(node, [subst]);
+        subst = new SubstVar(V2);
+        c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        Str s = [Var2];
-        subst = new SubstVar(Var1, s);
-        c = node.MkChild(node, [subst]);
+        Str s = [V2];
+        subst = new SubstVar(V1, s);
+        c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var2)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        s = Forwards ? [Var2, Var1] : [Var1, Var2];
-        subst = new SubstVar(Var1, s);
-        c = node.MkChild(node, [subst]);
+        s = Forwards ? [V2, V1] : [V1, V2];
+        subst = new SubstVar(V1, s);
+        c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var2)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        s = Forwards ? [Var1, Var2] : [Var2, Var1];
-        subst = new SubstVar(Var2, s);
-        c = node.MkChild(node, [subst]);
+        s = Forwards ? [V1, V2] : [V2, V1];
+        subst = new SubstVar(V2, s);
+        c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var1)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(Var2)));
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
     }
@@ -69,13 +69,13 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         int cmp = Forwards.CompareTo(other.Forwards);
         if (cmp != 0)
             return cmp;
-        cmp = Var1.CompareTo(other.Var1);
-        return cmp != 0 ? cmp : Var2.CompareTo(other.Var2);
+        cmp = V1.CompareTo(other.V1);
+        return cmp != 0 ? cmp : V2.CompareTo(other.V2);
     }
 
     public override string ToString() => 
-        $"{Var1} / ε || " +
-        $"{Var2} / ε && |{Var1}| > 0 || " +
-        $"{Var1} / {Var2}{Var1} && |{Var1}| > 0 && |{Var2}| > 0 || " +
-        $"{Var2} / {Var2}{Var1} && |{Var1}| > 0 && |{Var2}| > 0";
+        $"{V1} / ε || " +
+        $"{V2} / ε && |{V1}| > 0 || " +
+        $"{V1} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0 || " +
+        $"{V2} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0";
 }

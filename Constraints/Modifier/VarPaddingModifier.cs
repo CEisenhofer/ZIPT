@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
@@ -16,22 +15,23 @@ public class VarPaddingModifier : DirectedNielsenModifier {
     }
 
     public override void Apply(NielsenNode node) {
+        // For all 0 <= i < Padding: V / o_1 ... o_i (progress)
+        // V / o_1 ... o_{Padding} V (no progress)
         Str s;
         SymCharToken[] ch = new SymCharToken[Padding];
         NielsenNode? c;
         SubstVar subst;
-        for (int i = 0; i < Padding - 1; i++) {
+        for (int i = 0; i < Padding; i++) {
             ch[i] = new SymCharToken();
             s = [];
             for (int j = 0; j < i; j++) {
                 s.Add(ch[j]);
             }
             subst = new SubstVar(Var, s);
-            c = node.MkChild(node, [subst]);
+            c = node.MkChild(node, [subst], true);
             c.Apply(subst);
         }
 
-        ch[^1] = new SymCharToken();
         s = [];
         for (int j = 0; j < Padding; j++) {
             s.Add(ch[j]);
@@ -39,7 +39,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
         s.Add(Var, !Forwards);
 
         subst = new SubstVar(Var, s);
-        c = node.MkChild(node, [subst]);
+        c = node.MkChild(node, [subst], false);
         c.Apply(subst);
     }
 
