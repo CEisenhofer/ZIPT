@@ -1,8 +1,9 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
 using System.Diagnostics;
 using StringBreaker.MiscUtils;
+using StringBreaker.Strings.Tokens;
+using StringBreaker.Strings;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -22,7 +23,7 @@ public class PowerIntrModifier : DirectedNielsenModifier {
         Power = new Poly(Var.GetPowerExtension());
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // V1 / Base^Power Base'
         // To avoid repeatedly making 0-step power introductions, we explicitly make the split on 0 and > 0 repetitions
         // e.g., xy = yx => x / (y'y'')^n y' && y = y'y'' && |y'| < |y|
@@ -39,10 +40,10 @@ public class PowerIntrModifier : DirectedNielsenModifier {
             var subst = new SubstVar(Var, s);
             NielsenNode c;
             if (p.varDecomp is null)
-                c = node.MkChild(node, [subst], false);
+                c = ctx.CurrentNode.MkChild(ctx, [subst], false);
             else {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
-                c = node.MkChild(node, [subst, p.varDecomp], false);
+                c = ctx.CurrentNode.MkChild(ctx, [subst, p.varDecomp], false);
             }
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);

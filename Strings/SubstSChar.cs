@@ -1,8 +1,9 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Tokens;
+using StringBreaker.Constraints;
+using StringBreaker.Strings.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace StringBreaker.Strings;
 
 public class SubstSChar : Subst {
 
@@ -21,10 +22,10 @@ public class SubstSChar : Subst {
     public override Str ResolveVar(SymCharToken v) => v.Equals(Sym) ? [C] : [v];
     public override void AddToInterpretation(Interpretation itp) => itp.Add(this);
 
-    public override Expr KeyExpr(NielsenGraph graph) => Sym.ToExpr(graph);
-    public override Expr ValueExpr(NielsenGraph graph) => C.ToExpr(graph);
-    public override IntExpr KeyLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
-    public override IntExpr ValueLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
+    public override Expr KeyExpr(NielsenContext ctx) => Sym.ToExpr(ctx);
+    public override Expr ValueExpr(NielsenContext ctx) => C.ToExpr(ctx);
+    public override IntExpr KeyLenExpr(NielsenContext ctx) => ctx.Graph.Ctx.MkInt(1);
+    public override IntExpr ValueLenExpr(NielsenContext ctx) => ctx.Graph.Ctx.MkInt(1);
 
     public override string ToString() => $"{Sym} / {C}";
 

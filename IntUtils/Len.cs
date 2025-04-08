@@ -161,9 +161,9 @@ public readonly struct Len : IComparable<Len> {
 
     public override int GetHashCode() => 430783571 * IsInf.GetHashCode() + 593872421 * val.GetHashCode();
 
-    public IntExpr ToExpr(NielsenGraph graph) {
+    public IntExpr ToExpr(NielsenContext ctx) {
         Debug.Assert(!IsInf);
-        return graph.Ctx.MkInt(val.ToString());
+        return ctx.Graph.Ctx.MkInt(val.ToString());
     }
 
     public override string ToString() => IsPosInf

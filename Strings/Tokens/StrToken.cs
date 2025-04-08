@@ -2,19 +2,35 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens.AuxTokens;
+using StringBreaker.Strings.Tokens.AuxTokens;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
+    // TODO: Maybe GC if respective substitution (Nielsen edge) is detected unsat
+    readonly List<StrRef> substitutions = [];
+    public int CurrentCopyCounter { get; private set; }
+
+    public void FixCounterAction(StrRef subst) {
+        substitutions.Add(subst);
+        CurrentCopyCounter++;
+        Debug.Assert(CurrentCopyCounter == substitutions.Count);
+    }
+
+    public StrRef Resolve(int copyIdx) {
+        Debug.Assert(0 <= copyIdx);
+        Debug.Assert(copyIdx < substitutions.Count);
+        return substitutions[copyIdx];
+    }
+
     public abstract bool Ground { get; }
-    public abstract bool IsNullable(NielsenNode node);
+    public abstract bool IsNullable(NielsenContext ctx);
 
     public abstract Str Apply(Subst subst);
     public abstract Str Apply(Interpretation itp);
     public abstract List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
-    public abstract Expr ToExpr(NielsenGraph graph);
+    public abstract Expr ToExpr(int copyIdx, NielsenContext ctx);
 
     public abstract bool RecursiveIn(NamedStrToken v);
 
@@ -46,8 +62,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public abstract bool Equals(StrToken? other);
     public abstract override int GetHashCode();
 
-    public sealed override string ToString() => ToString(null);
-    public abstract string ToString(NielsenGraph? graph);
+    public abstract override string ToString();
 
     public static string ExprToStr(NielsenGraph? graph, Expr e) {
         if (e.IsTrue)
@@ -89,11 +104,11 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
                 return $"|[{ExprToStr(graph, e.Args[0])}]|";
             var s = graph.TryParseStr(e);
             if (s is not null)
-                return s.ToString(graph);
+                return s.ToString();
         }
-        if (!e.IsApp) 
+        if (!e.IsApp)
             return e.ToString();
-        if (e.NumArgs == 0) 
+        if (e.NumArgs == 0)
             return e.ToString();
         return e.FuncDecl.Name + "(" + string.Join(", ", e.Args.Select(o => ExprToStr(graph, o))) + ")";
     }

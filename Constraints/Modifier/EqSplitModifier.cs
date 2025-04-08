@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
+using StringBreaker.Strings;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
@@ -21,7 +22,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
         RhsIdx = rhsIdx;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // Eq.LHS[0..LhsIdx] = Eq.RHS[0..RhsIdx] && Eq.LHS[LhsIdx..] = Eq.RHS[RhsIdx..] (progress)
         Str lhs1 = new Str(Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
         Str rhs1 = new Str(Forwards ? RhsIdx : Eq.RHS.Count - RhsIdx);
@@ -40,7 +41,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
             rhs2.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
         }
 
-        var c = node.MkChild(node, [], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [], true);
         c.RemoveConstraint(Eq);
         var eq1 = new StrEq(lhs1, rhs1);
         var eq2 = new StrEq(lhs2, rhs2);

@@ -2,7 +2,8 @@
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -17,7 +18,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         Base = @base;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // V / Base^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         var powerConstant = new Poly(V.GetPowerExtension());
 
@@ -44,7 +45,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
             s.AddRange(p.str, !Forwards);
             var subst = new SubstVar(V, s);
             Debug.Assert(p.varDecomp is null);
-            var c = node.MkChild(node, [subst], true);
+            var c = ctx.CurrentNode.MkChild(ctx, [subst], true);
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
             c.Parent!.SideConstraints.AddRange(p.sideConstraints);

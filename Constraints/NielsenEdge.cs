@@ -4,7 +4,8 @@ using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints;
 

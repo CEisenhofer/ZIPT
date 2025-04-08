@@ -1,25 +1,26 @@
-﻿using StringBreaker.Tokens;
+﻿using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
 public class ConstNielsenModifier : DirectedNielsenModifier {
 
-    public StrVarToken V { get; }
-    public StrToken Prefix { get; }
+    public StrTokenRef V { get; }
+    public StrTokenRef Prefix { get; }
 
-    public ConstNielsenModifier(StrVarToken v, StrToken pr, bool forward) : base(forward) {
+    public ConstNielsenModifier(StrTokenRef v, StrTokenRef pr, bool forward) : base(forward) {
         V = v;
         Prefix = pr;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // V / "" (progress)
         // V / Prefix V (no progress)
         var subst = new SubstVar(V);
-        var c = node.MkChild(node, [subst], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [subst], true);
         c.Apply(subst);
         subst = new SubstVar(V, Forwards ? [Prefix, V] : [V, Prefix]);
-        c = node.MkChild(node, [subst], false);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], false);
         c.Apply(subst);
     }
 

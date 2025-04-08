@@ -2,7 +2,7 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public sealed class CharToken : UnitToken {
 
@@ -14,13 +14,13 @@ public sealed class CharToken : UnitToken {
     public override Str Apply(Subst subst) => [this];
     public override Str Apply(Interpretation itp) => [this];
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(int copyIdx, NielsenContext ctx) {
+        Expr? e = ctx.Cache.GetCachedStrExpr(this, copyIdx);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Ctx.MkFreshConstDecl(Value.ToString(), graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
-        graph.Cache.SetCachedExpr(this, e, graph);
+        FuncDecl f = ctx.Graph.Ctx.MkFreshConstDecl(Value.ToString(), ctx.Cache.StringSort);
+        e = ctx.Graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], ctx.Cache.StringSort).Apply();
+        ctx.Cache.SetCachedExpr(this, e, copyIdx);
         return e;
     }
 
@@ -37,5 +37,5 @@ public sealed class CharToken : UnitToken {
 
     public override int GetHashCode() => 21954391 * Value;
 
-    public override string ToString(NielsenGraph? graph) => Value.ToString();
+    public override string ToString() => Value.ToString();
 }

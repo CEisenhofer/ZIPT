@@ -1,5 +1,4 @@
-﻿using System.Buffers;
-using StringBreaker.Constraints.ConstraintElement;
+﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 
 namespace StringBreaker.Constraints.Modifier;
@@ -14,19 +13,19 @@ public class NumCmpModifier : ModifierBase {
         N2 = n2;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // N1 < N2 (progress)
         // N2 <= N1 (progress)
 
-        var c = node.MkChild(node, [], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [], true);
         var sc = IntLe.MkLt(N1.Clone(), N2);
         c.AddConstraints(sc); // N1 < N2
-        c.Parent!.SideConstraints.Add(sc.Clone());
+        c.Parent!.SideConstraints.Add(sc.Clone(ctx));
 
-        c = node.MkChild(node, [], true);
+        c = ctx.CurrentNode.MkChild(ctx, [], true);
         sc = IntLe.MkLe(N2.Clone(), N1); // N2 <= N1
         c.AddConstraints(sc); // N2 - N1 <= 0 => N2 <= N1
-        c.Parent!.SideConstraints.Add(sc.Clone());
+        c.Parent!.SideConstraints.Add(sc.Clone(ctx));
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

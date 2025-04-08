@@ -1,5 +1,6 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
+using StringBreaker.Strings;
 
 namespace StringBreaker.IntUtils;
 
@@ -17,8 +18,8 @@ public class IndexOfVar : IntVar {
         Start = start;
     }
 
-    public override IntExpr ToExpr(NielsenGraph graph) => 
-        (IntExpr)graph.Cache.IndexOfFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph), Start.ToExpr(graph));
+    public override IntExpr ToExpr(NielsenContext ctx) => 
+        (IntExpr)ctx.Cache.IndexOfFct.Apply(S.ToExpr(), Contained.ToExpr(), Start.ToExpr());
 
     public sealed override string ToString() => $"indexOf({S},{Contained},{Start})";
 }

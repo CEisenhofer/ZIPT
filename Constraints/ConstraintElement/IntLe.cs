@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.ConstraintElement;
 
@@ -27,7 +28,7 @@ public class IntLe : IntConstraint {
     // rhs does not need to be cloned
     public static IntLe MkLe(Poly lhs, Poly rhs) => new(lhs, rhs);
 
-    public override IntConstraint Clone() => 
+    public override Constraint Clone(NielsenContext ctx) => 
         new IntLe(Poly.Clone());
 
     public override bool Equals(object? obj) =>
@@ -80,8 +81,8 @@ public class IntLe : IntConstraint {
         return !bounds.Contains(0) ? SimplifyResult.Conflict : SimplifyResult.Proceed;*/
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) =>
-        graph.Ctx.MkLe(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
+    public override BoolExpr ToExpr(NielsenContext ctx) =>
+        ctx.Graph.Ctx.MkLe(Poly.ToExpr(), ctx.Graph.Ctx.MkInt(0));
     
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>

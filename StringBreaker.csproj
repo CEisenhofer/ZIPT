@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="IntUtils\Parikh" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Microsoft.Z3">
       <HintPath>..\z3\debug\Microsoft.Z3\net45\Microsoft.Z3.dll</HintPath>
     </Reference>

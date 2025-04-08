@@ -1,5 +1,6 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.MiscUtils;
+using StringBreaker.Strings;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -10,9 +11,9 @@ public class DetModifier : ModifierBase {
     public bool Trivial => Substitutions.IsEmpty() && SideConstraints.IsEmpty();
     public bool Success { get; set; }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         Success = SideConstraints.IsEmpty() || Substitutions.IsNonEmpty();
-        var c = node.MkChild(node, Substitutions, true);
+        var c = ctx.CurrentNode.MkChild(ctx, Substitutions, true);
         foreach (var subst in Substitutions) {
             c.Apply(subst);
         }

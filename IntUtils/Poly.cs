@@ -6,7 +6,8 @@ using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -149,10 +150,10 @@ public class Poly : MSet<StrictMonomial> {
         }
     }
 
-    public IntExpr ToExpr(NielsenGraph graph) {
+    public IntExpr ToExpr(NielsenContext ctx) {
         if (IsEmpty())
-            return graph.Ctx.MkInt(0);
-        return (IntExpr)graph.Ctx.MkAdd(this.Select(o => graph.Ctx.MkMul(o.occ.ToExpr(graph), o.t.ToExpr(graph))).ToArray());
+            return ctx.Graph.Ctx.MkInt(0);
+        return (IntExpr)ctx.Graph.Ctx.MkAdd(this.Select(o => ctx.Graph.Ctx.MkMul(o.occ.ToExpr(ctx), o.t.ToExpr(ctx))).ToArray());
     }
 
     public bool IsConst(out Len val) {

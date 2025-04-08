@@ -1,7 +1,8 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -56,8 +57,8 @@ public class Parikh : StrDepIntVar {
         alphabet.Add(Sym);
     }
 
-    public override IntExpr ToExpr(NielsenGraph graph) => 
-        graph.Cache.MkParikh(Sym, Var.ToExpr(graph));
+    public override IntExpr ToExpr(NielsenContext ctx) => 
+        ctx.Cache.MkParikh(Sym, Var.ToExpr(ctx));
 
     public override string ToString() => $"|{Var}|[{Sym}]";
 }

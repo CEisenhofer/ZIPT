@@ -1,19 +1,17 @@
 ﻿using System.Diagnostics;
-using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public sealed class PowerToken : StrToken {
 
-    public Str Base { get; }
+    public StrRef Base { get; }
     public Poly Power { get; }
 
-    public PowerToken(Str b, Poly power) {
+    public PowerToken(StrRef b, Poly power) {
         Base = b;
         Power = power;
         if (Base is [PowerToken p]) {
@@ -22,13 +20,13 @@ public sealed class PowerToken : StrToken {
         }
     }
 
-    
+
     public override bool Ground => Base.Ground;
 
-    public override bool IsNullable(NielsenNode node) => 
+    public override bool IsNullable(NielsenContext ctx) =>
         Power.GetBounds(node).Max > 0 && Base.IsNullable(node);
-        // !(0 < Power) && Base is nullable
-        // !node.IsLt(new Poly(), Power) && Base.IsNullable(node);
+    // !(0 < Power) && Base is nullable
+    // !node.IsLt(new Poly(), Power) && Base.IsNullable(node);
 
     public override Str Apply(Subst subst) {
         var @base = Base.Apply(subst);
@@ -42,7 +40,7 @@ public sealed class PowerToken : StrToken {
         if (@base.IsEmpty())
             return [];
         var p = Power.Apply(itp);
-        if (!p.IsConst(out var val) || val > Options.ModelUnwindingBound) 
+        if (!p.IsConst(out var val) || val > Options.ModelUnwindingBound)
             return [new PowerToken(@base, p)];
         Debug.Assert(!val.IsNeg);
         if (!val.IsPos)
@@ -72,8 +70,8 @@ public sealed class PowerToken : StrToken {
         return prefixes;
     }
 
-    public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Cache.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
+    public override Expr ToExpr(int copyIdx, NielsenContext ctx) =>
+        ctx.Cache.PowerFct.Apply(Base.ToExpr(ctx), Power.ToExpr(ctx));
 
     public override bool RecursiveIn(NamedStrToken v) =>
         Base.RecursiveIn(v);
@@ -91,9 +89,8 @@ public sealed class PowerToken : StrToken {
 
     public override int GetHashCode() => 495035077 * Base.GetHashCode() + 273877411 * Power.GetHashCode();
 
-    public override string ToString(NielsenGraph? graph) {
-        string b = Base.ToString(graph);
+    public override string ToString() {
+        string b = Base.ToString();
         return b.Length == 1 ? $"{b}^{{{Power}}}" : $"({b})^{{{Power}}}";
     }
-
 }

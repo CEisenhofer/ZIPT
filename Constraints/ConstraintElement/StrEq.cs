@@ -1,72 +1,37 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices.JavaScript;
-using System.Text;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.ConstraintElement;
 
 public sealed class StrEq : StrEqBase {
 
-    public StrEq(Str lhs, Str rhs) : base(lhs, rhs) { }
-    public StrEq(Str empty) : base([], empty) { }
+    public StrEq(NielsenContext ctx, StrRef lhs, StrRef rhs) : base(ctx, lhs, rhs) { }
+    public StrEq(NielsenContext ctx, StrRef empty) : base(ctx, new StrRef([]), empty) { }
 
-    public override StrEq Clone() => 
-        new(LHS.Clone(), RHS.Clone());
+    public override StrEq Clone(NielsenContext ctx) => 
+        new(ctx, LHS.Clone(), RHS.Clone());
 
-    // Minimal order: The smallest token is front-most.
-    // If there are multiple equal ones, the one after is smaller than all the ones in front of the other candidates and so on...
-    // the order is always LHS to RHS (no matter in which direction we reduce)
-    static int GetMinimalOrder(Str s) {
+    static SimplifyResult SimplifyEmpty(NielsenContext ctx, StrRef s, 
+        List<Subst> newSubst, HashSet<Constraint> newSideConstr) {
 
-        StrToken LookAhead(int i, int l) => 
-            s[(i + l) % s.Count];
-
-        Debug.Assert(s.IsNonEmpty());
-        List<int> candidates = Enumerable.Range(0, s.Count).ToList();
-        List<int> newCandidates = [];
-
-        for (int i = 0; candidates.Count != 1 && i < s.Count; i++) {
-            StrToken min = LookAhead(candidates[0], i);
-            newCandidates.Add(candidates[0]);
-            Debug.Assert(candidates.IsNonEmpty());
-            for (var j = 1; j < candidates.Count; j++) {
-                var current = LookAhead(candidates[j], i);
-                int cmp = min.CompareTo(current);
-                switch (cmp) {
-                    case 0:
-                        newCandidates.Add(candidates[j]);
-                        break;
-                    case > 0:
-                        newCandidates.Clear();
-                        newCandidates.Add(candidates[j]);
-                        min = current;
-                        break;
-                }
-            }
-            (newCandidates, candidates) = (candidates, newCandidates);
-            newCandidates.Clear();
-        }
-
-        Debug.Assert(candidates.IsNonEmpty()); // this can be violated if we have e.g., (aa)^n but this should be simplified away anyway...
-        return candidates[0];
-    }
-
-    static SimplifyResult SimplifyEmpty(IEnumerable<StrToken> s, NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr) {
-        foreach (var t in s) {
-            if (t is UnitToken)
+        StrTokenRef? t;
+        while ((t = s.PeekFirst(ctx)) is not null) {
+            if (t.Token is UnitToken)
                 return SimplifyResult.Conflict;
-            if (t is StrVarToken v)
-                newSubst.Add(new SubstVar(v));
-            else if (t is PowerToken p) {
-                if (node.IsLt(new Poly(), p.Power))
+            if (t.Token is StrVarToken)
+                newSubst.Add(new SubstVar(t));
+            else if (t.Token is PowerToken p) {
+                if (ctx.IsLt(new Poly(), p.Power))
                     // p.Power > 0
-                    newSideConstr.Add(new StrEq(p.Base));
-                else if (!p.Base.IsNullable(node))
+                    newSideConstr.Add(new StrEq(ctx, p.Base));
+                else if (!p.Base.IsNullable(ctx))
                     // p.Base != ""
                     newSideConstr.Add(new IntEq(p.Power));
             }
@@ -77,116 +42,121 @@ public sealed class StrEq : StrEqBase {
     }
 
     // Try to add the substitution: x / s ==> do an occurrence check. If it fails, we have to add it as an ordinary equation
-    public void AddDefinition(StrVarToken v, Str s, NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr) {
+    public void AddDefinition(StrTokenRef v, StrRef s, NielsenContext ctx, List<Subst> newSubst, HashSet<Constraint> newSideConstr) {
+        Debug.Assert(v.Token is NamedStrToken);
         if (s.RecursiveIn(v))
             // newSideConstr.Add(new StrEq([v], s));
             return;
         newSubst.Add(new SubstVar(v, s));
     }
 
-    SimplifyResult SimplifyDir(NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr, bool dir) {
+    SimplifyResult SimplifyDir(NielsenContext ctx, List<Subst> newSubst, HashSet<Constraint> newSideConstr, bool dir) {
         // This can cause problems, as it might unwind/compress the beginning/end over and over again (might even detect it as subsumed)
         var s1 = LHS;
         var s2 = RHS;
-        SortStr(ref s1, ref s2, dir);
-        while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
-            SortStr(ref s1, ref s2, dir);
-            Debug.Assert(s1.Count > 0);
-            Debug.Assert(s2.Count > 0);
+        SortStr(ctx, ref s1, ref s2, dir);
+        while (!LHS.IsEpsilon(ctx) && !RHS.IsEpsilon(ctx)) {
 
-            if (SimplifySame(s1, s2, dir))
+            SortStr(ctx, ref s1, ref s2, dir);
+            if (SimplifySame(ctx, s1, s2, dir))
                 continue;
 
-            var t1 = s1.Peek(dir);
-            var t2 = s2.Peek(dir);
+            var t1 = s1.Peek2(ctx, dir);
+            var t2 = s2.Peek2(ctx, dir);
 
-            if (t1 is UnitToken u1 && t2 is UnitToken u2 && node.AreDiseq(u1, u2))
+            if (t1.Token is UnitToken u1 && t2.Token is UnitToken u2 && ctx.AreDiseq(u1, u2))
                 return SimplifyResult.Conflict;
 
-            if (t1 is SymCharToken sc1) {
-                if (t2 is UnitToken u) {
+            if (t1.Token is SymCharToken sc1) {
+                if (t2.Token is UnitToken u) {
                     newSubst.Add(new SubstSChar(sc1, u));
                     return SimplifyResult.Proceed;
                 }
             }
 
-            if (t1 is PowerToken p1) {
-                if (node.IsZero(p1.Power)) {
-                    s1.Drop(dir);
+            if (t1.Token is PowerToken p1) {
+                if (ctx.IsZero(p1.Power)) {
+                    s1.Skip(ctx, dir);
                     continue;
                 }
-                if (!IsPrefixConsistent(node, p1.Base, s2, dir)) {
+                if (!IsPrefixConsistent(ctx, p1.Base, s2, dir)) {
                     newSideConstr.Add(new IntEq(new Poly(), p1.Power));
                     return SimplifyResult.Proceed;
                 }
             }
-            if (t2 is PowerToken p2) {
-                if (node.IsZero(p2.Power)) {
-                    s2.Drop(dir);
+            if (t2.Token is PowerToken p2) {
+                if (ctx.IsZero(p2.Power)) {
+                    s2.Skip(ctx, dir);
                     continue;
                 }
-                if (!IsPrefixConsistent(node, p2.Base, s1, dir)) {
+                if (!IsPrefixConsistent(ctx, p2.Base, s1, dir)) {
                     newSideConstr.Add(new IntEq(new Poly(), p2.Power));
                     return SimplifyResult.Proceed;
                 }
             }
 
-            if (t2 is NamedStrToken) {
+            if (t2.Token is NamedStrToken) {
                 (s1, s2) = (s2, s1);
                 (t1, t2) = (t2, t1);
             }
-            if (t1 is NamedStrToken v1 && t2 is CharToken && s1.Count > 1 && s1.Peek(dir, 1) is CharToken) {
-                Debug.Assert(s2.IsNonEmpty());
+            if (t1.Token is NamedStrToken && t2.Token is CharToken && s1.Peek(ctx, 1, dir)?.Token is CharToken) {
+                Debug.Assert(!s2.IsEpsilon(ctx));
                 // uxw = xvw', u & v char only
                 // x / u' x with u' <= u while u' incompatible with v
                 // we do not want to unwind stuff like axx = xbx - this would result in an infinite sequence (the power would eliminate it anyway!)
                 // e.g., xababc w = abc w' sets x / abcx as "ababc" is incompatible with "abc",
                 //       xabca w = abc w' would not reduce at all, and
                 //       xaabca w = abc w' would set x / ax
-                int i = 0;
-                for (; i < s2.Count && s2.Peek(dir, i) is CharToken; i++) {
+                StrRef it = s2.Clone();
+                int cnt = 0;
+                while (it.Peek(ctx, dir)?.Token is CharToken) {
 
                     // TODO: Use consistent prefix (requires some resource improvements first though)
-                    int j = 0;
+                    StrRef it1 = s1.Clone();
+                    var r = it1.Skip(ctx, dir);
+                    StrRef it2 = s2.Clone();
+                    Debug.Assert(r is not null);
                     bool failed = false;
-                    for (; j + 1 < s1.Count && j + i < s2.Count; j++) {
-                        StrToken st1 = s1.Peek(dir, j + 1);
-                        StrToken st2 = s2.Peek(dir, j + i);
-                        if (st1 is not CharToken stc1 || st2 is not CharToken stc2)
+                    while (true) {
+                        StrTokenRef? st1 = it1.Peek(ctx, dir);
+                        if (st1 is null)
                             break;
-                        if (stc1.Equals(stc2))
-                            continue;
-                        failed = true;
-                        break;
+                        it1.Skip(ctx, dir);
+                        StrTokenRef? st2 = it2.Peek(ctx, dir);
+                        if (st2 is null)
+                            break;
+                        it2.Skip(ctx, dir);
+                        if (st1.Token is not CharToken stc1 || st2.Token is not CharToken stc2)
+                            break;
+                        if (!stc1.Equals(stc2)) {
+                            failed = true;
+                            break;
+                        }
                     }
-                    if (failed)
-                        // The prefix are inconsistent - we can proceed
-                        continue;
-                    break;
+                    if (!failed) 
+                        break;
+                    // The prefix are inconsistent - we can proceed
+                    cnt++;
                 }
-                if (i > 0) {
-                    // i == 0 => nothing to do.
-
+                if (cnt > 0) {
                     // Check if the next variable is not the variable we started of (unwinding this way would not necessarily terminate)
                     // => Use power instead
-                    int k = i;
-                    for (; k < s2.Count && s2.Peek(dir, k) is UnitToken; k++) {
-                        // empty body
+                    StrRef it3 = it.Clone();
+                    while (it3.Peek(ctx, dir)?.Token is UnitToken) {
+                        it3.Skip(ctx, dir);
                     }
-                    if (k >= s2.Count || !v1.Equals(s2.Peek(dir, k))) {
+                    if (it3.IsEpsilon(ctx) || !t1.Equals(it3.Peek(ctx, dir)!)) {
                         // t == v1 => we need power introduction 
-                        Str s = new(i + 1);
-                        for (int j = 0; j < i; j++) {
-                            s.Add(s2.Peek(dir, j), !dir);
-                        }
-                        s.Add(v1, !dir);
-                        newSubst.Add(new SubstVar(v1, s));
+                        var cit = s2.Clone();
+                        Str s = new(ctx, cit, it, [t1], dir, cnt + 1);
+                        Debug.Assert(cit.Equals(it));
+                        newSubst.Add(new SubstVar(t1, s));
                         return SimplifyResult.Proceed;
                     }
                 }
             }
 
-            if (SimplifyPower(node, s1, s2, dir))
+            if (SimplifyPower(ctx, s1, s2, dir))
                 continue;
             break;
         }
@@ -195,49 +165,52 @@ public sealed class StrEq : StrEqBase {
 
     static int simplifyCount;
 
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, 
+    protected override SimplifyResult SimplifyInternal(NielsenContext ctx, 
         List<Subst> newSubst, HashSet<Constraint> newSideConstr, 
         ref BacktrackReasons reason) {
         simplifyCount++;
         Log.WriteLine($"Simplify Eq ({simplifyCount}): {LHS} = {RHS}");
         LHS = LcpCompression(LHS) ?? LHS;
         RHS = LcpCompression(RHS) ?? RHS;
-        if (SimplifyDir(node, newSubst, newSideConstr, true) == SimplifyResult.Conflict) {
+        if (SimplifyDir(ctx, newSubst, newSideConstr, true) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
         if (newSubst.IsNonEmpty())
             return SimplifyResult.Proceed;
 
-        if (SimplifyDir(node, newSubst, newSideConstr, false) == SimplifyResult.Conflict) {
+        if (SimplifyDir(ctx, newSubst, newSideConstr, false) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
         if (newSubst.IsNonEmpty())
             return SimplifyResult.Proceed;
 
-        if (LHS.IsEmpty() && RHS.IsEmpty())
+        bool e1 = LHS.IsEpsilon(ctx);
+        bool e2 = RHS.IsEpsilon(ctx);
+
+        if (e1 && e2)
             return SimplifyResult.Satisfied;
 
-        if (LHS.IsEmpty() || RHS.IsEmpty()) {
-            var eq = LHS.IsEmpty() ? RHS : LHS;
+        if (e1 || e2) {
+            var eq = e1 ? RHS : LHS;
             // Remove powers that actually do not exist anymore
-            while (eq.IsNonEmpty() && eq.Peek(true) is PowerToken p) {
-                Str? s;
-                if ((s = SimplifyPowerSingle(node, p)) is not null) {
-                    eq.Drop(true);
+            while (eq.Peek(ctx, true)?.Token is PowerToken p) {
+                StrRef? s;
+                if ((s = SimplifyPowerSingle(ctx, p)) is not null) {
+                    eq.Skip(ctx, true);
                     eq.AddRange(s, true);
                     continue;
                 }
                 break;
             }
-            if (eq.IsEmpty())
+            if (eq.IsEpsilon(ctx))
                 return SimplifyResult.Satisfied;
-            if (SimplifyEmpty(eq, node, newSubst, newSideConstr) == SimplifyResult.Conflict) {
+            if (SimplifyEmpty(ctx, eq, newSubst, newSideConstr) == SimplifyResult.Conflict) {
                 reason = BacktrackReasons.SymbolClash;
                 return SimplifyResult.Conflict;
             }
-            SortStr();
+            SortStr(ctx);
             return SimplifyResult.Proceed;
         }
 
@@ -250,44 +223,45 @@ public sealed class StrEq : StrEqBase {
             var nonEmpty = lhsSet.IsEmpty() ? rhsSet : lhsSet;
             // Remove powers that actually do not exist anymore
             while (nonEmpty.IsNonEmpty() && nonEmpty.First().t is PowerToken p) {
-                Str? s;
-                if ((s = SimplifyPowerSingle(node, p)) is not null) {
+                StrRef? s;
+                if ((s = SimplifyPowerSingle(ctx, p)) is not null) {
                     nonEmpty.RemoveAll(p);
                     nonEmpty.Add(s);
                     continue;
                 }
                 break;
             }
-            if (SimplifyEmpty(nonEmpty.Keys, node, newSubst, newSideConstr) == SimplifyResult.Conflict) {
+            if (SimplifyEmpty(ctx, nonEmpty.Keys, newSubst, newSideConstr) == SimplifyResult.Conflict) {
                 reason = BacktrackReasons.ParikhImage;
                 return SimplifyResult.Conflict;
             }
-            SortStr();
+            SortStr(ctx);
             return SimplifyResult.Proceed;
         }
-        // Propagate assignments
 
-        if (LHS is [StrVarToken] || RHS is [StrVarToken]) {
-            var (v, s) = LHS is [StrVarToken] ? ((StrVarToken)LHS[0], RHS) : ((StrVarToken)RHS[0], LHS);
-            // important: clone it; otherwise one might into endless recursions when applied to itself
-            AddDefinition(v, s, node, newSubst, newSideConstr);
+        // Propagate assignments
+        StrTokenRef? t1, t2 = null;
+        if ((LHS.IsUnit(ctx, out t1) && t1?.Token is StrVarToken) ||
+            (RHS.IsUnit(ctx, out t2) && t2?.Token is StrVarToken)) {
+            var (v, s) = t2 is not null ? (t2, LHS) : (t1, RHS);
+            AddDefinition(v!, s, ctx, newSubst, newSideConstr);
         }
-        SortStr();
+        SortStr(ctx);
         return SimplifyResult.Proceed;
     }
 
-    NumCmpModifier? SplitPowerElim(StrToken t, Str s, bool dir) {
-        if (t is not PowerToken p1)
+    NumCmpModifier? SplitPowerElim(NielsenContext ctx, StrTokenRef t, StrRef s, bool dir) {
+        if (t.Token is not PowerToken p1)
             return null;
         var r = CommPower(p1.Base, s, dir);
         return r.idx > 0 ? new NumCmpModifier(p1.Power, r.num) : null;
     }
 
-    NumUnwindingModifier? SplitPowerUnwind(StrToken t, bool varInvolved) => 
-        t is not PowerToken p ? null : (varInvolved ? new VarNumUnwindingModifier(p.Power) : new ConstNumUnwindingModifier(p.Power));
+    NumUnwindingModifier? SplitPowerUnwind(NielsenContext ctx, StrTokenRef t, bool varInvolved) => 
+        t.Token is not PowerToken p ? null : (varInvolved ? new VarNumUnwindingModifier(p.Power) : new ConstNumUnwindingModifier(p.Power));
 
-    Str? TryGetPowerSplitBase(StrVarToken v, Str s, bool dir) {
-        if (s.IsEmpty())
+    StrRef? TryGetPowerSplitBase(NielsenContext ctx, StrVarToken v, StrRef s, bool dir) {
+        if (s.IsEpsilon(ctx))
             return null;
         var i = 0;
         for (; i < s.Count && !s.Peek(dir, i).Equals(v); i++) { }
@@ -298,12 +272,12 @@ public sealed class StrEq : StrEqBase {
         // Rec Case
         Debug.Assert(s.Peek(dir, i).Equals(v));
         return dir 
-            ? new Str(s.Take(i).ToList()) 
-            : new Str(s.Reverse().Take(i).Reverse().ToList());
+            ? new StrRef(s.Take(i).ToList()) 
+            : new StrRef(s.Reverse().Take(i).Reverse().ToList());
     }
 
-    ModifierBase? SplitEq(Str s1, Str s2, bool dir) {
-        if (s1.IsEmpty() || s2.IsEmpty())
+    ModifierBase? SplitEq(NielsenContext ctx, StrRef s1, StrRef s2, bool dir) {
+        if (s1.IsEpsilon(ctx) || s2.IsEpsilon(ctx))
             return null;
         // TODO: This is not optimal!
         Len constDiff = 0;
@@ -334,7 +308,7 @@ public sealed class StrEq : StrEqBase {
 
                 if (s1.Count <= lhsIdx)
                     break;
-                len = LenVar.MkLenPoly([s1.Peek(dir, lhsIdx++)]);
+                len = LenVar.MkLenPoly([s1.Peek2(ctx, dir, lhsIdx++)]);
                 constDiff += len.ConstPart;
                 len.ElimConst();
                 firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
@@ -346,7 +320,7 @@ public sealed class StrEq : StrEqBase {
             }
             if (s2.Count <= rhsIdx)
                 break;
-            len = LenVar.MkLenPoly([s2.Peek(dir, rhsIdx++)]);
+            len = LenVar.MkLenPoly([s2.Peek2(ctx, dir, rhsIdx++)]);
             constDiff -= len.ConstPart;
             len.ElimConst();
             firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
@@ -360,27 +334,27 @@ public sealed class StrEq : StrEqBase {
         Debug.Assert(!best.IsZero);
         int val;
         if (best.IsNeg) {
-            if (bestLhs >= 0 && bestLhs < s1.Count && s1.Peek(dir, bestLhs) is StrVarToken v11 && best.TryGetInt(out val))
+            if (bestLhs >= 0 && s1.Peek(ctx, dir, bestLhs)?.Token is StrVarToken v11 && best.TryGetInt(out val))
                 // ...|x... (=> x / o_1...o_p x)
                 return new VarPaddingModifier(v11, -val, dir);
-            if (bestRhs > 0 && bestRhs <= s2.Count && s2.Peek(dir, bestRhs - 1) is StrVarToken v22 && best.TryGetInt(out val))
+            if (bestRhs > 0 && bestRhs <= s2.Count && s2.Peek(ctx, dir, bestRhs - 1) is StrVarToken v22 && best.TryGetInt(out val))
                 // ...x|... (=> x / x o_1...o_p x)
                 return new VarPaddingModifier(v22, -val, !dir);
             return null;
         }
-        if (bestRhs >= 0 && bestRhs < s2.Count && s2.Peek(dir, bestRhs) is StrVarToken v21 && best.TryGetInt(out val))
+        if (bestRhs >= 0 && s2.Peek(ctx, dir, bestRhs)?.Token is StrVarToken v21 && best.TryGetInt(out val))
             return new VarPaddingModifier(v21, val, dir);
-        if (bestLhs > 0 && bestLhs <= s1.Count && s1.Peek(dir, bestLhs - 1) is StrVarToken v12 && best.TryGetInt(out val))
+        if (bestLhs > 0 && bestLhs <= s1.Count && s1.Peek(ctx, dir, bestLhs - 1) is StrVarToken v12 && best.TryGetInt(out val))
             return new VarPaddingModifier(v12, val, !dir);
         return null;
     }
 
-    ModifierBase? SplitVarVar(Str s1, Str s2, bool dir) {
-        if (s1.IsEmpty() || s2.IsEmpty() || s1.Peek(dir) is not StrVarToken v1 || s2.Peek(dir) is not StrVarToken v2)
+    ModifierBase? SplitVarVar(NielsenContext ctx, StrRef s1, StrRef s2, bool dir) {
+        if (s1.Peek(ctx, dir)?.Token is not StrVarToken v1 || s2.Peek(ctx, dir)?.Token is not StrVarToken v2)
             return null;
 
-        Str? p1 = TryGetPowerSplitBase(v1, s2, dir);
-        Str? p2 = TryGetPowerSplitBase(v2, s1, dir);
+        StrRef? p1 = TryGetPowerSplitBase(ctx, v1, s2, dir);
+        StrRef? p2 = TryGetPowerSplitBase(ctx, v2, s1, dir);
         if (p1 is not null && p2 is not null) {
             if (p1.Ground && p2.Ground) {
                 Debug.Assert(false); // How could that happen?!
@@ -414,19 +388,19 @@ public sealed class StrEq : StrEqBase {
         return new PowerIntrConstNielsen(v1, v2, p1, dir);
     }
 
-    ModifierBase? SplitGroundPower(StrToken t, Str s, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not UnitToken)
+    ModifierBase? SplitGroundPower(NielsenContext ctx, StrToken t, StrRef s, bool dir) {
+        if (t is not StrVarToken v || s.Peek(ctx, dir)?.Token is not UnitToken)
             return null;
-        Str? p = TryGetPowerSplitBase(v, s, dir);
+        StrRef? p = TryGetPowerSplitBase(ctx, v, s, dir);
         if (p is not null && p.Ground)
             return new GPowerIntrModifier(v, p, dir);
         return null;
     }
 
-    ModifierBase? SplitVarChar(StrToken t, Str s, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not UnitToken)
+    ModifierBase? SplitVarChar(NielsenContext ctx, StrToken t, StrRef s, bool dir) {
+        if (t is not StrVarToken v || s.Peek(ctx, dir)?.Token is not UnitToken)
             return null;
-        Str? p = TryGetPowerSplitBase(v, s, dir);
+        StrRef? p = TryGetPowerSplitBase(ctx, v, s, dir);
         if (p is null)
             return new ConstNielsenModifier(v, s.Peek(dir), dir);
         if (p.Ground) {
@@ -437,11 +411,11 @@ public sealed class StrEq : StrEqBase {
         //return new PowerIntrModifier(v, p, dir);
     }
 
-    ModifierBase? SplitVarPower(StrToken t, Str s, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s.Peek(dir) is not PowerToken { Ground: true } p)
+    ModifierBase? SplitVarPower(NielsenContext ctx, StrToken t, StrRef s, bool dir) {
+        if (t is not StrVarToken v || s.Peek(ctx, dir)?.Token is not PowerToken { Ground: true } p)
             return null;
 
-        Str? b = TryGetPowerSplitBase(v, s, dir);
+        StrRef? b = TryGetPowerSplitBase(ctx, v, s, dir);
         if (b is null)
             return new PowerSplitModifier(v, p, dir);
         if (b.Ground)
@@ -449,12 +423,12 @@ public sealed class StrEq : StrEqBase {
         return new PowerSplitModifier(v, p, dir);
     }
 
-    ModifierBase ExtendDir(bool dir) {
-        Str s1 = LHS;
-        Str s2 = RHS;
-        SortStr(ref s1, ref s2, dir);
-        if (s1.IsEmpty()) {
-            Debug.Assert(!s2.IsEmpty());
+    ModifierBase ExtendDir(NielsenContext ctx, bool dir) {
+        StrRef s1 = LHS;
+        StrRef s2 = RHS;
+        StrEqBase.SortStr(ctx, ref s1, ref s2, dir);
+        if (s1.IsEpsilon(ctx)) {
+            Debug.Assert(!s2.IsEpsilon(ctx));
             foreach (var s in s2) {
                 if (s is PowerToken p)
                     return new PowerEpsilonModifier(p);
@@ -463,71 +437,61 @@ public sealed class StrEq : StrEqBase {
             }
             throw new NotSupportedException();
         }
-        Debug.Assert(!s1.IsEmpty() && !s2.IsEmpty());
+        Debug.Assert(!s1.IsEpsilon(ctx) && !s2.IsEpsilon(ctx));
 
-        var t1 = s1.Peek(dir);
-        var t2 = s2.Peek(dir);
+        var t1 = s1.Peek2(ctx,dir);
+        var t2 = s2.Peek2(ctx, dir);
 
         ModifierBase? ret;
 
-        if ((ret = SplitPowerElim(t1, s2, dir)) is not null)
+        if ((ret = SplitPowerElim(ctx, t1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitPowerElim(t2, s1, dir)) is not null)
+        if ((ret = SplitPowerElim(ctx, t2, s1, dir)) is not null)
             return ret;
-        if (t2 is not NamedStrToken && (ret = SplitPowerUnwind(t1, false)) is not null)
+        if (t2.Token is not NamedStrToken && (ret = SplitPowerUnwind(ctx, t1, false)) is not null)
             return ret;
-        if (t1 is not NamedStrToken && (ret = SplitPowerUnwind(t2, false)) is not null)
+        if (t1.Token is not NamedStrToken && (ret = SplitPowerUnwind(ctx, t2, false)) is not null)
             return ret;
-        if ((ret = SplitGroundPower(t1, s2, dir)) is not null)
+        if ((ret = SplitGroundPower(ctx, t1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitGroundPower(t2, s1, dir)) is not null)
+        if ((ret = SplitGroundPower(ctx, t2, s1, dir)) is not null)
             return ret;
-        if ((ret = SplitEq(s1, s2, dir)) is not null)
+        if ((ret = SplitEq(ctx, s1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitVarPower(t1, s2, dir)) is not null)
+        if ((ret = SplitVarPower(ctx, t1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitVarPower(t2, s1, dir)) is not null)
+        if ((ret = SplitVarPower(ctx, t2, s1, dir)) is not null)
             return ret;
-        if ((ret = SplitVarChar(t1, s2, dir)) is not null)
+        if ((ret = SplitVarChar(ctx, t1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitVarChar(t2, s1, dir)) is not null)
+        if ((ret = SplitVarChar(ctx, t2, s1, dir)) is not null)
             return ret;
-        if ((ret = SplitVarVar(s1, s2, dir)) is not null)
+        if ((ret = SplitVarVar(ctx, s1, s2, dir)) is not null)
             return ret;
-        if ((ret = SplitPowerUnwind(t1, true)) is not null)
+        if ((ret = SplitPowerUnwind(ctx, t1, true)) is not null)
             return ret;
-        if ((ret = SplitPowerUnwind(t2, true)) is not null)
+        if ((ret = SplitPowerUnwind(ctx, t2, true)) is not null)
             return ret;
         throw new NotSupportedException();
     }
 
-    public override ModifierBase Extend(NielsenNode node) {
-        var m1 = ExtendDir(true);
-        var m2 = ExtendDir(false);
+    public override ModifierBase Extend(NielsenContext ctx) {
+        var m1 = ExtendDir(ctx, true);
+        var m2 = ExtendDir(ctx, false);
         return m1.CompareTo(m2) <= 0 ? m1 : m2;
     }
 
     public override int CompareToInternal(StrConstraint other) {
         StrEq otherEq = (StrEq)other;
-        int cmp = LHS.Count.CompareTo(otherEq.LHS.Count);
-        if (cmp != 0)
-            return cmp;
-        cmp = RHS.Count.CompareTo(otherEq.RHS.Count);
-        if (cmp != 0)
-            return cmp;
-        cmp = LHS.CompareTo(otherEq.LHS);
+        int cmp = LHS.CompareTo(otherEq.LHS);
         return cmp != 0 ? cmp : RHS.CompareTo(otherEq.RHS);
     }
 
-    public override StrConstraint Negate() => 
-        new StrNonEq(LHS, RHS);
+    public override StrConstraint Negate(NielsenContext ctx) => 
+        new StrNonEq(ctx, LHS, RHS);
 
-    public override BoolExpr ToExpr(NielsenGraph graph) {
-        return graph.Ctx.MkEq(LHS.ToExpr(graph), RHS.ToExpr(graph));
-    }
-
-    public override int GetHashCode() {
-        return 613461011 + LHS.GetHashCode() + 967118167 * RHS.GetHashCode();
+    public override BoolExpr ToExpr(NielsenContext ctx) {
+        return ctx.Graph.Ctx.MkEq(LHS.ToExpr(ctx), RHS.ToExpr(ctx));
     }
 
     public override string ToString() => $"{LHS} = {RHS}";

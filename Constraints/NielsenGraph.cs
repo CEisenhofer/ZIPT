@@ -4,7 +4,8 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
+using StringBreaker.Strings;
 
 namespace StringBreaker.Constraints;
 
@@ -14,7 +15,6 @@ public class NielsenGraph {
     public Context Ctx => OuterPropagator.Ctx;
     public ExpressionCache Cache => OuterPropagator.Cache;
     public uint DepthBound { get; private set; }
-    public uint ComplexityBound { get; private set; }
     public StringPropagator InnerStringPropagator { get; }
     public readonly Solver SubSolver; // Solver for assumption based integer reasoning
     public NielsenNode Root { get; }
@@ -42,32 +42,23 @@ public class NielsenGraph {
         SatNodes.Clear();
         if (OuterPropagator.Cancel)
             throw new Exception("Timeout");
-        if (NielsenNode.Simplify(Root) != BacktrackReasons.Unevaluated) {
+        NielsenContext ctx = new(Root);
+        if (NielsenNode.Simplify(ctx) != BacktrackReasons.Unevaluated) {
             Debug.Assert(Root.IsConflict);
             return false;
         }
-        Root.AssertToZ3(Root.AllIntConstraints.Select(o => o.ToExpr(this)));
+        Root.AssertToZ3(Root.AllIntConstraints.Select(o => o.ToExpr(ctx)));
         Root.AssertToZ3(Root.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
         DepthBound = Options.ItDeepDepthStart;
-        ComplexityBound = Options.ItDeepComplexityStart;
         while (true) {
             Debug.Assert(CurrentModificationCnt.IsEmpty());
-            var res = Root.Check(0, 0);
+            var res = Root.Check(ctx, 0);
             if (res && (!Options.FullGraphExpansion || Root.FullyExpanded))
                 return true;
             if (Root.IsConflict)
                 return false;
             // Depth limit encountered - retry with higher bound
-            if (res) {
-                DepthBound += Options.ItDeepeningInc;
-                ComplexityBound += Options.ItDeepeningInc;
-            }
-            else if (Root.Reason is BacktrackReasons.DepthLimit or BacktrackReasons.BothLimits)
-                DepthBound += Options.ItDeepeningInc;
-            else {
-                Debug.Assert(Root.Reason == BacktrackReasons.ComplexityLimit);
-                ComplexityBound += Options.ItDeepeningInc;
-            }
+            DepthBound += Options.ItDeepeningInc;
         }
     }
 

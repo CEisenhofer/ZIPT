@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -18,6 +19,6 @@ public abstract class NonTermInt : IComparable<NonTermInt> {
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
     public abstract void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
-    public abstract IntExpr ToExpr(NielsenGraph graph);
+    public abstract IntExpr ToExpr(NielsenContext ctx);
     public abstract override string ToString();
 }

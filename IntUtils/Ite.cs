@@ -1,7 +1,8 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -62,11 +63,11 @@ public class Ite : NonTermInt {
         Els.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
-    public override IntExpr ToExpr(NielsenGraph graph) =>
-        (IntExpr)graph.Ctx.MkITE(
-            Cond.ToExpr(graph),
-            Then.ToExpr(graph),
-            Els.ToExpr(graph)
+    public override IntExpr ToExpr(NielsenContext ctx) =>
+        (IntExpr)ctx.Graph.Ctx.MkITE(
+            Cond.ToExpr(ctx),
+            Then.ToExpr(ctx),
+            Els.ToExpr(ctx)
         );
 
     public override string ToString() => 

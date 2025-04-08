@@ -1,5 +1,5 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker;
 

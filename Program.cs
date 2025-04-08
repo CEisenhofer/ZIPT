@@ -7,7 +7,7 @@ using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker;
 
@@ -161,7 +161,7 @@ public static class Program {
             var cnstr = propagator.Cache.TryParse(expr);
             if (cnstr is null)
                 throw new NotSupportedException(expr.ToString());
-            solver.Assert(cnstr.ToExpr(propagator.Graph));
+            solver.Assert(cnstr.ToExpr());
         }
     }
 
@@ -191,7 +191,7 @@ public static class Program {
         using Solver solver = ctx.MkSimpleSolver();
         using ExpressionCache cache = new(ctx);
         using SaturatingStringPropagator propagator = new(solver, cache);
-        solver.Assert(eq.ToExpr(propagator.Graph));
+        solver.Assert(eq.ToExpr());
         Solve(propagator, 0);
     }
 }

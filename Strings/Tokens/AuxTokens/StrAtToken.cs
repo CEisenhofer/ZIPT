@@ -1,8 +1,9 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.IntUtils;
+using StringBreaker.Strings.Tokens;
 
-namespace StringBreaker.Tokens.AuxTokens;
+namespace StringBreaker.Strings.Tokens.AuxTokens;
 
 public sealed class StrAtToken : NamedStrToken {
 
@@ -19,12 +20,12 @@ public sealed class StrAtToken : NamedStrToken {
     public override StrAtToken GetExtension1() => (StrAtToken)(Extension1 ??= new StrAtToken(S, I));
     public override StrAtToken GetExtension2() => (StrAtToken)(Extension2 ??= new StrAtToken(S, I));
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(int copyIdx, NielsenContext ctx) {
+        Expr? e = ctx.Cache.GetCachedStrExpr(this, copyIdx);
         if (e is not null)
             return e;
-        e = graph.Cache.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
-        graph.Cache.SetCachedExpr(this, e, graph);
+        e = ctx.Cache.StrAtFct.Apply(S.ToExpr(ctx), I.ToExpr(ctx));
+        ctx.Cache.SetCachedExpr(this, e, copyIdx);
         return e;
     }
 }

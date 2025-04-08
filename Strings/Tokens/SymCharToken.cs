@@ -2,7 +2,7 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public sealed class SymCharToken : UnitToken {
 
@@ -16,13 +16,13 @@ public sealed class SymCharToken : UnitToken {
     public override Str Apply(Subst subst) => subst.ResolveVar(this);
     public override Str Apply(Interpretation itp) => [itp.ResolveVar(this)];
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(int copyIdx, NielsenContext ctx) {
+        Expr? e = ctx.Cache.GetCachedStrExpr(this, copyIdx);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
-        graph.Cache.SetCachedExpr(this, e, graph);
+        FuncDecl f = ctx.Graph.Ctx.MkFreshConstDecl("'" + nextId + "'", ctx.Cache.StringSort);
+        e = ctx.Graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], ctx.Cache.StringSort).Apply();
+        ctx.Cache.SetCachedExpr(this, e, copyIdx);
         return e;
     }
 
@@ -39,5 +39,5 @@ public sealed class SymCharToken : UnitToken {
 
     public override int GetHashCode() => 855791621 * nextId;
 
-    public override string ToString(NielsenGraph? graph) => "'" + Id + "'";
+    public override string ToString() => "'" + Id + "'";
 }

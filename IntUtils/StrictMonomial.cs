@@ -2,7 +2,8 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -85,15 +86,15 @@ public class StrictMonomial : MSet<NonTermInt> {
         }
     }
 
-    public IntExpr ToExpr(NielsenGraph graph) {
+    public IntExpr ToExpr(NielsenContext ctx) {
         if (IsEmpty())
-            return graph.Ctx.MkInt(1);
-        IntExpr result = graph.Ctx.MkInt(1);
+            return ctx.Graph.Ctx.MkInt(1);
+        IntExpr result = ctx.Graph.Ctx.MkInt(1);
         foreach (var c in this) {
             Debug.Assert(c.occ > 0);
-            var b = c.t.ToExpr(graph);
+            var b = c.t.ToExpr(ctx);
             for (int i = 0; i < c.occ; i++) {
-                result = (IntExpr)graph.Ctx.MkMul(result, b);
+                result = (IntExpr)ctx.Graph.Ctx.MkMul(result, b);
             }
         }
         return result;

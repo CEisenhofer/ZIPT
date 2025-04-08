@@ -1,6 +1,7 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -14,17 +15,17 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         V2 = v2;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // V1 / "" (progress)
         // V2 / "" && |V1| >= 1 (progress)
         // V1 / V2 && |V1| >= 1 && |V2| >= 1 (progress)
         // V1 / V1V2 && |V1| >= 1 && |V2| >= 1 (no progress)
         // V2 / V2V1 && |V1| >= 1 && |V2| >= 1 (no progress)
         var subst = new SubstVar(V1);
-        var c = node.MkChild(node, [subst], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [subst], true);
         c.Apply(subst);
         subst = new SubstVar(V2);
-        c = node.MkChild(node, [subst], true);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], true);
         c.Apply(subst);
         var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
@@ -32,7 +33,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
 
         Str s = [V2];
         subst = new SubstVar(V1, s);
-        c = node.MkChild(node, [subst], true);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], true);
         c.Apply(subst);
         sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
@@ -43,7 +44,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
 
         s = Forwards ? [V2, V1] : [V1, V2];
         subst = new SubstVar(V1, s);
-        c = node.MkChild(node, [subst], false);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], false);
         c.Apply(subst);
         sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
@@ -54,7 +55,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
 
         s = Forwards ? [V1, V2] : [V2, V1];
         subst = new SubstVar(V2, s);
-        c = node.MkChild(node, [subst], false);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], false);
         c.Apply(subst);
         sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|

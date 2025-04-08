@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel;
 using Microsoft.Z3;
-using StringBreaker.Tokens;
+using StringBreaker.Constraints;
+using StringBreaker.Strings.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace StringBreaker.Strings;
 
 public abstract class Subst {
 
@@ -13,10 +14,10 @@ public abstract class Subst {
 
     public abstract void AddToInterpretation(Interpretation itp);
 
-    public abstract Expr KeyExpr(NielsenGraph graph);
-    public abstract Expr ValueExpr(NielsenGraph graph);
-    public abstract IntExpr KeyLenExpr(NielsenGraph graph);
-    public abstract IntExpr ValueLenExpr(NielsenGraph graph);
+    public abstract Expr KeyExpr(NielsenContext ctx);
+    public abstract Expr ValueExpr(NielsenContext ctx);
+    public abstract IntExpr KeyLenExpr(NielsenContext ctx);
+    public abstract IntExpr ValueLenExpr(NielsenContext ctx);
     public abstract override string ToString();
 
     public abstract override bool Equals(object? obj);

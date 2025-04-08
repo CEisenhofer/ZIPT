@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.MiscUtils;
+using StringBreaker.Strings;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;

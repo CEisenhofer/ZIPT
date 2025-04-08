@@ -13,9 +13,9 @@ public class CombinedModifier : ModifierBase {
         Modifier = modifier;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         foreach (var modifier in Modifier) {
-            modifier.Apply(node);
+            modifier.Apply(ctx);
         }
     }
 

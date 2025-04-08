@@ -24,13 +24,6 @@ public static class Options {
         set => itDeepDepthStart = Math.Max(1, value);
     }
 
-    // max number of entanglements
-    static uint itDeepComplexityStart = 5;
-    public static uint ItDeepComplexityStart {
-        get => itDeepComplexityStart;
-        set => itDeepComplexityStart = Math.Max(1, value);
-    }
-
     static uint itDeepeningInc = 1;
     public static uint ItDeepeningInc {
         get => itDeepeningInc;

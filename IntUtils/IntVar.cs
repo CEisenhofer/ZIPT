@@ -1,7 +1,8 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 
@@ -30,11 +31,11 @@ public class IntVar : NonTermInt {
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars,
         HashSet<CharToken> alphabet) => iVars.Add(this);
 
-    public override IntExpr ToExpr(NielsenGraph graph) {
-        if (graph.Cache.GetCachedIntExpr(this, graph) is { } e)
+    public override IntExpr ToExpr(NielsenContext ctx) {
+        if (ctx.Cache.GetCachedIntExpr(this, ctx) is { } e)
             return e;
-        e = graph.Ctx.MkIntConst(ToString());
-        graph.Cache.SetCachedExpr(this, e, graph);
+        e = ctx.Ctx.MkIntConst(ToString());
+        ctx.Cache.SetCachedExpr(this, e, ctx);
         return e;
     }
 

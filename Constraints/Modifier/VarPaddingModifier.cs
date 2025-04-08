@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -14,7 +15,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
         Debug.Assert(padding > 0);
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // For all 0 <= i < Padding: V / o_1 ... o_i (progress)
         // V / o_1 ... o_{Padding} V (no progress)
         Str s;
@@ -28,7 +29,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
                 s.Add(ch[j]);
             }
             subst = new SubstVar(Var, s);
-            c = node.MkChild(node, [subst], true);
+            c = ctx.CurrentNode.MkChild(ctx, [subst], true);
             c.Apply(subst);
         }
 
@@ -39,7 +40,7 @@ public class VarPaddingModifier : DirectedNielsenModifier {
         s.Add(Var, !Forwards);
 
         subst = new SubstVar(Var, s);
-        c = node.MkChild(node, [subst], false);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], false);
         c.Apply(subst);
     }
 

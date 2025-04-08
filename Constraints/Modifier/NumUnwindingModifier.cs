@@ -10,13 +10,13 @@ public abstract class NumUnwindingModifier : ModifierBase {
     public NumUnwindingModifier(Poly num) => 
         Num = num;
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
 
-        var c = node.MkChild(node, [], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [], true);
         c.AddConstraints(new IntEq(Num.Clone())); // N1 == 0
         c.Parent!.SideConstraints.Add(new IntEq(Num.Clone()));
 
-        c = node.MkChild(node, [], false); // TODO: Maybe also true?
+        c = ctx.CurrentNode.MkChild(ctx, [], false); // TODO: Maybe also true?
         var sc = IntLe.MkLe(new Poly(1), Num.Clone());
         c.AddConstraints(sc); // 1 <= N1
         c.Parent!.SideConstraints.Add(sc.Clone());

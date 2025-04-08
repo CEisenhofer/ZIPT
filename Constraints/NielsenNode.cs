@@ -1,18 +1,12 @@
 ﻿using System.Diagnostics;
-using System.Net;
-using System.Net.WebSockets;
-using System.Reflection.Metadata.Ecma335;
-using System.Reflection.PortableExecutable;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
-using StringBreaker.Tokens.AuxTokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints;
 
@@ -28,8 +22,6 @@ public enum BacktrackReasons {
     ChildrenFailed,
     // Those are resolved by iterative deepening
     DepthLimit,
-    ComplexityLimit,
-    BothLimits,
 }
 
 public class NielsenNode {
@@ -142,24 +134,24 @@ public class NielsenNode {
         graph.AddNode(this);
     }
 
-    public NielsenNode(NielsenNode parent, IReadOnlyList<Subst> subst, bool progress) : this(parent.Graph) {
-        Debug.Assert(parent.Outgoing is not null);
+    public NielsenNode(NielsenContext ctx, IReadOnlyList<Subst> subst, bool progress) : this(ctx.Graph) {
+        Debug.Assert(ctx.CurrentNode.Outgoing is not null);
         ProgressNode = progress;
-        Parent = new NielsenEdge(parent,
+        Parent = new NielsenEdge(ctx.CurrentNode,
             (BoolExpr)Graph.Ctx.MkFreshConst("P", Graph.Ctx.BoolSort), subst, this);
         if (Parent.Src.Parent is not null)
             AssertToZ3(Parent.Src.Parent.Assumption);
-        parent.Outgoing.Add(Parent);
+        ctx.CurrentNode.Outgoing.Add(Parent);
 
         // Equate the lengths
         IntExpr[] lhs = new IntExpr[subst.Count];
         for (int i = 0; i < lhs.Length; i++) {
-            lhs[i] = subst[i].KeyLenExpr(Graph);
+            lhs[i] = subst[i].KeyLenExpr(ctx);
         }
         int modCnt = Graph.ModCnt;
         Parent.IncModCount(Graph);
         for (int i = 0; i < lhs.Length; i++) {
-            var rhs = subst[i].ValueLenExpr(Graph);
+            var rhs = subst[i].ValueLenExpr(ctx);
             if (!lhs[i].Equals(rhs))
                 AssertToZ3(Graph.OuterPropagator.Ctx.MkEq(lhs[i], rhs));
         }
@@ -204,7 +196,7 @@ public class NielsenNode {
         foreach (var cnstr in AllConstraints) {
             cnstr.Apply(subst);
         }
-        if (subst is not SubstVar v || !VarBoundWatcher.TryGetValue(v.Var, out var watch)) 
+        if (subst is not SubstVar v || !VarBoundWatcher.TryGetValue(v.VarToken, out var watch)) 
             return;
         foreach (var watched in watch) {
             var bound = IntBounds[watched];
@@ -215,7 +207,7 @@ public class NielsenNode {
             else if (bound.HasHigh)
                 AddConstraints(ConstraintElement.IntLe.MkLe(new Poly(watched), n.Clone()));
         }
-        VarBoundWatcher.Remove(v.Var);
+        VarBoundWatcher.Remove(v.VarToken);
     }
 
     public bool IsIntFixed(NonTermInt v, out Len val) {
@@ -391,84 +383,79 @@ public class NielsenNode {
         return DisEq.TryGetValue(s, out var disEqs) && disEqs.Contains(u1);
     }
 
-    public void Extend() {
+    public void Extend(NielsenContext ctx) {
         // TODO: Backtrack if nesting to high
         // get minimal split
         Debug.Assert(AllStrConstraints.Any());
         Debug.Assert(Outgoing is null);
         ModifierBase? bestModifier = null;
         foreach (var cnstr in AllStrConstraints) {
-            ModifierBase currentModifier = cnstr.Extend(this);
+            ModifierBase currentModifier = cnstr.Extend(ctx);
             if (bestModifier is null || currentModifier.CompareTo(bestModifier) < 0)
                 bestModifier = currentModifier;
         }
         Debug.Assert(bestModifier is not null);
         Debug.Assert(Outgoing is null);
         Outgoing = [];
-        bestModifier.Apply(this);
+        bestModifier.Apply(ctx);
         foreach (var child in Outgoing) {
-            child.Tgt.AssertToZ3(Graph.Ctx.MkAnd(child.SideConstraints.Select(o => o.ToExpr(Graph))));
-            int modCnt = Graph.ModCnt;
-            child.IncModCount(Graph);
-            Simplify(child.Tgt);
-            child.DecModCount(Graph);
-            Debug.Assert(modCnt == Graph.ModCnt);
+            child.Tgt.AssertToZ3(Graph.Ctx.MkAnd(child.SideConstraints.Select(o => o.ToExpr(ctx))));
+            ctx.Push(child);
+            Simplify(ctx);
+            ctx.Pop();
         }
     }
 
     static int simplifyChainCnt;
 
-    public static BacktrackReasons Simplify(NielsenNode node) {
+    public static BacktrackReasons Simplify(NielsenContext ctx) {
 
-        List<NielsenNode> nodeChain = [node];
         simplifyChainCnt++;
+        int pushCnt = 0;
 
         void Fail() {
-            for (var i = nodeChain.Count - 1; i > 0; i--) {
+            for (var i = 0; i < pushCnt; i--) {
                 // Inherit reason for only child
-                nodeChain[i - 1].Reason = BacktrackReasons.ChildrenFailed;
-                nodeChain[i].Parent!.DecModCount(node.Graph);
+                ctx.CurrentNode.Reason = BacktrackReasons.ChildrenFailed;
+                ctx.Pop();
             }
         }
 
         bool failedBefore = false;
 
         while (true) {
-            if (node.Graph.OuterPropagator.Cancel)
+            if (ctx.Graph.OuterPropagator.Cancel)
                 throw new Exception("Timeout");
 
             DetModifier mod = new();
-            var reason = node.Simplify(mod.Substitutions, mod.SideConstraints);
-            if (reason is not BacktrackReasons.Unevaluated or BacktrackReasons.Satisfied) {
-                node.Reason = reason;
+            BacktrackReasons reason = ctx.CurrentNode.Simplify(ctx, mod.Substitutions, mod.SideConstraints);
+            if (reason is not BacktrackReasons.Unevaluated && reason is not BacktrackReasons.Satisfied) {
+                ctx.CurrentNode.Reason = reason;
                 Fail();
                 return reason;
             }
 
             if (mod.Trivial || failedBefore) {
                 Debug.Assert(!failedBefore); // To avoid divergence in case of bugs - still this should better not happen (e.g., add n = 0 twice after each other)
-                if (node.Graph.AddSumbsumptionCandidate(node)) {
-                    for (var i = nodeChain.Count - 1; i > 0; i--) {
-                        nodeChain[i].Parent!.DecModCount(node.Graph);
-                    }
+                if (ctx.Graph.AddSumbsumptionCandidate(ctx.CurrentNode)) {
+                    ctx.Pop(pushCnt);
                     return BacktrackReasons.Unevaluated;
                 }
-                node.Reason = BacktrackReasons.Subsumption;
+                ctx.CurrentNode.Reason = BacktrackReasons.Subsumption;
                 Fail();
                 return reason;
             }
-            node.Outgoing = [];
-            mod.Apply(node);
+            ctx.CurrentNode.Outgoing = [];
+            mod.Apply(ctx);
             failedBefore = !mod.Success;
-            Debug.Assert(node.UnitNode);
-            Debug.Assert(node.Outgoing is not null);
+            Debug.Assert(ctx.CurrentNode.UnitNode);
+            Debug.Assert(ctx.CurrentNode.Outgoing is not null);
 
-            if (node.Outgoing[0].SideConstraints.IsNonEmpty())
-                node.Outgoing[0].Tgt.AssertToZ3(node.Graph.Ctx.MkAnd(mod.SideConstraints.Select(o => o.ToExpr(node.Graph))));
+            if (ctx.CurrentNode.Outgoing[0].SideConstraints.IsNonEmpty())
+                ctx.CurrentNode.Outgoing[0].Tgt.AssertToZ3(ctx.Graph.Ctx.MkAnd(mod.SideConstraints.Select(o => o.ToExpr(ctx))));
 
-            node.Outgoing![0].IncModCount(node.Graph);
-            node = node.Outgoing![0].Tgt;
-            nodeChain.Add(node);
+            ctx.Push(ctx.CurrentNode.Outgoing![0]);
+            pushCnt++;
         }
     }
 
@@ -480,7 +467,7 @@ public class NielsenNode {
 
     static int simplifyCnt;
 
-    public BacktrackReasons Simplify(List<Subst> substitution, HashSet<Constraint> newSideConstraints) {
+    public BacktrackReasons Simplify(NielsenContext ctx, List<Subst> substitution, HashSet<Constraint> newSideConstraints) {
         simplifyCnt++;
         Log.WriteLine("Simplify: " + simplifyCnt);
         bool restart = true;
@@ -491,7 +478,7 @@ public class NielsenNode {
                 if (c1.Satisfied)
                     continue;
                 BacktrackReasons reason = BacktrackReasons.Unevaluated;
-                switch (c1.Simplify(this, substitution, newSideConstraints, ref reason)) {
+                switch (c1.Simplify(ctx, substitution, newSideConstraints, ref reason)) {
                     case SimplifyResult.Conflict:
                         Debug.Assert(IsActualConflict(reason));
                         return reason;
@@ -536,9 +523,9 @@ public class NielsenNode {
         Debug.Assert(false);
     }
 
-    public NielsenNode MkChild(NielsenNode parent, IReadOnlyList<Subst> subst, bool progress) {
-        Debug.Assert(parent.Outgoing is not null);
-        return new NielsenNode(parent, subst, progress) {
+    public NielsenNode MkChild(NielsenContext ctx, IReadOnlyList<Subst> subst, bool progress) {
+        Debug.Assert(ctx.CurrentNode.Outgoing is not null);
+        return new NielsenNode(ctx, subst, progress) {
             StrEq = StrEq.Clone(),
             IntEq = IntEq.Clone(),
             IntNEq = IntNEq.Clone(),
@@ -641,10 +628,7 @@ public class NielsenNode {
             BacktrackReasons.ChildrenFailed;
 
     public static bool IsResourceReason(BacktrackReasons reason) =>
-        reason is
-            BacktrackReasons.DepthLimit or
-            BacktrackReasons.ComplexityLimit or
-            BacktrackReasons.BothLimits;
+        reason is BacktrackReasons.DepthLimit ;
 
     public static bool IsActualConflict(BacktrackReasons reason) =>
         IsConflictReason(reason) && reason != BacktrackReasons.ChildrenFailed;
@@ -659,8 +643,6 @@ public class NielsenNode {
         BacktrackReasons.SMT => "SMT",
         BacktrackReasons.ChildrenFailed => "Children Failed",
         BacktrackReasons.DepthLimit => "Depth Limit",
-        BacktrackReasons.ComplexityLimit => "Complexity Limit",
-        BacktrackReasons.BothLimits => "Depth & Complexity Limit",
         _ => throw new ArgumentOutOfRangeException()
     };
 
@@ -669,8 +651,10 @@ public class NielsenNode {
             return BacktrackReasons.Unevaluated;
         if (r1 == BacktrackReasons.Satisfied || r2 == BacktrackReasons.Satisfied)
             return BacktrackReasons.Satisfied;
-        if (IsResourceReason(r1) && IsResourceReason(r2))
-            return r1 == r2 ? r1 : BacktrackReasons.BothLimits;
+        if (IsResourceReason(r1) && IsResourceReason(r2)) {
+            Debug.Assert(r1 == r2);
+            return r1;
+        }
         if (IsResourceReason(r1))
             return r1;
         if (IsResourceReason(r2))
@@ -678,8 +662,8 @@ public class NielsenNode {
         return BacktrackReasons.ChildrenFailed;
     }
 
-    // Unit steps are not countered for depth (or complexity) bound
-    public bool Check(int dep, int comp) {
+    // TODO: Make iterative (not hard to do but hard to debug => do only when relatively stable!)
+    public bool Check(NielsenContext ctx, int dep) {
         if (!Extended) {
             Status z3Res = Status.UNKNOWN;
             if (ProgressNode) {
@@ -687,13 +671,12 @@ public class NielsenNode {
                 // This can be expensive, so we only do this in case the formula simplified "strongly" before
                 // => we ask Z3
                 z3Res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
-                if (z3Res == Status.UNKNOWN)
-                    throw new Exception("unknown");
-
-                Debug.Assert(z3Res != Status.UNKNOWN);
-                if (z3Res == Status.UNSATISFIABLE) {
-                    Reason = BacktrackReasons.SMT;
-                    return false;
+                switch (z3Res) {
+                    case Status.UNKNOWN:
+                        throw new Exception("unknown");
+                    case Status.UNSATISFIABLE:
+                        Reason = BacktrackReasons.SMT;
+                        return false;
                 }
             }
 
@@ -704,27 +687,24 @@ public class NielsenNode {
                     Debug.Assert(!ProgressNode);
                     z3Res = Parent is null ? Graph.SubSolver.Check() : Graph.SubSolver.Check(Parent.Assumption);
                 }
-                if (z3Res == Status.UNKNOWN)
-                    throw new Exception("unknown");
-                // If Z3 says unsat, we backtrack
-                if (z3Res == Status.UNSATISFIABLE) {
-                    Reason = BacktrackReasons.SMT;
-                    return false;
+                switch (z3Res) {
+                    case Status.UNKNOWN:
+                        throw new Exception("unknown");
+                    // If Z3 says unsat, we backtrack
+                    case Status.UNSATISFIABLE:
+                        Reason = BacktrackReasons.SMT;
+                        return false;
                 }
                 // Otw. we found a candidate model
                 Reason = BacktrackReasons.Satisfied;
                 Graph.SatNodes.Add(this);
                 return true;
             }
-            if (comp > Graph.ComplexityBound) {
-                Reason = BacktrackReasons.ComplexityLimit;
-                return false;
-            }
             if (dep > Graph.DepthBound) {
                 Reason = BacktrackReasons.DepthLimit;
                 return false;
             }
-            Extend();
+            Extend(ctx);
         }
         bool first = true;
         BacktrackReasons reason = Reason;
@@ -734,7 +714,7 @@ public class NielsenNode {
             if (outgoing.Tgt is { IsConflict: false, IsSatisfied: false }) {
                 outgoing.IncModCount(Graph);
                 int modCnt = Graph.ModCnt;
-                bool r = outgoing.Tgt.Check(dep + 1, comp);
+                bool r = outgoing.Tgt.Check(ctx, dep + 1); // TODO: Don't increment on unit steps!
                 Debug.Assert(modCnt == Graph.ModCnt);
                 outgoing.DecModCount(Graph);
                 if (r) {

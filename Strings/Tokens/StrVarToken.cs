@@ -2,7 +2,7 @@
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public sealed class StrVarToken : NamedStrToken, IDisposable {
 
@@ -62,14 +62,14 @@ public sealed class StrVarToken : NamedStrToken, IDisposable {
             : GetFreshName(name);
     }
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(int copyIdx, NielsenContext ctx) {
+        Expr? e = ctx.Cache.GetCachedStrExpr(this, copyIdx);
         if (e is not null)
             return e;
 
-        FuncDecl f = graph.Ctx.MkFreshConstDecl(Name, graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
-        graph.Cache.SetCachedExpr(this, e, graph);
+        FuncDecl f = ctx.Graph.Ctx.MkFreshConstDecl(Name, ctx.Cache.StringSort);
+        e = ctx.Graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], ctx.Cache.StringSort).Apply();
+        ctx.Cache.SetCachedExpr(this, e, copyIdx);
         return e;
     }
 }

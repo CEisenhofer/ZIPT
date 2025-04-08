@@ -1,4 +1,5 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
+using StringBreaker.Strings;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints;

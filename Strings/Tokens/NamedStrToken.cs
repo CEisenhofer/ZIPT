@@ -3,7 +3,7 @@ using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public abstract class NamedStrToken : StrToken {
     public sealed override bool Ground => false;
@@ -15,7 +15,10 @@ public abstract class NamedStrToken : StrToken {
     public int ChildIdx { get; } // The id of this child of the token
     public NamedStrToken? Parent { get; } // The direct parent of this token
     protected NamedStrToken? Extension1 { get; set; } // x' for extension. e.g. x / ax' or x / x'a
-    protected NamedStrToken? Extension2 { get; set; } // x'' in this unlikely case we need to split it up. e.g., x = x'x''
+
+    protected NamedStrToken?
+        Extension2 { get; set; } // x'' in this unlikely case we need to split it up. e.g., x = x'x''
+
     IntVar? PowerExtension { get; set; } // The unique power constant n used when eliminating a variable x / u^n u'
 
     protected NamedStrToken(NamedStrToken parent) {
@@ -34,13 +37,14 @@ public abstract class NamedStrToken : StrToken {
     public abstract NamedStrToken GetExtension1();
     public abstract NamedStrToken GetExtension2();
 
-    public IntVar GetPowerExtension() => 
+    public IntVar GetPowerExtension() =>
         PowerExtension ??= new IntVar();
 
-    public sealed override bool IsNullable(NielsenNode node) => 
+    public sealed override bool IsNullable(NielsenContext ctx) =>
         LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
 
-    public sealed override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
+    public sealed override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)>
+        GetPrefixes(bool dir) {
         // P(x) := y with x = yz, |y| < |x|
         // TODO
         NamedStrToken y = GetExtension1();
@@ -72,5 +76,5 @@ public abstract class NamedStrToken : StrToken {
 
     public override int GetHashCode() => 509077363 * HashCode.Combine(GetType(), Name, ChildCnt);
 
-    public override string ToString(NielsenGraph? graph) => Name;
+    public override string ToString() => Name;
 }

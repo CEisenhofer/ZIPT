@@ -1,7 +1,8 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 
@@ -17,7 +18,7 @@ public class StrContains : StrConstraint {
         Contained = contained;
     }
 
-    public override StrContains Clone() => new(S.Clone(), Contained.Clone(), Negated);
+    public override StrContains Clone(NielsenContext ctx) => new(S.ShallowClone(), Contained.ShallowClone(), Negated);
 
     public override bool Equals(object? obj) =>
         obj is StrContains contains && Equals(contains);
@@ -41,7 +42,7 @@ public class StrContains : StrConstraint {
     }
 
     // Just very rudimentary implementation - it will get eliminated anyway...
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyInternal(NielsenContext ctx, List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
         if (S.Count < Contained.Count)
             return SimplifyResult.Proceed;
         int i = 0;
@@ -60,21 +61,21 @@ public class StrContains : StrConstraint {
         return Negated ? SimplifyResult.Conflict : SimplifyResult.Satisfied;
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Cache.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
+    public override BoolExpr ToExpr(NielsenContext ctx) => 
+        (BoolExpr)ctx.Cache.ContainsFct.Apply(S.ToExpr(ctx), Contained.ToExpr(ctx));
 
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         S.CollectSymbols(vars, sChars, iVars, alphabet);
         Contained.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
-    public override StrContains Negate() =>
-        new(S.Clone(), Contained.Clone(), !Negated);
+    public override StrContains Negate(NielsenContext ctx) =>
+        new(S.ShallowClone(), Contained.ShallowClone(), !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node) => 
+    public override ModifierBase Extend(NielsenContext ctx) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

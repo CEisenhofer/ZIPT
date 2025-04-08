@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints;
+using StringBreaker.Strings;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.MiscUtils;

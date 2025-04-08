@@ -3,14 +3,15 @@ using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 
-namespace StringBreaker.Tokens;
+namespace StringBreaker.Strings.Tokens;
 
 public abstract class UnitToken : StrToken {
 
     public sealed override bool Ground => true;
-    public sealed override bool IsNullable(NielsenNode node) => false;
+    public sealed override bool IsNullable(NielsenContext ctx) => false;
 
-    public sealed override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) =>
+    public sealed override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)>
+        GetPrefixes(bool dir) =>
         // P(a) := {}
         [([], [], null)];
 

@@ -1,6 +1,4 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -46,7 +44,7 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
     protected ModifierBase() => 
         Debug.Assert(TypeOrder.ContainsKey(GetType()));
 
-    public abstract void Apply(NielsenNode node);
+    public abstract void Apply(NielsenContext ctx);
     protected abstract int CompareToInternal(ModifierBase otherM);
 
     public int CompareTo(ModifierBase? other) {

@@ -1,7 +1,8 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 
@@ -17,7 +18,7 @@ public class StrSuffixOf : StrConstraint {
         Contained = contained;
     }
 
-    public override StrSuffixOf Clone() => new(S.Clone(), Contained.Clone(), Negated);
+    public override StrSuffixOf Clone(NielsenContext ctx) => new(S.ShallowClone(), Contained.ShallowClone(), Negated);
 
     public override bool Equals(object? obj) =>
         obj is StrSuffixOf suffixOf && Equals(suffixOf);
@@ -41,7 +42,7 @@ public class StrSuffixOf : StrConstraint {
     }
 
     // Just very rudimentary implementation - it will get eliminated anyway...
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyInternal(NielsenContext ctx, List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
         if (S.Count < Contained.Count)
             return SimplifyResult.Proceed;
         int i = Contained.Count;
@@ -60,21 +61,21 @@ public class StrSuffixOf : StrConstraint {
         return Negated ? SimplifyResult.Conflict : SimplifyResult.Satisfied;
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Cache.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
+    public override BoolExpr ToExpr(NielsenContext ctx) => 
+        (BoolExpr)ctx.Cache.SuffixOfFct.Apply(Contained.ToExpr(ctx), S.ToExpr(ctx));
 
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
         S.CollectSymbols(vars, sChars, iVars, alphabet);
         Contained.CollectSymbols(vars, sChars, iVars, alphabet);
     }
 
-    public override StrSuffixOf Negate() =>
-        new(S.Clone(), Contained.Clone(), !Negated);
+    public override StrSuffixOf Negate(NielsenContext ctx) =>
+        new(S.ShallowClone(), Contained.ShallowClone(), !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node) => 
+    public override ModifierBase Extend(NielsenContext ctx) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

@@ -9,7 +9,8 @@ using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 using StringBreaker.Tokens.AuxTokens;
 
 namespace StringBreaker;
@@ -668,8 +669,8 @@ public abstract class StringPropagator : UserPropagator {
                     Ctx.MkOr(
                         Ctx.MkNot(Ctx.MkEq(Cache.MkLen(e1), Cache.MkLen(e2))),
                         Ctx.MkAnd(
-                            Ctx.MkEq(e1, u1.ToExpr(Graph)),
-                            Ctx.MkEq(e2, u2.ToExpr(Graph)),
+                            Ctx.MkEq(e1, u1.ToExpr()),
+                            Ctx.MkEq(e2, u2.ToExpr()),
                             Ctx.MkEq(Cache.MkLen(x1e), Cache.MkLen(x2e)),
                             Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Graph), o2.ToExpr(Graph)))
                         )
@@ -836,7 +837,7 @@ public class SaturatingStringPropagator : StringPropagator {
             var orig = cnstr.Clone();
             cnstr.Apply(itp);
             BacktrackReasons reason = BacktrackReasons.Unevaluated;
-            if (cnstr.Simplify(satNode, [], [], ref reason) == SimplifyResult.Satisfied)
+            if (cnstr.Simplify([], [], ref reason) == SimplifyResult.Satisfied)
                 continue;
             modelCheck = false;
             Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
@@ -932,9 +933,7 @@ public class ExpressionCache : IDisposable {
         StrVarToken.DisposeAll();
     }
 
-    public Expr? GetCachedStrExpr(StrToken t, NielsenGraph graph) {
-        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
+    public Expr? GetCachedStrExpr(StrToken t, int mod) {
         return StrTokenToExpr.GetValueOrDefault((t, mod));
     }
 
@@ -944,9 +943,7 @@ public class ExpressionCache : IDisposable {
         return IntTokenToExpr.GetValueOrDefault((t, mod));
     }
 
-    public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
-        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
+    public void SetCachedExpr(StrToken t, Expr e, int mod) {
         StrTokenToExpr.Add((t, mod), e);
         ExprToStrToken.Add(e, t);
     }

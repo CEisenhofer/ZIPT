@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using StringBreaker.Constraints;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.MiscUtils;
 
@@ -209,6 +209,8 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
         mult = first.Value;
         return true;
     }
+    
+    public void Clear() => occurrences.Clear();
 
     public MSet<T> Clone() => new(this);
 

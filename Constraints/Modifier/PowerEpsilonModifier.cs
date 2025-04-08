@@ -1,5 +1,5 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -9,13 +9,13 @@ public class PowerEpsilonModifier : ModifierBase {
 
     public PowerEpsilonModifier(PowerToken power) => Power = power;
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // Power.Power = 0 (progress)
         // Power.Base / "" (progress)
-        var c = node.MkChild(node, [], true);
+        var c = ctx.CurrentNode.MkChild(ctx, [], true);
         c.AddConstraints(new IntEq(Power.Power.Clone()));
         c.Parent!.SideConstraints.Add(new IntEq(Power.Power.Clone()));
-        c = node.MkChild(node, [], true);
+        c = ctx.CurrentNode.MkChild(ctx, [], true);
         c.AddConstraints(new StrEq(Power.Base));
         c.Parent!.SideConstraints.Add(new StrEq(Power.Base));
     }

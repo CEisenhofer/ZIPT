@@ -1,7 +1,8 @@
 ﻿using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
 using StringBreaker.MiscUtils;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.Constraints.Modifier;
 
@@ -14,7 +15,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         Power = power;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override void Apply(NielsenContext ctx) {
         // V / Base^Power' Base' && Power' < Power
         // V / Base^Power V
 
@@ -30,10 +31,10 @@ public class PowerSplitModifier : DirectedNielsenModifier {
             s.AddRange(p.str, Forwards);
             subst = new SubstVar(Var, s);
             if (p.varDecomp is null)
-                c = node.MkChild(node, [subst], true);
+                c = ctx.CurrentNode.MkChild(ctx, [subst], true);
             else {
                 subst = new SubstVar(Var, s.Apply(p.varDecomp));
-                c = node.MkChild(node, [subst, p.varDecomp], true);
+                c = ctx.CurrentNode.MkChild(ctx, [subst, p.varDecomp], true);
             }
             c.Apply(subst);
             c.AddConstraints(p.sideConstraints);
@@ -46,7 +47,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         s = new Str(Var);
         s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
         subst = new SubstVar(Var, s);
-        c = node.MkChild(node, [subst], false);
+        c = ctx.CurrentNode.MkChild(ctx, [subst], false);
         c.Apply(subst);
     }
 

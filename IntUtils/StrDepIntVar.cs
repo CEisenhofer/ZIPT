@@ -1,6 +1,6 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using StringBreaker.Strings.Tokens;
 
 namespace StringBreaker.IntUtils;
 

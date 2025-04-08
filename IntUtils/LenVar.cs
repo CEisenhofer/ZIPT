@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using StringBreaker.Strings;
+using StringBreaker.Strings.Tokens;
 using System.Xml.Linq;
 
 namespace StringBreaker.IntUtils;
@@ -19,7 +20,7 @@ public class LenVar : StrDepIntVar {
     public override Poly Apply(Interpretation subst) =>
         MkLenPoly(subst.ResolveVar(Var));
 
-    public static Poly MkLenPoly(Str s) {
+    public static Poly MkLenPoly(StrRef s) {
         Poly poly = new();
         foreach (var t in s) {
             switch (t) {
@@ -48,13 +49,13 @@ public class LenVar : StrDepIntVar {
     public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
         HashSet<IntVar> iVars, HashSet<CharToken> alphabet) => vars.Add(Var);
 
-    public override IntExpr ToExpr(NielsenGraph graph) {
-        IntExpr? e = graph.Cache.GetCachedIntExpr(this, graph);
+    public override IntExpr ToExpr(NielsenContext ctx) {
+        IntExpr? e = ctx.Cache.GetCachedIntExpr(this, ctx);
         if (e is not null)
             return e;
 
-        e = (IntExpr)graph.Ctx.MkFreshConst("len_" + Var, graph.Ctx.IntSort);
-        graph.Cache.SetCachedExpr(this, e, graph);
+        e = (IntExpr)ctx.Ctx.MkFreshConst("len_" + Var, ctx.Ctx.IntSort);
+        ctx.Cache.SetCachedExpr(this, e, ctx);
         return e;
     }
 
