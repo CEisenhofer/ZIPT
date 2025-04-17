@@ -113,7 +113,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         }
         if (SimplifyPowerElim(node, p1, s1, s2, dir))
             return true;
-        if (SimplifyPowerUnwind(node, p1, s1, dir))
+        // Reason why we do not do unwinding in presence of a variable:
+        // xb... = a^n... with n >= 1
+        // implies x /ax but this can result in some int constraint bound propagate n >= 2
+        // and result in a cycle as this makes a^n unwindable again
+        // Instead we have to split on x / a^n x and x / a^m with 0 <= m < n
+        if (s2.Peek(dir) is not NamedStrToken && SimplifyPowerUnwind(node, p1, s1, dir))
             return true;
         if (s2.Peek(dir) is PowerToken p2) {
             if ((s = SimplifyPowerSingle(node, p2)) is not null) {
@@ -123,7 +128,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             }
             if (SimplifyPowerElim(node, p2, s2, s1, dir))
                 return true;
-            if (SimplifyPowerUnwind(node, p2, s2, dir))
+            if (s1.Peek(dir) is not NamedStrToken && SimplifyPowerUnwind(node, p2, s2, dir))
                 return true;
         }
         return false;
@@ -183,7 +188,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // The direction is there to decide in which direction to unwind
     // u^n => uu^{n - 1} vs u^{n - 1}u
     protected static Str? SimplifyPowerSingle(NielsenNode node, PowerToken p) {
-        Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
+        // This can be locally violated e.g., if some integer constraint simplified to 1 <= 0 so IsLt(1, 0) evaluates to true
+        // Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
+        if (p.Power.IsConst(out var dl) && dl.IsNeg)
+            // We could also just ignore it, but probably not worth making efforts simplifying it
+            return null;
+
         if (p.Base is [PowerToken p2])
             // (u^m)^n => u^{mn}
             return [new PowerToken(p2.Base, Poly.Mul(p.Power, p2.Power))];
@@ -242,7 +252,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             Debug.Assert(partialList.Any(o => o is not null));
             return [new PowerToken(r, p.Power)];
         }
-        var lcp = LcpCompression(p.Base);
+        var lcp = LcpCompressionFull(p.Base);
         if (lcp is not null)
             return [new PowerToken(lcp, p.Power)];
 
@@ -301,49 +311,121 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     static int lcpCnt;
 
     // We apply the following steps:
+    // v'uu...uv'' => v' u^n v'' (only if singleCompress)
     // v' u^m u^n v'' => v' u^{m + n} v''
     // v' u^n u v'' => v' u^{n + 1} v''
     // v' u' (u'u'')^n u'' v' => v' (u'u'')^{n+1} v'
     // till fixed point
+    public static Str? LcpCompressionFull(Str s) {
+        if (s.Count < 2)
+            return null;
+#if DEBUG
+        Str orig = s.Clone();
+#endif
+        bool changed = false;
+        while (MergeSingle(s) is { } v) {
+            s = v;
+            changed = true;
+        }
+        Str? r = LcpCompression(s);
+
+#if DEBUG
+        Log.WriteLine($"lcp-full ({lcpCnt}): {orig} => {s}");
+#endif
+
+        if (r is not null)
+            return r;
+        return changed ? s : null;
+    }
+
+    // Everything from *Full but compressing non-power sequences into powers 
+    // [Distinction, as introducing powers on top-level might not be beneficial]
     public static Str? LcpCompression(Str s) {
+        if (s.Count < 2)
+            return null;
+
         // Apply each at least once and then until the first one fails
         lcpCnt++;
 #if DEBUG
         Str orig = s.Clone();
 #endif
-        bool changed = false;
-        Str? v = MergePowersRight(s);
-        if (v is not null) {
-            s = v;
-            changed = true;
-        }
-        v = MergePowersLeft(s);
-        if (v is null) {
-#if DEBUG
-            Log.WriteLine($"lcp ({lcpCnt}): {orig} => {(changed ? s : "fixed point")}");
-#endif
-            return changed ? s : null;
-        }
-        s = v;
 
-        while (true) {
-            v = MergePowersRight(s);
-            if (v is null) {
-#if DEBUG
-                Log.WriteLine($"lcp ({lcpCnt}): {orig} => {s}");
-#endif
-                return s;
+        bool globalChanged = false;
+        bool changed1 = true;
+        bool changed2 = true;
+
+        while (changed1 || changed2) {
+            Str? v = MergePowersRight(s);
+            if (v is not null) {
+                s = v;
+                changed1 = true;
+                globalChanged = true;
             }
-            s = v;
+            else
+                changed1 = false;
+            if (!changed1 && !changed2)
+                break;
             v = MergePowersLeft(s);
-            if (v is null) {
-#if DEBUG
-                Log.WriteLine($"lcp ({lcpCnt}): {orig} => {s}");
-#endif
-                return s;
+            if (v is not null) {
+                s = v;
+                changed2 = true;
+                globalChanged = true;
             }
-            s = v;
+            else
+                changed2 = false;
         }
+#if DEBUG
+        Log.WriteLine($"lcp-short ({lcpCnt}): {orig} => {s}");
+#endif
+        return !globalChanged ? null : s;
+    }
+
+    // v'u...uv'' => v' u^n v'' (first only and preferring minimal compression: baaaab => b a^4 b rather than b (aa)^2 b)
+    // u is ground
+    // Implementation: Sliding window
+    static Str? MergeSingle(Str s) {
+        if (s.Count < 2)
+            return null;
+        int to = s.Count / 2;
+        for (int i = 1; i <= to; i++) {
+            for (int j = 0; j + 2 * i <= s.Count; j++) {
+                int rep = 1;
+                for (; j + (rep + 1) * i <= s.Count; rep++) {
+                    bool failed = false;
+                    for (int k = 0; k < i; k++) {
+                        if (s[j + k] is NamedStrToken) {
+                            // we want ground powers!
+                            // break if we would compress a variable
+                            failed = true;
+                            break;
+                        }
+                        if (!s[j + k].Equals(s[j + rep * i + k])) {
+                            failed = true;
+                            break;
+                        }
+                    }
+                    if (failed)
+                        break;
+                }
+                if (rep > 1) {
+                    Str r = new(s.Count - rep * i + 1);
+                    for (int k = 0; k < j; k++) {
+                        r.AddLast(s[k]);
+                    }
+                    Str b = new Str(rep);
+                    for (int k = 0; k < i; k++) {
+                        b.AddLast(s[j + k]);
+                    }
+                    r.AddLast(new PowerToken(b, new Poly(rep)));
+                    for (int k = j + rep * i; k < s.Count; k++) {
+                        r.AddLast(s[k]);
+                    }
+                    Debug.Assert(r.Count == s.Count - rep * i + 1);
+                    return r;
+                }
+            }
+        }
+        return null;
     }
 
     // v' u^m u^n v'' => v' u^{m + n} v''

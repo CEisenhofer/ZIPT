@@ -25,6 +25,8 @@ public class SubstSChar : Subst {
     public override Expr ValueExpr(NielsenGraph graph) => C.ToExpr(graph);
     public override IntExpr KeyLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
     public override IntExpr ValueLenExpr(NielsenGraph graph) => graph.Ctx.MkInt(1);
+    public override bool EqualKeys(Subst subst) =>
+        subst is SubstSChar substitution && Sym.Equals(substitution.Sym);
 
     public override string ToString() => $"{Sym} / {C}";
 

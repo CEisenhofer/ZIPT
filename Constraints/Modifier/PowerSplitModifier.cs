@@ -1,4 +1,5 @@
-﻿using StringBreaker.Constraints.ConstraintElement;
+﻿using System.Diagnostics;
+using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 using StringBreaker.MiscUtils;
@@ -28,6 +29,12 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         foreach (var p in prefixes) {
             s = new Str(power);
             s.AddRange(p.str, Forwards);
+#if DEBUG
+            var cmp = StrEqBase.LcpCompression(s);
+            if (cmp is not null)
+                Console.WriteLine("Could have compressed: " + s + " => " + cmp);
+#endif
+            //s = StrEqBase.LcpCompression(s) ?? s;
             subst = new SubstVar(Var, s);
             if (p.varDecomp is null)
                 c = node.MkChild(node, [subst], true);

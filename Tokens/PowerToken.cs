@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
@@ -22,7 +21,6 @@ public sealed class PowerToken : StrToken {
         }
     }
 
-    
     public override bool Ground => Base.Ground;
 
     public override bool IsNullable(NielsenNode node) => 

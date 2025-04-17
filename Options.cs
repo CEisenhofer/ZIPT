@@ -24,13 +24,6 @@ public static class Options {
         set => itDeepDepthStart = Math.Max(1, value);
     }
 
-    // max number of entanglements
-    static uint itDeepComplexityStart = 5;
-    public static uint ItDeepComplexityStart {
-        get => itDeepComplexityStart;
-        set => itDeepComplexityStart = Math.Max(1, value);
-    }
-
     static uint itDeepeningInc = 1;
     public static uint ItDeepeningInc {
         get => itDeepeningInc;
@@ -39,5 +32,6 @@ public static class Options {
 
     public static bool GetAndCheckModel { get; set; } = true;
 
+    // Mostly for debug reasons - try to get all consistent Nielsen nodes (might be infinitely many though)
     public static bool FullGraphExpansion { get; set; } = false;
 }

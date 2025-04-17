@@ -55,44 +55,14 @@ public class PowerIntrModifier : DirectedNielsenModifier {
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
-        GPowerIntrModifier other = (GPowerIntrModifier)otherM;
+        PowerIntrModifier other = (PowerIntrModifier)otherM;
         int cmp = Base.Count.CompareTo(other.Base.Count); // TODO: Get a better heuristic (power nesting, variables in powers, ...)
         if (cmp != 0)
             return cmp;
         cmp = Forwards.CompareTo(other.Forwards);
-        return cmp != 0 ? cmp : Var.CompareTo(other.V);
+        return cmp != 0 ? cmp : Var.CompareTo(other.Var);
     }
 
     public override string ToString() =>
         $"{Var} / {Base}^{{{Power}}} [prefix({Base})]";
-}
-
-class GPowerGPowerIntrModifier : CombinedModifier {
-    public GPowerGPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
-        new GPowerIntrModifier(v1, p1, forward),
-        new GPowerIntrModifier(v2, p2, forward)) { }
-}
-
-class GPowerPowerIntrModifier : CombinedModifier {
-    public GPowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
-        new GPowerIntrModifier(v1, p1, forward),
-        new PowerIntrModifier(v2, p2, forward)) { }
-}
-
-class PowerPowerIntrModifier : CombinedModifier {
-    public PowerPowerIntrModifier(StrVarToken v1, StrVarToken v2, Str p1, Str p2, bool forward) : base(
-        new PowerIntrModifier(v1, p1, forward),
-        new PowerIntrModifier(v2, p2, forward)) { }
-}
-
-class GPowerIntrConstNielsen : CombinedModifier {
-    public GPowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool forward) : base(
-        new GPowerIntrModifier(v1, p, forward),
-        new ConstNielsenModifier(v2, v1, forward)) { }
-}
-
-class PowerIntrConstNielsen : CombinedModifier {
-    public PowerIntrConstNielsen(StrVarToken v1, StrVarToken v2, Str p, bool forward) : base(
-        new PowerIntrModifier(v1, p, forward),
-        new ConstNielsenModifier(v2, v1, forward)) { }
 }

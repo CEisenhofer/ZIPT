@@ -34,8 +34,7 @@ public static class Program {
         Options.ReasoningUnwindingBound = 1;
         Options.ModelUnwindingBound = 9;
         Options.ItDeepeningInc = 1;
-        Options.ItDeepComplexityStart = 5;
-        Options.ItDeepDepthStart = 5;
+        Options.ItDeepDepthStart = 1;
         Options.GetAndCheckModel = true;
         // Options.FullGraphExpansion = true;
 
@@ -115,7 +114,6 @@ public static class Program {
             SymCharToken.ResetCounter();
             var res = propagator.Solver.Check();
             Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
-            Console.WriteLine("Complexity Bound: " + propagator.Graph.ComplexityBound);
 #if DEBUG
             // Console.WriteLine(propagator.Graph.ToDot());
 #endif

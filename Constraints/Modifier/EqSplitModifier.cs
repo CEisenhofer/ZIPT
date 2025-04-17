@@ -14,14 +14,21 @@ public class EqSplitModifier : DirectedNielsenModifier {
     public EqSplitModifier(StrEq eq, int lhsIdx, int rhsIdx, bool forward) : base(forward) {
         Debug.Assert(lhsIdx >= 0);
         Debug.Assert(rhsIdx >= 0);
-        Debug.Assert(lhsIdx < eq.LHS.Count);
-        Debug.Assert(rhsIdx < eq.RHS.Count);
+        Debug.Assert(lhsIdx <= eq.LHS.Count);
+        Debug.Assert(rhsIdx <= eq.RHS.Count);
+        Debug.Assert(lhsIdx < eq.LHS.Count || rhsIdx < eq.RHS.Count);
         Eq = eq;
         LhsIdx = lhsIdx;
         RhsIdx = rhsIdx;
     }
 
     public override void Apply(NielsenNode node) {
+        Debug.Assert(LhsIdx >= 0);
+        Debug.Assert(RhsIdx >= 0);
+        Debug.Assert(LhsIdx <= Eq.LHS.Count);
+        Debug.Assert(RhsIdx <= Eq.RHS.Count);
+        Debug.Assert(LhsIdx < Eq.LHS.Count || RhsIdx < Eq.RHS.Count);
+
         // Eq.LHS[0..LhsIdx] = Eq.RHS[0..RhsIdx] && Eq.LHS[LhsIdx..] = Eq.RHS[RhsIdx..] (progress)
         Str lhs1 = new Str(Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
         Str rhs1 = new Str(Forwards ? RhsIdx : Eq.RHS.Count - RhsIdx);
@@ -41,7 +48,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
         }
 
         var c = node.MkChild(node, [], true);
-        c.RemoveConstraint(Eq);
+        c.RemoveStrEq(Eq);
         var eq1 = new StrEq(lhs1, rhs1);
         var eq2 = new StrEq(lhs2, rhs2);
         c.AddConstraints(eq1);

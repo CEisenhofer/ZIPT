@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
-using System.Reflection.Metadata.Ecma335;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
@@ -103,18 +102,42 @@ public readonly struct Len : IComparable<Len> {
         return a.val * b.val;
     }
 
-    public void DivMod(Len b, out Len div, out Len mod) {
+    public (Len r, BigInteger m) DivRem(BigInteger d) {
+        Debug.Assert(!IsZero || !d.IsZero);
+        if (d.IsZero)
+            return IsPos ? (PosInf, 0) : (NegInf, 0);
+        if (IsInf)
+            return IsPos == d.Sign > 0 ? (PosInf, 0) : (NegInf, 0);
+        return IsZero 
+            ? (0, 0) 
+            : BigInteger.DivRem(val, d);
+    }
+
+    // Round towards 0
+    public Len Div(Len b) {
         Debug.Assert(b != 0);
-        if (this == 0) {
-            div = mod = 0;
-            return;
+        Debug.Assert(!IsInf || !b.IsInf);
+
+        if (IsZero) {
+            Debug.Assert(!b.IsInf);
+            return 0;
         }
-        Debug.Assert(!IsInf && !b.IsInf);
-        div = BigInteger.DivRem(val, b.val, out BigInteger rem);
-        mod = rem;
+        if (IsInf)
+            return IsPos == b.IsPos ? PosInf : NegInf;
+        return val / b.val;
     }
 
     public Len Abs() => IsNeg ? -this : this;
+
+    public BigInteger GreatestCommonDivisor(Len t) {
+        Debug.Assert(!IsInf);
+        Debug.Assert(!t.IsInf);
+        Debug.Assert(!IsZero);
+        Debug.Assert(!t.IsZero);
+        var gcd = BigInteger.GreatestCommonDivisor(val, t.val);
+        Debug.Assert(gcd.Sign > 0);
+        return gcd;
+    }
 
     public static Len Min(Len a, Len b) => a < b ? a : b;
     public static Len Max(Len a, Len b) => a > b ? a : b;
@@ -136,7 +159,19 @@ public readonly struct Len : IComparable<Len> {
         left.CompareTo(right) >= 0;
 
     public static explicit operator int(Len v) {
-        throw new NotImplementedException();
+        if (v.IsInf)
+            throw new InvalidCastException("Cannot cast infinity to int");
+        if (v.val.Sign > 0 && v.val > int.MaxValue)
+            throw new OverflowException("Value is larger than int.MaxValue");
+        if (v.val.Sign < 0 && v.val < int.MinValue)
+            throw new OverflowException("Value is smaller than int.MinValue");
+        return (int)v.val;
+    }
+
+    public static explicit operator BigInteger(Len v) {
+        if (v.IsInf)
+            throw new InvalidCastException("Cannot cast infinity to int");
+        return v.val;
     }
 
     public override bool Equals(object? obj) =>

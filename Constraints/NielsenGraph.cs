@@ -14,7 +14,6 @@ public class NielsenGraph {
     public Context Ctx => OuterPropagator.Ctx;
     public ExpressionCache Cache => OuterPropagator.Cache;
     public uint DepthBound { get; private set; }
-    public uint ComplexityBound { get; private set; }
     public StringPropagator InnerStringPropagator { get; }
     public readonly Solver SubSolver; // Solver for assumption based integer reasoning
     public NielsenNode Root { get; }
@@ -27,7 +26,7 @@ public class NielsenGraph {
     readonly HashSet<NielsenNode> nodes = [];
 
     // Not required to contain all nodes (only the maximal simplified)
-    readonly Dictionary<StrConstraintSet<StrEq>, List<NielsenNode>> subsumptionCandidates = [];
+    readonly Dictionary<NList<StrEq>, List<NielsenNode>> subsumptionCandidates = [];
     public int NodeCnt => nodes.Count;
 
     public NielsenGraph(SaturatingStringPropagator outerPropagator) {
@@ -41,32 +40,29 @@ public class NielsenGraph {
     public bool Check() {
         SatNodes.Clear();
         if (OuterPropagator.Cancel)
-            throw new Exception("Timeout");
-        if (NielsenNode.Simplify(Root) != BacktrackReasons.Unevaluated) {
+            throw new SolverTimeoutException();
+        if (NielsenNode.SimplifyAndInit(Root) != BacktrackReasons.Unevaluated) {
             Debug.Assert(Root.IsConflict);
             return false;
         }
-        Root.AssertToZ3(Root.AllIntConstraints.Select(o => o.ToExpr(this)));
+        Root.AssertToZ3(Root.IntEq.Select(o => o.ToExpr(this)));
+        Root.AssertToZ3(Root.IntLe.Select(o => o.ToExpr(this)));
         Root.AssertToZ3(Root.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
         DepthBound = Options.ItDeepDepthStart;
-        ComplexityBound = Options.ItDeepComplexityStart;
         while (true) {
             Debug.Assert(CurrentModificationCnt.IsEmpty());
-            var res = Root.Check(0, 0);
+            var res = Root.Check(0);
             if (res && (!Options.FullGraphExpansion || Root.FullyExpanded))
                 return true;
             if (Root.IsConflict)
                 return false;
             // Depth limit encountered - retry with higher bound
-            if (res) {
+            if (res)
                 DepthBound += Options.ItDeepeningInc;
-                ComplexityBound += Options.ItDeepeningInc;
-            }
-            else if (Root.Reason is BacktrackReasons.DepthLimit or BacktrackReasons.BothLimits)
+            else if (Root.Reason is BacktrackReasons.DepthLimit)
                 DepthBound += Options.ItDeepeningInc;
             else {
-                Debug.Assert(Root.Reason == BacktrackReasons.ComplexityLimit);
-                ComplexityBound += Options.ItDeepeningInc;
+                Debug.Assert(false);
             }
         }
     }
@@ -83,7 +79,6 @@ public class NielsenGraph {
         }
         foreach (var l in list) {
             if (l.Subsumes(node)) {
-                Debug.Assert(node.Outgoing is null);
                 node.SubsumptionParent = l;
                 return false;
             }
@@ -104,7 +99,7 @@ public class NielsenGraph {
                 .Append(" [label=\"")
                 .Append(node.Id)
                 .Append(": ")
-                .Append(node.ToHTMLString());
+                .Append(node.ToHtmlString());
             if (NielsenNode.IsActualConflict(node.Reason))
                 sb.Append("\\n").Append(NielsenNode.ReasonToString(node.Reason));
             sb.Append('"');
@@ -117,7 +112,7 @@ public class NielsenGraph {
                 subsumed.Add(node);
         }
         foreach (var node in nodes) {
-            foreach (var edge in node.Outgoing ?? []) {
+            foreach (var edge in node.Outgoing) {
                 sb.Append("\t")
                     .Append(node.Id)
                     .Append(" -> ")

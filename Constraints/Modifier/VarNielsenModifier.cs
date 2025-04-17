@@ -15,6 +15,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
     }
 
     public override void Apply(NielsenNode node) {
+#if false
         // V1 / "" (progress)
         // V2 / "" && |V1| >= 1 (progress)
         // V1 / V2 && |V1| >= 1 && |V2| >= 1 (progress)
@@ -62,6 +63,32 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
+#else
+        // Legacy splitting
+        // V1 / V2 (progress)
+        // V1 / V1V2 (no progress)
+        // V2 / V2V1 (no progress)
+        Str s = [V2];
+        SubstVar subst = new SubstVar(V1, s);
+        var c = node.MkChild(node, [subst], true);
+        c.Apply(subst);
+        
+        s = Forwards ? [V2, V1] : [V1, V2];
+        subst = new SubstVar(V1, s);
+        c = node.MkChild(node, [subst], false);
+        c.Apply(subst);
+        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
+        c.AddConstraints(sc); // 1 <= |V1|
+        c.Parent!.SideConstraints.Add(sc.Clone());
+
+        s = Forwards ? [V1, V2] : [V2, V1];
+        subst = new SubstVar(V2, s);
+        c = node.MkChild(node, [subst], false);
+        c.Apply(subst);
+        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
+        c.AddConstraints(sc); // 1 <= |V2|
+        c.Parent!.SideConstraints.Add(sc.Clone());
+#endif
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

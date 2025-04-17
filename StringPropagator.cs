@@ -7,6 +7,7 @@ using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
 using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
+using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
@@ -49,14 +50,14 @@ public abstract class StringPropagator : UserPropagator {
 
     public override void Push() {
         if (Graph.OuterPropagator.Cancel)
-            throw new Exception("Timeout");
+            throw new SolverTimeoutException();
         Log.WriteLine("Push " + undoStack.Level);
         undoStack.Push();
     }
 
     public override void Pop(uint n) {
         if (Graph.OuterPropagator.Cancel)
-            throw new Exception("Timeout");
+            throw new SolverTimeoutException();
         try {
             Log.WriteLine("Pop to " + (undoStack.Level - n));
             undoStack.Pop((int)n);
@@ -717,8 +718,14 @@ public class SaturatingStringPropagator : StringPropagator {
     }
 
     protected override void AddCharEqInternal(UnitToken u1, UnitToken u2) {
-        if (Root.StrEq.Add(new StrEq([u1], [u2])))
-            undoStack.Add(Root.StrEq.Pop);
+        var eq = new StrEq([u1], [u2]);
+        if (!Root.StrEq.Add(eq)) 
+            return;
+        undoStack.Add(() =>
+        {
+            bool succ = Root.StrEq.Remove(eq);
+            Debug.Assert(succ);
+        });
     }
 
     protected override void AddCharDiseqInternal(SymCharToken su1, UnitToken u2) {
@@ -752,10 +759,18 @@ public class SaturatingStringPropagator : StringPropagator {
         eq.CollectSymbols(vars, sChars, iVars, alph);
 
         if (Root.StrEq.Add(eq)) // u = v
-            undoStack.Add(Root.StrEq.Pop);
+            undoStack.Add(() =>
+            {
+                bool succ = Root.StrEq.Remove(eq);
+                Debug.Assert(succ);
+            });
         var la = new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2));
         if (!la.Poly.IsZero && Root.IntEq.Add(la)) // u = v => |u| = |v|
-            undoStack.Add(Root.IntEq.Pop);
+            undoStack.Add(() =>
+            {
+                bool succ = Root.IntEq.Remove(la);
+                Debug.Assert(succ);
+            });
         // foreach (var a in alph) {
         //     if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
         //         undoStack.Add(Root.IntEq.Pop);
@@ -768,8 +783,14 @@ public class SaturatingStringPropagator : StringPropagator {
     }
 
     protected override void AddNotEpsilonInternal(Str s) {
-        if (Root.IntLe.Add(IntLe.MkLt(new Poly(), LenVar.MkLenPoly(s))))
-            undoStack.Add(Root.IntLe.Pop);
+        var c = IntLe.MkLt(new Poly(), LenVar.MkLenPoly(s));
+        if (!Root.IntLe.Add(c)) 
+            return;
+        undoStack.Add(() =>
+        {
+            bool succ = Root.IntLe.Remove(c);
+            Debug.Assert(succ);
+        });
     }
 
     int finalCnt;
@@ -786,6 +807,8 @@ public class SaturatingStringPropagator : StringPropagator {
                 pair.Add(lhs, rhs);
             }
             Propagate(reportedFixed.ToArray(), pair, Ctx.MkFalse());
+        }
+        catch (SolverTimeoutException) {
         }
         catch (Exception ex) {
             Console.WriteLine("Exception (Final): " + ex.Message);
@@ -836,7 +859,7 @@ public class SaturatingStringPropagator : StringPropagator {
             var orig = cnstr.Clone();
             cnstr.Apply(itp);
             BacktrackReasons reason = BacktrackReasons.Unevaluated;
-            if (cnstr.Simplify(satNode, [], [], ref reason) == SimplifyResult.Satisfied)
+            if (cnstr.SimplifyAndPropagate(satNode, new DetModifier(), ref reason) == SimplifyResult.Satisfied)
                 continue;
             modelCheck = false;
             Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);

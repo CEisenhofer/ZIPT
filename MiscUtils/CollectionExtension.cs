@@ -23,6 +23,9 @@ public static class CollectionExtension {
     public static bool IsNonEmpty<T>(this IReadOnlyCollection<T> list) =>
         list.Count != 0;
 
+    public static NList<T> ToNList<T>(this IEnumerable<T> list) where T : IComparable<T> => new(list);
+    public static NList<T> ToNList<T>(this NList<T> list) where T : IComparable<T> => new(list);
+
     public static void AddRange<T>(this HashSet<T> set, IEnumerable<T> items) {
         foreach (var elem in items) {
             set.Add(elem);

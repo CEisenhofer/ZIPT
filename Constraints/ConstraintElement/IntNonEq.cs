@@ -1,4 +1,5 @@
 ﻿using Microsoft.Z3;
+using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
@@ -55,8 +56,7 @@ public class IntNonEq : IntConstraint {
     public override void Apply(Interpretation itp) => 
         Poly = Poly.Apply(itp);
 
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> substitution,
-        HashSet<Constraint> newSideConstraints, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
         var bounds = Poly.GetBounds(node);
         if (!bounds.Contains(0))
             return SimplifyResult.Satisfied;

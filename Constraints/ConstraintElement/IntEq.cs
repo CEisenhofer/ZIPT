@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
+using System.Numerics;
 using Microsoft.Z3;
+using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
@@ -17,8 +19,7 @@ public class IntEq : IntConstraint {
         Poly.Sub(rhs);
     }
 
-    public override IntConstraint Clone() => 
-        new IntEq(Poly.Clone());
+    public override IntEq Clone() => new(Poly.Clone());
 
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);
@@ -57,32 +58,97 @@ public class IntEq : IntConstraint {
     public override void Apply(Interpretation itp) => 
         Poly = Poly.Apply(itp);
 
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> substitution,
-        HashSet<Constraint> newSideConstraints, ref BacktrackReasons reason) {
+    static int simplifyCnt;
+
+    public SimplifyResult Simplify(NielsenNode node) {
+        simplifyCnt++;
+        Poly = Poly.Simplify(node);
+        if (Poly.IsConst(out Len val))
+            return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
-        if (!bounds.Contains(0)) {
-            reason = BacktrackReasons.Arithmetic;
+        if (!bounds.Contains(0))
             return SimplifyResult.Conflict;
-        }
         if (bounds.IsUnit)
             return SimplifyResult.Satisfied;
-        Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out Len val)) {
-            if (val == 0)
-                return SimplifyResult.Satisfied;
-            reason = BacktrackReasons.Arithmetic;
-            return SimplifyResult.Conflict;
+        // Normalization by division
+        Len c = Poly.ConstPart;
+        Debug.Assert(!c.IsInf);
+        BigInteger gcd = (BigInteger)Poly.NonConst.First().occ.Abs();
+        Debug.Assert(gcd.Sign > 0);
+        if (gcd.IsOne) 
+            return SimplifyResult.Proceed;
+        foreach (var occ in Poly.NonConst.Skip(1)) {
+            gcd = occ.occ.GreatestCommonDivisor(gcd);
+            Debug.Assert(!gcd.IsZero);
+            if (gcd.Equals(1))
+                break;
         }
-        int sig;
-        if ((sig = Poly.IsUniLinear(out NonTermInt? v, out val)) != 0) {
-            var res = node.AddExactIntBound(v!, sig == 1 ? -val : val);
+        Debug.Assert(gcd.Sign > 0);
+        if (gcd.IsOne) 
+            return SimplifyResult.Proceed;
+        if (!c.IsZero) {
+            var r = BigInteger.Remainder((BigInteger)c, gcd);
+            if (!r.IsZero)
+                return SimplifyResult.Conflict;
+        }
+        Poly = Poly.Div(gcd);
+        return SimplifyResult.Proceed;
+    }
+
+    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
+        // Simplify
+        var res = Simplify(node);
+        if (res != SimplifyResult.Proceed) {
             if (res == SimplifyResult.Conflict)
                 reason = BacktrackReasons.Arithmetic;
-            return res == SimplifyResult.Restart ? SimplifyResult.RestartAndSatisfied : res;
+            return res;
         }
-        return SimplifyResult.Proceed;
-        /*var bounds = Poly.GetBounds(node);
-        return !bounds.Contains(0) ? SimplifyResult.Conflict : SimplifyResult.Proceed;*/
+        // Propagate bounds
+        bool restart = false;
+        int i = 0;
+        foreach (var n in Poly) {
+            if (n.t.IsEmpty()) {
+                // Ignored - constant offset
+                i++;
+                continue;
+            }
+            if (n.t.Count != 1) {
+                // Not linear (x...y)
+                i++;
+                continue;
+            }
+            var r = n.t.First();
+            if (!r.occ.Equals(1)) {
+                // Some power (x^n with n != 1)
+                i++;
+                continue;
+            }
+            var lb = Poly.GetBounds(node, Poly.Where((_, j) => i != j));
+            if (lb.IsFull)
+                continue;
+            if (!n.occ.IsNeg)
+                lb = lb.Negate();
+
+            lb /= (BigInteger)n.occ.Abs();
+            switch (node.AddLowerIntBound(r.t, lb.Min)) {
+                case SimplifyResult.Conflict:
+                    reason = BacktrackReasons.Arithmetic;
+                    return SimplifyResult.Conflict;
+                case SimplifyResult.Restart:
+                    restart = true;
+                    break;
+            }
+            switch (node.AddHigherIntBound(r.t, lb.Max)) {
+                case SimplifyResult.Conflict:
+                    reason = BacktrackReasons.Arithmetic;
+                    return SimplifyResult.Conflict;
+                case SimplifyResult.Restart:
+                    restart = true;
+                    break;
+            }
+            i++;
+        }
+        return restart ? SimplifyResult.Restart : SimplifyResult.Proceed;
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 

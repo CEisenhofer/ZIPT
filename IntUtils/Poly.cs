@@ -1,7 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices.ComTypes;
-using System.Security.Cryptography;
+using System.Numerics;
 using System.Text;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
@@ -16,6 +14,9 @@ public class Poly : MSet<StrictMonomial> {
 
     public Len ConstPart => occurrences.TryGetValue([], out var c) ? c : 0;
 
+    public IEnumerable<(StrictMonomial t, Len occ)> NonConst =>
+        this.Where(c => !c.t.IsEmpty());
+
     public Poly() { }
 
     public Poly(Len l) {
@@ -29,9 +30,12 @@ public class Poly : MSet<StrictMonomial> {
 
     public Poly(MSet<StrictMonomial> s) : base(s) { }
 
-    public Interval GetBounds(NielsenNode node) {
+    public Interval GetBounds(NielsenNode node) => 
+        GetBounds(node, this);
+
+    public static Interval GetBounds(NielsenNode node, IEnumerable<(StrictMonomial t, Len occ)> monomials) {
         Interval res = new();
-        foreach (var c in this) {
+        foreach (var c in monomials) {
             Interval curr = c.occ * c.t.GetBounds(node);
             res = res.MergeAddition(curr);
             if (res.IsFull)
@@ -97,6 +101,22 @@ public class Poly : MSet<StrictMonomial> {
             }
         }
         return res;
+    }
+
+    // Div (asserting that the division does not contain a remainder)
+    public Poly Div(BigInteger n) {
+        Debug.Assert(!n.IsZero);
+        Poly ret = new();
+        foreach (var c in this) {
+            Debug.Assert(!c.occ.IsZero);
+            Debug.Assert(!c.occ.IsInf);
+            Debug.Assert(BigInteger.Remainder((BigInteger)c.occ, n).IsZero);
+            var r = (BigInteger)c.occ / n;
+            Debug.Assert(!r.IsZero);
+            var t = c.t.Clone();
+            ret.Add(t, r);
+        }
+        return ret;
     }
 
     public Poly Apply(Subst subst) {

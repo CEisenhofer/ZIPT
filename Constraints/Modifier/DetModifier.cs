@@ -5,17 +5,31 @@ namespace StringBreaker.Constraints.Modifier;
 
 public class DetModifier : ModifierBase {
 
-    public List<Subst> Substitutions { get; } = [];
+    //List<Subst> Substitutions { get; } = [];
+    Subst? Substitution { get; set; }
     public HashSet<Constraint> SideConstraints { get; } = [];
-    public bool Trivial => Substitutions.IsEmpty() && SideConstraints.IsEmpty();
+    public bool Trivial => Substitution is null && SideConstraints.IsEmpty();
     public bool Success { get; set; }
 
+    public void Add(Constraint cnstr) =>
+        SideConstraints.Add(cnstr);
+
+    public SimplifyResult Add(Subst s) {
+        //if (Substitutions.Any(o => o.EqualKeys(s)))
+        //    return SimplifyResult.Restart;
+        //Substitutions.Add(s);
+        if (Substitution is not null)
+            return SimplifyResult.Restart;
+        Substitution = s;
+        return SimplifyResult.Proceed;
+    }
+
     public override void Apply(NielsenNode node) {
-        Success = SideConstraints.IsEmpty() || Substitutions.IsNonEmpty();
-        var c = node.MkChild(node, Substitutions, true);
-        foreach (var subst in Substitutions) {
-            c.Apply(subst);
-        }
+        Success = SideConstraints.IsEmpty() || Substitution is not null;
+        var c = node.MkChild(node, Substitution is null ? [] : [Substitution], true);
+        if (Substitution is not null)
+            c.Apply(Substitution);
+
         foreach (var cnstr in SideConstraints) {
             Success |= c.AddConstraints(cnstr);
             c.Parent!.SideConstraints.Add(cnstr.Clone());
@@ -25,5 +39,5 @@ public class DetModifier : ModifierBase {
     protected override int CompareToInternal(ModifierBase otherM) => 0;
 
     public override string ToString() =>
-        string.Join(" && ", Substitutions.Select(s => s.ToString()).Concat(SideConstraints.Select(o => o.ToString())));
+        string.Join(" && ", (Substitution is null ? Array.Empty<string>() : [Substitution.ToString()]).Concat(SideConstraints.Select(o => o.ToString())));
 }

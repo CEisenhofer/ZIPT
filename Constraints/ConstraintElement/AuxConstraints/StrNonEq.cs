@@ -35,8 +35,8 @@ public sealed class StrNonEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    protected override SimplifyResult SimplifyInternal(NielsenNode node,
-        List<Subst> newSubst, HashSet<Constraint> newSideConstr,
+    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node,
+        DetModifier sConstr,
         ref BacktrackReasons reason) {
         Log.WriteLine($"Simplify DisEq: {LHS} != {RHS}");
         SimplifyResult res;
@@ -65,9 +65,8 @@ public sealed class StrNonEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    public override ModifierBase Extend(NielsenNode node) {
+    public override ModifierBase Extend(NielsenNode node) => 
         throw new NotSupportedException();
-    }
 
     public override int CompareToInternal(StrConstraint other) {
         StrNonEq otherNonEq = (StrNonEq)other;

@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices.ComTypes;
+using System.Numerics;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 
@@ -58,8 +58,39 @@ public readonly struct Interval {
 
     public static Interval operator *(Len fac, Interval i) => i * fac;
 
+    // Round towards zero
+    public static Interval operator /(Interval i, BigInteger d) {
+        Debug.Assert(!d.IsZero);
+        Len rl, rh;
+        if (d.Sign < 0) {
+            rh = i.Min.Div(d);
+            rl = i.Max.Div(d);
+        }
+        else {
+            rh = i.Max.Div(d);
+            rl = i.Min.Div(d);
+        }
+
+        // BigInteger ml, mh;
+        //if (d.Sign < 0) {
+        //    (rh, mh) = i.Min.DivRem(d);
+        //    (rl, ml) = i.Max.DivRem(d);
+        //}
+        //else {
+        //   (rl, ml) = i.Min.DivRem(d);
+        //   (rh, mh) = i.Max.DivRem(d);
+        //}
+        //if (!ml.IsZero)
+        //    rl--;
+        //if (!mh.IsZero)
+        //    rh++;
+        return new Interval(rl, rh);
+    }
+
     public static bool operator ==(Interval i1, Interval i2) => i1.Equals(i2);
     public static bool operator !=(Interval i1, Interval i2) => !i1.Equals(i2);
+
+    public Interval Negate() => new(-Max, -Min);
 
     public Interval MergeAddition(Interval other) => 
         new(Min + other.Min, Max + other.Max);

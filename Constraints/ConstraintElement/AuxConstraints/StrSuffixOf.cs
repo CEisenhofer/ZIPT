@@ -41,7 +41,8 @@ public class StrSuffixOf : StrConstraint {
     }
 
     // Just very rudimentary implementation - it will get eliminated anyway...
-    protected override SimplifyResult SimplifyInternal(NielsenNode node, List<Subst> newSubst, HashSet<Constraint> newSideConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
+        ref BacktrackReasons reason) {
         if (S.Count < Contained.Count)
             return SimplifyResult.Proceed;
         int i = Contained.Count;

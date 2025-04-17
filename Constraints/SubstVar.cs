@@ -29,6 +29,8 @@ public class SubstVar : Subst {
     public override Expr ValueExpr(NielsenGraph graph) => Str.ToExpr(graph);
     public override IntExpr KeyLenExpr(NielsenGraph graph) => LenVar.MkLenPoly([Var]).ToExpr(graph);
     public override IntExpr ValueLenExpr(NielsenGraph graph) => LenVar.MkLenPoly(Str).ToExpr(graph);
+    public override bool EqualKeys(Subst subst) => 
+        subst is SubstVar substitution && Var.Equals(substitution.Var);
 
     public override string ToString() => $"{Var} / {Str}";
 
