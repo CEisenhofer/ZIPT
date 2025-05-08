@@ -5,61 +5,62 @@ using StringBreaker.Constraints;
 
 namespace StringBreaker.IntUtils;
 
-public readonly struct Len : IComparable<Len> {
+public readonly struct BigIntInf : IComparable<BigIntInf> {
 
     readonly BigInteger val;
     public bool IsInf { get; } = false;
     public bool IsPos => val.Sign > 0;
     public bool IsNeg => val.Sign < 0;
+    public bool IsOne => !IsInf && val.IsOne;
     public bool IsZero => val.Sign == 0;
     public bool IsPosInf => IsInf && IsPos;
     public bool IsNegInf => IsInf && IsNeg;
 
-    public static readonly Len PosInf = new(true, true);
-    public static readonly Len NegInf = new(true, false);
-    public static readonly Len Zero = new(0);
+    public static readonly BigIntInf PosInf = new(true, true);
+    public static readonly BigIntInf NegInf = new(true, false);
 
-    Len(bool inf, bool pos) {
+    BigIntInf(bool inf, bool pos) {
         IsInf = inf;
         val = pos ? BigInteger.One : BigInteger.MinusOne;
     }
 
-    public Len(int val) {
+    public BigIntInf(int val) {
         this.val = val;
         IsInf = false;
     }
 
-    public Len(uint val) {
+    public BigIntInf(uint val) {
         this.val = val;
         IsInf = false;
     }
 
-    public Len(BigInteger val) {
+    public BigIntInf(BigInteger val) {
         this.val = val;
         IsInf = false;
     }
 
-    public static implicit operator Len(int val) => new(val);
-    public static implicit operator Len(uint val) => new(val);
+    public static implicit operator BigIntInf(int val) => new(val);
+    public static implicit operator BigIntInf(uint val) => new(val);
 
-    public static implicit operator Len(BigInteger val) => new(val);
+    public static implicit operator BigIntInf(BigInteger val) => new(val);
 
     public bool TryGetInt(out int v) {
         v = 0;
         if (IsInf)
             return false;
+        if (val < int.MinValue || val > int.MaxValue)
+            return false;
         v = (int)val;
-        // TODO: Check if it is larger than int.MaxValue or smaller than int.MinValue
         return true;
     }
 
-    public static Len operator -(Len a) {
+    public static BigIntInf operator -(BigIntInf a) {
         if (a.IsInf)
             return a.IsPos ? NegInf : PosInf;
         return -a.val;
     }
 
-    public static Len operator +(Len a, Len b) {
+    public static BigIntInf operator +(BigIntInf a, BigIntInf b) {
         if (a.IsPosInf || b.IsPosInf) {
             Debug.Assert(!a.IsNegInf && !b.IsNegInf);
             return PosInf;
@@ -72,7 +73,7 @@ public readonly struct Len : IComparable<Len> {
         return a.val + b.val;
     }
 
-    public static Len operator -(Len a, Len b) {
+    public static BigIntInf operator -(BigIntInf a, BigIntInf b) {
         Debug.Assert(!(a.IsPosInf && b.IsPosInf));
         Debug.Assert(!(a.IsNegInf && b.IsNegInf));
         if (a.IsPosInf && b.IsNegInf)
@@ -85,11 +86,11 @@ public readonly struct Len : IComparable<Len> {
         return a.val - b.val;
     }
 
-    public static Len operator++(Len a) => a + 1;
+    public static BigIntInf operator++(BigIntInf a) => a + 1;
 
-    public static Len operator --(Len a) => a - 1;
+    public static BigIntInf operator --(BigIntInf a) => a - 1;
 
-    public static Len operator *(Len a, Len b) {
+    public static BigIntInf operator *(BigIntInf a, BigIntInf b) {
         if (a.IsZero || b.IsZero)
             // Mathematically problematically, but in this case it makes sense
             return 0;
@@ -102,19 +103,8 @@ public readonly struct Len : IComparable<Len> {
         return a.val * b.val;
     }
 
-    public (Len r, BigInteger m) DivRem(BigInteger d) {
-        Debug.Assert(!IsZero || !d.IsZero);
-        if (d.IsZero)
-            return IsPos ? (PosInf, 0) : (NegInf, 0);
-        if (IsInf)
-            return IsPos == d.Sign > 0 ? (PosInf, 0) : (NegInf, 0);
-        return IsZero 
-            ? (0, 0) 
-            : BigInteger.DivRem(val, d);
-    }
-
     // Round towards 0
-    public Len Div(Len b) {
+    public BigIntInf Div(BigIntInf b) {
         Debug.Assert(b != 0);
         Debug.Assert(!IsInf || !b.IsInf);
 
@@ -127,38 +117,28 @@ public readonly struct Len : IComparable<Len> {
         return val / b.val;
     }
 
-    public Len Abs() => IsNeg ? -this : this;
+    public static BigIntInf Min(BigIntInf a, BigIntInf b) => a < b ? a : b;
+    public static BigIntInf Max(BigIntInf a, BigIntInf b) => a > b ? a : b;
 
-    public BigInteger GreatestCommonDivisor(Len t) {
-        Debug.Assert(!IsInf);
-        Debug.Assert(!t.IsInf);
-        Debug.Assert(!IsZero);
-        Debug.Assert(!t.IsZero);
-        var gcd = BigInteger.GreatestCommonDivisor(val, t.val);
-        Debug.Assert(gcd.Sign > 0);
-        return gcd;
-    }
+    public BigIntInf Abs() => IsNeg ? -this : this;
 
-    public static Len Min(Len a, Len b) => a < b ? a : b;
-    public static Len Max(Len a, Len b) => a > b ? a : b;
+    public static bool operator ==(BigIntInf left, BigIntInf right) => left.CompareTo(right) == 0;
 
-    public static bool operator ==(Len left, Len right) => left.CompareTo(right) == 0;
+    public static bool operator !=(BigIntInf left, BigIntInf right) => left.CompareTo(right) != 0;
 
-    public static bool operator !=(Len left, Len right) => left.CompareTo(right) != 0;
-
-    public static bool operator <(Len left, Len right) =>
+    public static bool operator <(BigIntInf left, BigIntInf right) =>
         left.CompareTo(right) < 0;
 
-    public static bool operator >(Len left, Len right) =>
+    public static bool operator >(BigIntInf left, BigIntInf right) =>
         left.CompareTo(right) > 0;
 
-    public static bool operator <=(Len left, Len right) =>
+    public static bool operator <=(BigIntInf left, BigIntInf right) =>
         left.CompareTo(right) <= 0;
 
-    public static bool operator >=(Len left, Len right) =>
+    public static bool operator >=(BigIntInf left, BigIntInf right) =>
         left.CompareTo(right) >= 0;
 
-    public static explicit operator int(Len v) {
+    public static explicit operator int(BigIntInf v) {
         if (v.IsInf)
             throw new InvalidCastException("Cannot cast infinity to int");
         if (v.val.Sign > 0 && v.val > int.MaxValue)
@@ -168,19 +148,25 @@ public readonly struct Len : IComparable<Len> {
         return (int)v.val;
     }
 
-    public static explicit operator BigInteger(Len v) {
+    public static explicit operator BigInteger(BigIntInf v) {
         if (v.IsInf)
             throw new InvalidCastException("Cannot cast infinity to int");
         return v.val;
     }
 
-    public override bool Equals(object? obj) =>
-        obj is Len len && Equals(len);
+    public static explicit operator BigInt(BigIntInf v) {
+        if (v.IsInf)
+            throw new InvalidCastException("Cannot cast infinity to int");
+        return new BigInt(v.val);
+    }
 
-    public bool Equals(Len other) =>
+    public override bool Equals(object? obj) =>
+        obj is BigIntInf len && Equals(len);
+
+    public bool Equals(BigIntInf other) =>
         CompareTo(other) == 0;
 
-    public int CompareTo(Len other) {
+    public int CompareTo(BigIntInf other) {
         int cmp = val.Sign.CompareTo(other.val.Sign);
         if (cmp != 0)
             return cmp;
@@ -195,11 +181,6 @@ public readonly struct Len : IComparable<Len> {
     }
 
     public override int GetHashCode() => 430783571 * IsInf.GetHashCode() + 593872421 * val.GetHashCode();
-
-    public IntExpr ToExpr(NielsenGraph graph) {
-        Debug.Assert(!IsInf);
-        return graph.Ctx.MkInt(val.ToString());
-    }
 
     public override string ToString() => IsPosInf
         ? "∞"

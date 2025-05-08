@@ -1,0 +1,15 @@
+Features:
+	Regular expressions
+	Str <-> Int
+
+Calculus optimizations:
+	Check set of possible first characters when comparing two non-variable tokens
+	If length of variable known => replace by symbolic characters (up to threshold)
+	If variables occur always in pairs xy => z'
+	Add subsumption again
+
+Implementation:
+	Lazy rewrite stuff (variable numbering?)
+	Track which constraint contains which non-terminals; only simplify if change happened#
+	Move to Z3
+	Use Z3's integer solver

@@ -1,25 +1,21 @@
 ﻿using System.Diagnostics;
-using System.Numerics;
 using System.Text;
-using Microsoft.Z3;
-using StringBreaker.Constraints;
 using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
 
 namespace StringBreaker.IntUtils;
 
-public class Poly : MSet<StrictMonomial> {
+public class Poly<L, T> : MSet<StrictMonomial, L> where L : IArith<L>, new() where T : Poly<L, T>, new() {
 
     public bool IsZero => IsEmpty();
 
-    public Len ConstPart => occurrences.TryGetValue([], out var c) ? c : 0;
+    public L ConstPart => occurrences.TryGetValue([], out var c) ? c : new L();
 
-    public IEnumerable<(StrictMonomial t, Len occ)> NonConst =>
+    public IEnumerable<(StrictMonomial t, L occ)> NonConst =>
         this.Where(c => !c.t.IsEmpty());
 
     public Poly() { }
 
-    public Poly(Len l) {
+    public Poly(L l) {
         StrictMonomial constMonomial = new();
         Add(constMonomial, l);
     }
@@ -28,90 +24,67 @@ public class Poly : MSet<StrictMonomial> {
 
     public Poly(StrictMonomial s) : base(s) { }
 
-    public Poly(MSet<StrictMonomial> s) : base(s) { }
+    public Poly(MSet<StrictMonomial, L> s) : base(s) { }
 
-    public Interval GetBounds(NielsenNode node) => 
-        GetBounds(node, this);
-
-    public static Interval GetBounds(NielsenNode node, IEnumerable<(StrictMonomial t, Len occ)> monomials) {
-        Interval res = new();
-        foreach (var c in monomials) {
-            Interval curr = c.occ * c.t.GetBounds(node);
-            res = res.MergeAddition(curr);
-            if (res.IsFull)
-                return res;
-        }
-        return res;
-    }
-
-    public new Poly Clone() {
-        Poly poly = new();
-        foreach (var c in this) {
-            poly.Add(new StrictMonomial(c.t), c.occ);
-        }
-        return poly;
-    }
-
-    public void Plus(Poly poly) {
+    public void Plus(T poly) {
         foreach (var c in poly) {
             Add(c.t, c.occ);
         }
     }
 
-    public void Plus(Len l) {
+    public void Plus(L l) => Plus(new StrictMonomial(), l);
+
+    public void Plus(StrictMonomial m, L l) {
         if (l.IsZero)
             return;
-        var empty = new StrictMonomial();
-        if (occurrences.TryGetValue(empty, out var c)) {
-            var sum = c + l;
+        if (occurrences.TryGetValue(m, out var c)) {
+            var sum = c.Add(l);
             if (sum.IsZero)
-                occurrences.Remove(empty);
+                occurrences.Remove(m);
             else
-                occurrences[empty] = sum;
+                occurrences[m] = sum;
             return;
         }
-        occurrences[empty] = l;
+        occurrences[m] = l;
     }
 
-    public void Sub(Poly poly) {
+    public void Sub(T poly) {
         foreach (var c in poly) {
-            Add(c.t, -c.occ);
+            Add(c.t, c.occ.Negate());
         }
     }
 
-    public void Sub(Len l) => Plus(-l);
+    public void Sub(L l) => Plus(l.Negate());
+    public void Sub(L l, StrictMonomial m) => Plus(m, l.Negate());
 
-    public Poly Negate() {
-        Poly ret = new();
+    public T Negate() {
+        T ret = new();
         foreach (var (t, occ) in this) {
-            ret.Add(t.Clone(), -occ);
+            ret.Add(t.Clone(), occ.Negate());
         }
         return ret;
     }
 
-    public static Poly Mul(Poly p1, Poly p2) {
-        Poly res = new();
+    public static T Mul(T p1, T p2) {
+        T res = new();
         foreach (var c1 in p1) {
             foreach (var c2 in p2) {
                 var r = c1.t.Clone();
                 foreach (var c in c2.t) {
                     r.Add(c.t, c.occ);
                 }
-                res.Add(r, c1.occ * c2.occ);
+                res.Add(r, c1.occ.Mul(c2.occ));
             }
         }
         return res;
     }
 
-    // Div (asserting that the division does not contain a remainder)
-    public Poly Div(BigInteger n) {
+    public T Div(L n) {
         Debug.Assert(!n.IsZero);
-        Poly ret = new();
+        T ret = new();
         foreach (var c in this) {
             Debug.Assert(!c.occ.IsZero);
-            Debug.Assert(!c.occ.IsInf);
-            Debug.Assert(BigInteger.Remainder((BigInteger)c.occ, n).IsZero);
-            var r = (BigInteger)c.occ / n;
+            var r = c.occ.Div(n);
             Debug.Assert(!r.IsZero);
             var t = c.t.Clone();
             ret.Add(t, r);
@@ -119,49 +92,13 @@ public class Poly : MSet<StrictMonomial> {
         return ret;
     }
 
-    public Poly Apply(Subst subst) {
-        Poly ret = new();
-        foreach (var c in this) {
-            Poly p = c.t.Apply(subst);
-            p = Mul(p, new Poly(c.occ));
-            ret.Plus(p);
-        }
-        return ret;
-    }
-
-    public Poly Apply(Interpretation subst) {
-        Poly ret = new();
-        foreach (var c in this) {
-            Poly p = c.t.Apply(subst);
-            p = Mul(p, new Poly(c.occ));
-            ret.Plus(p);
-        }
-        return ret;
-    }
-
-    public Poly Simplify(NielsenNode node) {
-        Poly ret = new();
-        foreach (var m in this) {
-            var p = m.t.Simplify(node);
-            ret.Add(p.monomial, p.coeff * m.occ);
-        }
-        return ret;
-    }
-
     public void ElimConst() => occurrences.Remove([]);
 
-    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
-        foreach (var c in this) {
-            c.t.CollectSymbols(vars, sChars, iVars, alphabet);
-        }
-    }
-
-    public void GetPosNeg(out Poly pos, out Poly neg) {
-        pos = new Poly();
-        neg = new Poly();
+    public void GetPosNeg(out T pos, out T neg) {
+        pos = new T();
+        neg = new T();
         foreach (var m in this) {
             Debug.Assert(!m.occ.IsZero);
-            Debug.Assert(!m.occ.IsInf);
             if (m.occ.IsPos)
                 pos.Add(m.t.Clone(), m.occ);
             else
@@ -169,42 +106,36 @@ public class Poly : MSet<StrictMonomial> {
         }
     }
 
-    public IntExpr ToExpr(NielsenGraph graph) {
-        if (IsEmpty())
-            return graph.Ctx.MkInt(0);
-        return (IntExpr)graph.Ctx.MkAdd(this.Select(o => graph.Ctx.MkMul(o.occ.ToExpr(graph), o.t.ToExpr(graph))).ToArray());
-    }
-
-    public bool IsConst(out Len val) {
+    public bool IsConst(out L val) {
         if (IsEmpty()) {
-            val = 0;
+            val = new L();
             return true;
         }
         if (Count > 1) {
-            val = 0;
+            val = new L();
             return false;
         }
         var f = this.First();
         if (f.t.IsNonEmpty()) {
-            val = 0;
+            val = new L();
             return false;
         }
         val = f.occ;
         return true;
     }
 
-    public int IsUniLinear(out NonTermInt? v, out Len val) {
-        val = 0;
+    public int IsUniLinear(out NonTermInt? v, out L val) {
+        val = new L();
         v = null;
         if (IsEmpty() || Count > 2)
             return 0;
         var m1 = this.First();
         if (Count == 1) {
             // p := x
-            if (m1.t.Count != 1 || (m1.occ != 1 && m1.occ != -1)) 
+            if (m1.t.Count != 1 || (!m1.occ.IsOne && !m1.occ.IsMinusOne)) 
                 return 0;
             v = m1.t.First().t;
-            return m1.occ == 1 ? 1 : -1;
+            return m1.occ.IsOne ? 1 : -1;
         }
         // p := x + c
         var m2 = this.Skip(1).First();
@@ -215,11 +146,11 @@ public class Poly : MSet<StrictMonomial> {
             (m1, m2) = (m2, m1);
         // m1 is the constant
         // m2 is the variable
-        if ((m2.occ != 1 && m2.occ != -1) || m2.t.Count != 1)
+        if ((!m2.occ.IsOne && !m2.occ.IsMinusOne) || m2.t.Count != 1)
             return 0;
         v = m2.t.First().t;
         val = m1.occ;
-        return m2.occ == 1 ? 1 : -1;
+        return m2.occ.IsOne ? 1 : -1;
     }
 
     public override string ToString() {
@@ -231,10 +162,10 @@ public class Poly : MSet<StrictMonomial> {
             if (!first || occ.IsNeg)
                 sb.Append(occ.IsNeg ? " - " : " + ");
             first = false;
-            Debug.Assert(occ != 0);
+            Debug.Assert(!occ.IsZero);
             if (t.IsEmpty())
                 sb.Append(occ.Abs());
-            else if (occ == 1 || occ == -1)
+            else if (occ.IsOne || occ.IsMinusOne)
                 sb.Append(t);
             else 
                 sb.Append(occ.Abs() + " * " + t);

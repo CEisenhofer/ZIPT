@@ -45,8 +45,8 @@ public abstract class NamedStrToken : StrToken {
         // TODO
         NamedStrToken y = GetExtension1();
         NamedStrToken z = GetExtension2();
-        Poly yl = new(LenVar.MkLenPoly([y]));
-        Poly xl = new(LenVar.MkLenPoly([this]));
+        IntPoly yl = new(LenVar.MkLenPoly([y]));
+        IntPoly xl = new(LenVar.MkLenPoly([this]));
         yl.Plus(1);
         if (dir)
             return [([y], [new IntLe(yl, xl)], new SubstVar(this, [y, z]))];

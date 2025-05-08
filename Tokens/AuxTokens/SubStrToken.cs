@@ -7,12 +7,12 @@ namespace StringBreaker.Tokens.AuxTokens;
 public sealed class SubStrToken : NamedStrToken {
 
     public Str S { get; }
-    public Poly From { get; }
-    public Poly Len { get; }
+    public IntPoly From { get; }
+    public IntPoly Len { get; }
 
     public override string OriginalName => $"subStr({S},{From},{Len})";
 
-    public SubStrToken(Str s, Poly from, Poly len) {
+    public SubStrToken(Str s, IntPoly from, IntPoly len) {
         S = s;
         From = from;
         Len = len;

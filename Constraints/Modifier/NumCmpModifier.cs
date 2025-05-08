@@ -6,10 +6,10 @@ namespace StringBreaker.Constraints.Modifier;
 
 public class NumCmpModifier : ModifierBase {
 
-    public Poly N1 { get; }
-    public Poly N2 { get; }
+    public IntPoly N1 { get; }
+    public IntPoly N2 { get; }
 
-    public NumCmpModifier(Poly n1, Poly n2) {
+    public NumCmpModifier(IntPoly n1, IntPoly n2) {
         N1 = n1;
         N2 = n2;
     }
@@ -18,15 +18,14 @@ public class NumCmpModifier : ModifierBase {
         // N1 < N2 (progress)
         // N2 <= N1 (progress)
 
-        var c = node.MkChild(node, [], true);
-        var sc = IntLe.MkLt(N1.Clone(), N2);
-        c.AddConstraints(sc); // N1 < N2
-        c.Parent!.SideConstraints.Add(sc.Clone());
-
-        c = node.MkChild(node, [], true);
-        sc = IntLe.MkLe(N2.Clone(), N1); // N2 <= N1
-        c.AddConstraints(sc); // N2 - N1 <= 0 => N2 <= N1
-        c.Parent!.SideConstraints.Add(sc.Clone());
+        node.MkChild(node, 
+            Array.Empty<Subst>(),
+            [IntLe.MkLt(N1.Clone(), N2)],
+            Array.Empty<DisEq>(), true); // N1 < N2
+        node.MkChild(node,
+            Array.Empty<Subst>(),
+            [IntLe.MkLe(N2.Clone(), N1)],
+            Array.Empty<DisEq>(), true); // N2 <= N1
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

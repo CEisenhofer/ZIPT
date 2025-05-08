@@ -30,8 +30,7 @@ public static class Options {
         set => itDeepeningInc = Math.Max(1, value);
     }
 
-    public static bool GetAndCheckModel { get; set; } = true;
+    // TODO: Threshold for |x| = k to symbolic characters
 
-    // Mostly for debug reasons - try to get all consistent Nielsen nodes (might be infinitely many though)
-    public static bool FullGraphExpansion { get; set; } = false;
+    public static bool GetAndCheckModel { get; set; } = true;
 }

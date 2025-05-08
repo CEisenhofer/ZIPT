@@ -27,7 +27,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V2);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
+        var sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
@@ -35,10 +35,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V1, s);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
@@ -46,10 +46,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V1, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
@@ -57,10 +57,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V2, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
+        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 #else
@@ -69,25 +69,19 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
         Str s = [V2];
-        SubstVar subst = new SubstVar(V1, s);
-        var c = node.MkChild(node, [subst], true);
-        c.Apply(subst);
-        
+        node.MkChild(node, [new SubstVar(V1, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), true);
+
         s = Forwards ? [V2, V1] : [V1, V2];
-        subst = new SubstVar(V1, s);
-        c = node.MkChild(node, [subst], false);
-        c.Apply(subst);
-        var sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V1)));
-        c.AddConstraints(sc); // 1 <= |V1|
-        c.Parent!.SideConstraints.Add(sc.Clone());
+        node.MkChild(node,
+            [new SubstVar(V1, s)],
+            [IntLe.MkLt(new IntPoly(), new IntPoly(new LenVar(V1)))], // 0 < |V1|
+            Array.Empty<DisEq>(), false);
 
         s = Forwards ? [V1, V2] : [V2, V1];
-        subst = new SubstVar(V2, s);
-        c = node.MkChild(node, [subst], false);
-        c.Apply(subst);
-        sc = IntLe.MkLe(new Poly(1), new Poly(new LenVar(V2)));
-        c.AddConstraints(sc); // 1 <= |V2|
-        c.Parent!.SideConstraints.Add(sc.Clone());
+        node.MkChild(node,
+            [new SubstVar(V2, s)],
+            [IntLe.MkLt(new IntPoly(), new IntPoly(new LenVar(V2)))], // 0 < |V2|
+            Array.Empty<DisEq>(), false);
 #endif
     }
 
@@ -100,9 +94,12 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         return cmp != 0 ? cmp : V2.CompareTo(other.V2);
     }
 
-    public override string ToString() => 
-        $"{V1} / ε || " +
-        $"{V2} / ε && |{V1}| > 0 || " +
-        $"{V1} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0 || " +
-        $"{V2} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0";
+    public override string ToString() =>
+        //$"{V1} / ε || " +
+        //$"{V2} / ε && |{V1}| > 0 || " +
+        //$"{V1} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0 || " +
+        //$"{V2} / {V2}{V1} && |{V1}| > 0 && |{V2}| > 0";
+        $"{V1} / {V2} || " +
+        $"{V1} / {V2}{V1} && |{V1}| > 0 || " +
+        $"{V2} / {V1}{V2} && |{V2}| > 0 || ";
 }

@@ -7,11 +7,11 @@ namespace StringBreaker.Tokens.AuxTokens;
 public sealed class StrAtToken : NamedStrToken {
 
     public Str S { get; }
-    public Poly I { get; }
+    public IntPoly I { get; }
 
     public override string OriginalName => $"strAt({S},{I})";
 
-    public StrAtToken(Str s, Poly i) {
+    public StrAtToken(Str s, IntPoly i) {
         S = s;
         I = i;
     }

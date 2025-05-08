@@ -1,6 +1,8 @@
 ﻿using System.Diagnostics;
+using System.Runtime.Intrinsics.X86;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
+using StringBreaker.MiscUtils;
 
 namespace StringBreaker.Tokens;
 
@@ -66,9 +68,8 @@ public sealed class StrVarToken : NamedStrToken, IDisposable {
         Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-
-        FuncDecl f = graph.Ctx.MkFreshConstDecl(Name, graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
+        FuncDecl f = graph.Cache.Ctx.MkFreshConstDecl(Name, graph.Cache.StringSort);
+        e = graph.Cache.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
         graph.Cache.SetCachedExpr(this, e, graph);
         return e;
     }

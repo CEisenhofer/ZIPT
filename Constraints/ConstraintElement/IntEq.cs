@@ -10,11 +10,11 @@ namespace StringBreaker.Constraints.ConstraintElement;
 // Poly = 0
 public class IntEq : IntConstraint {
 
-    public Poly Poly { get; set; }
+    public IntPoly Poly { get; set; }
 
-    public IntEq(Poly poly) => Poly = poly;
+    public IntEq(IntPoly poly) => Poly = poly;
 
-    public IntEq(Poly lhs, Poly rhs) {
+    public IntEq(IntPoly lhs, IntPoly rhs) {
         Poly = lhs.Clone();
         Poly.Sub(rhs);
     }
@@ -63,7 +63,7 @@ public class IntEq : IntConstraint {
     public SimplifyResult Simplify(NielsenNode node) {
         simplifyCnt++;
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out Len val))
+        if (Poly.IsConst(out BigInt val))
             return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Contains(0))
@@ -71,9 +71,8 @@ public class IntEq : IntConstraint {
         if (bounds.IsUnit)
             return SimplifyResult.Satisfied;
         // Normalization by division
-        Len c = Poly.ConstPart;
-        Debug.Assert(!c.IsInf);
-        BigInteger gcd = (BigInteger)Poly.NonConst.First().occ.Abs();
+        BigInt c = Poly.ConstPart;
+        BigInteger gcd = Poly.NonConst.First().occ.Abs();
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
@@ -87,7 +86,7 @@ public class IntEq : IntConstraint {
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
         if (!c.IsZero) {
-            var r = BigInteger.Remainder((BigInteger)c, gcd);
+            var r = BigInteger.Remainder(c, gcd);
             if (!r.IsZero)
                 return SimplifyResult.Conflict;
         }
@@ -123,13 +122,13 @@ public class IntEq : IntConstraint {
                 i++;
                 continue;
             }
-            var lb = Poly.GetBounds(node, Poly.Where((_, j) => i != j));
+            var lb = IntPoly.GetBounds(node, Poly.Where((_, j) => i != j));
             if (lb.IsFull)
                 continue;
             if (!n.occ.IsNeg)
                 lb = lb.Negate();
 
-            lb /= (BigInteger)n.occ.Abs();
+            lb /= n.occ.Abs();
             switch (node.AddLowerIntBound(r.t, lb.Min)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
@@ -154,9 +153,8 @@ public class IntEq : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
 
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
-        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>
-        Poly.CollectSymbols(vars, sChars, iVars, alphabet);
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
+        Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
         new IntNonEq(Poly.Clone());

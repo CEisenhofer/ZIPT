@@ -1,8 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Z3;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.Modifier;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
 
@@ -12,29 +10,24 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
     public NielsenNode Src { get; }
     public BoolExpr Assumption { get; }
     public IReadOnlyList<Subst> Subst { get; }
-    public HashSet<Constraint> SideConstraints { get; } = [];
-    public List<NamedStrToken> BumpedModCount { get; } = [];
-    public NielsenNode Tgt { get; }
+    public IReadOnlyCollection<Constraint> SideConstraints { get; } = [];
+    public IReadOnlyCollection<DisEq> DisEqConstraint { get; } = [];
+    public List<BoolExpr> Asserted { get; } = [];
+    public List<NamedStrToken> BumpedModCount { get; }
+    public NielsenNode Tgt { get; set; }
 
-    public string ModStr
-    {
-        get
-        {
-            if (Subst.Count == 0) {
-                if (SideConstraints.IsEmpty())
-                    return "";
-                return string.Join("\\n", SideConstraints);
-            }
-            if (SideConstraints.IsEmpty())
-                return string.Join("\\n", Subst.Select(o => o.ToString()));
-            return string.Join("\\n", Subst.Select(o => o.ToString()).Concat(SideConstraints.Select(o => o.ToString())));
-        }
-    }
+    public string ModStr =>
+        string.Join("\\n",
+            Subst.Select(o => o.ToString()).
+                Concat(SideConstraints.Select(o => o.ToString())).
+                Concat(DisEqConstraint.Select(o => o.ToString())));
 
-    public NielsenEdge(NielsenNode src, BoolExpr assumption, IReadOnlyList<Subst> subst, NielsenNode tgt) {
+    public NielsenEdge(NielsenNode src, BoolExpr assumption, IReadOnlyList<Subst> subst, IReadOnlyCollection<Constraint> sideConds, IReadOnlyCollection<DisEq> disEqs, NielsenNode tgt) {
         Src = src;
         Assumption = assumption;
         Subst = subst;
+        SideConstraints = sideConds;
+        DisEqConstraint = disEqs;
         Tgt = tgt;
         BumpedModCount = [];
 
@@ -46,16 +39,28 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         }
     }
 
+    public void AssertToZ3(BoolExpr e) {
+        if (e.IsTrue)
+            return;
+        var graph = Src.Graph;
+        e = graph.Ctx.MkImplies(Assumption, e);
+        Asserted.Add((BoolExpr)e.Dup());
+        graph.SubSolver.Assert(e);
+    }
+
     public void IncModCount(NielsenGraph graph) {
         foreach (var b in BumpedModCount) {
             int prev = graph.CurrentModificationCnt.GetValueOrDefault(b, 0);
             graph.CurrentModificationCnt[b] = prev + 1;
         }
+        graph.CurrentPath.Add(this);
         graph.ModCnt++;
     }
 
     public void DecModCount(NielsenGraph graph) {
         Debug.Assert(graph.ModCnt > 0);
+        graph.ModCnt--;
+        graph.CurrentPath.Pop();
         for (int i = BumpedModCount.Count; i > 0; i--) {
             NamedStrToken toDec = BumpedModCount[i - 1];
             int prev = graph.CurrentModificationCnt[toDec];
@@ -65,7 +70,10 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
             else
                 graph.CurrentModificationCnt[toDec] = prev - 1;
         }
-        graph.ModCnt--;
+    }
+
+    public NonTermSet GetNonTermModSet() {
+        throw new NotImplementedException();
     }
 
     public override bool Equals(object? obj) =>
@@ -77,5 +85,6 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
     public override int GetHashCode() =>
         HashCode.Combine(Src, Tgt);
 
-    public override string ToString() => $"{Src} --{Subst};{string.Join(", ", SideConstraints)}--> {Tgt}";
+    public override string ToString() => 
+        $"{Src} --{Subst};{string.Join(", ", SideConstraints)};{string.Join(", ", DisEqConstraint)}--> {Tgt}";
 }

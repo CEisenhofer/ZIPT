@@ -1,38 +1,37 @@
 ﻿using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Tokens;
-using System.Xml.Linq;
 
 namespace StringBreaker.IntUtils;
 
-public class LenVar : StrDepIntVar {
+public sealed class LenVar : StrDepIntVar {
 
-    public LenVar(StrVarToken v) : base(v) {}
+    public LenVar(NamedStrToken v) : base(v) {}
 
     public override bool Equals(object? obj) => obj is LenVar var && Equals(var);
     public bool Equals(LenVar other) => Var.Equals(other.Var);
 
     public override int GetHashCode() => Var.GetHashCode() * 416749777;
 
-    public override Poly Apply(Subst subst) => 
+    public override IntPoly Apply(Subst subst) => 
         MkLenPoly(subst.ResolveVar(Var));
-    public override Poly Apply(Interpretation subst) =>
+    public override IntPoly Apply(Interpretation subst) =>
         MkLenPoly(subst.ResolveVar(Var));
 
-    public static Poly MkLenPoly(Str s) {
-        Poly poly = new();
+    public static IntPoly MkLenPoly(Str s) {
+        IntPoly poly = new();
         foreach (var t in s) {
             switch (t) {
                 case UnitToken:
                     poly.Plus(1);
                     break;
-                case StrVarToken v:
-                    poly.Plus(new Poly(new LenVar(v)));
+                case NamedStrToken v:
+                    poly.Plus(new IntPoly(new LenVar(v)));
                     break;
                 case PowerToken pt:
                 {
                     var subPoly = MkLenPoly(pt.Base);
-                    poly.Plus(Poly.Mul(subPoly, pt.Power));
+                    poly.Plus(IntPoly.Mul(subPoly, pt.Power));
                     break;
                 }
                 default:
@@ -45,8 +44,7 @@ public class LenVar : StrDepIntVar {
     public override int CompareToInternal(NonTermInt other) =>
         Var.CompareTo(((LenVar)other).Var);
 
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
-        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) => vars.Add(Var);
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(Var);
 
     public override IntExpr ToExpr(NielsenGraph graph) {
         IntExpr? e = graph.Cache.GetCachedIntExpr(this, graph);

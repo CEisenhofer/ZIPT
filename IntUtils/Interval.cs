@@ -6,62 +6,62 @@ using StringBreaker.Constraints;
 namespace StringBreaker.IntUtils;
 
 public readonly struct Interval {
-    public readonly Len Min;
-    public readonly Len Max;
+    public readonly BigIntInf Min;
+    public readonly BigIntInf Max;
 
-    public static Interval Full => new(Len.NegInf, Len.PosInf);
+    public static Interval Full => new(BigIntInf.NegInf, BigIntInf.PosInf);
 
-    public bool IsFull => Min == Len.NegInf && Max == Len.PosInf;
+    public bool IsFull => Min == BigIntInf.NegInf && Max == BigIntInf.PosInf;
     public bool IsUnit => Min == Max;
 
-    public bool HasLow => Min != Len.NegInf;
-    public bool HasHigh => Max != Len.PosInf;
+    public bool HasLow => Min != BigIntInf.NegInf;
+    public bool HasHigh => Max != BigIntInf.PosInf;
 
-    public Interval(Len minMax) {
+    public Interval(BigIntInf minMax) {
         Min = minMax;
         Max = minMax;
     }
 
-    public Interval(Len min, Len max) {
+    public Interval(BigIntInf min, BigIntInf max) {
         Debug.Assert(min <= max);
         Min = min;
         Max = max;
     }
 
-    public bool Contains(Len v) => 
+    public bool Contains(BigIntInf v) => 
         Min <= v && v <= Max;
 
     // Checks if Min <= i.Min && i.Max <= Max
     public bool Contains(Interval i) =>
         Min <= i.Min && i.Max <= Max;
 
-    public static Interval operator +(Interval i, Len l) => new(i.Min + l, i.Max + l);
-    public static Interval operator +(Len l, Interval i) => i + l;
+    public static Interval operator +(Interval i, BigIntInf l) => new(i.Min + l, i.Max + l);
+    public static Interval operator +(BigIntInf l, Interval i) => i + l;
 
     public static Interval operator +(Interval i1, Interval i2) {
-        Len min, max;
+        BigIntInf min, max;
         if (i1.Min.IsInf && i2.Min.IsInf && i1.Min.IsPos != i2.Min.IsPos)
-            min = Len.NegInf;
+            min = BigIntInf.NegInf;
         else
             min = i1.Min + i2.Min;
         if (i1.Max.IsInf && i2.Max.IsInf && i1.Max.IsPos != i2.Max.IsPos)
-            max = Len.PosInf;
+            max = BigIntInf.PosInf;
         else
             max = i1.Max + i2.Max;
         return new Interval(min, max);
     }
 
-    public static Interval operator *(Interval i, Len fac) =>
+    public static Interval operator *(Interval i, BigIntInf fac) =>
         fac.IsPos
             ? new Interval(i.Min * fac, i.Max * fac)
             : new Interval(i.Max * fac, i.Min * fac);
 
-    public static Interval operator *(Len fac, Interval i) => i * fac;
+    public static Interval operator *(BigIntInf fac, Interval i) => i * fac;
 
     // Round towards zero
     public static Interval operator /(Interval i, BigInteger d) {
         Debug.Assert(!d.IsZero);
-        Len rl, rh;
+        BigIntInf rl, rh;
         if (d.Sign < 0) {
             rh = i.Min.Div(d);
             rl = i.Max.Div(d);
@@ -96,20 +96,16 @@ public readonly struct Interval {
         new(Min + other.Min, Max + other.Max);
 
     public Interval MergeMultiplication(Interval other) {
-        Len v1 = Min * other.Max;
-        Len v2 = other.Min * Max;
-        Len v3 = Max * other.Max;
-        Len v4 = Min * other.Min;
+        BigIntInf v1 = Min * other.Max;
+        BigIntInf v2 = other.Min * Max;
+        BigIntInf v3 = Max * other.Max;
+        BigIntInf v4 = Min * other.Min;
 
         return new Interval(
-            Len.Min(Len.Min(v1, v2), Len.Min(v3, v4)),
-            Len.Max(Len.Max(v1, v2), Len.Max(v3, v4))
+            BigIntInf.Min(BigIntInf.Min(v1, v2), BigIntInf.Min(v3, v4)),
+            BigIntInf.Max(BigIntInf.Max(v1, v2), BigIntInf.Max(v3, v4))
         );
     }
-
-    public static bool Intersect(Interval i1, Interval i2) =>
-        i1.Min >= i2.Min && i1.Min <= i2.Max ||
-        i1.Max >= i2.Min && i1.Max <= i2.Max;
 
     public BoolExpr ToZ3Constraint(NonTermInt v, NielsenGraph graph) {
         if (IsFull)
@@ -117,15 +113,15 @@ public readonly struct Interval {
         IntExpr ve = v.ToExpr(graph);
         if (IsUnit) {
             Debug.Assert(!Min.IsInf);
-            return graph.Ctx.MkEq(ve, Min.ToExpr(graph));
+            return graph.Ctx.MkEq(ve, ((BigInt)Min).ToExpr(graph));
         }
         if (Min.IsNegInf)
-            return graph.Ctx.MkLe(ve, Max.ToExpr(graph));
+            return graph.Ctx.MkLe(ve, ((BigInt)Max).ToExpr(graph));
         if (Max.IsPosInf)
-            return graph.Ctx.MkGe(ve, Min.ToExpr(graph));
+            return graph.Ctx.MkGe(ve, ((BigInt)Min).ToExpr(graph));
         return graph.Ctx.MkAnd(
-            graph.Ctx.MkLe(ve, Max.ToExpr(graph)),
-            graph.Ctx.MkGe(ve, Min.ToExpr(graph))
+            graph.Ctx.MkLe(ve, ((BigInt)Max).ToExpr(graph)),
+            graph.Ctx.MkGe(ve, ((BigInt)Min).ToExpr(graph))
         );
     }
 

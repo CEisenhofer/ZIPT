@@ -8,11 +8,11 @@ namespace StringBreaker.Constraints.ConstraintElement;
 // Poly != 0
 public class IntNonEq : IntConstraint {
 
-    public Poly Poly { get; set; }
+    public IntPoly Poly { get; set; }
 
-    public IntNonEq(Poly poly) => Poly = poly;
+    public IntNonEq(IntPoly poly) => Poly = poly;
 
-    public IntNonEq(Poly lhs, Poly rhs) {
+    public IntNonEq(IntPoly lhs, IntPoly rhs) {
         Poly = lhs.Clone();
         Poly.Sub(rhs);
     }
@@ -65,8 +65,8 @@ public class IntNonEq : IntConstraint {
             return SimplifyResult.Conflict;
         }
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out Len val)) {
-            if (val != 0)
+        if (Poly.IsConst(out BigInt val)) {
+            if (!val.IsZero)
                 return SimplifyResult.Satisfied;
             reason = BacktrackReasons.Arithmetic;
             return SimplifyResult.Conflict;
@@ -77,9 +77,8 @@ public class IntNonEq : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         graph.Ctx.MkNot(graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0)));
 
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
-        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) => 
-        Poly.CollectSymbols(vars, sChars, iVars, alphabet);
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
+        Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
         new IntEq(Poly.Clone());

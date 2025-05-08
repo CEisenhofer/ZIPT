@@ -7,11 +7,13 @@ using StringBreaker.Tokens;
 namespace StringBreaker.IntUtils;
 
 // A monomial with factor 1
-public class StrictMonomial : MSet<NonTermInt> {
+public class StrictMonomial : MSet<NonTermInt, BigInt> {
 
     public StrictMonomial() { }
 
     public StrictMonomial(NonTermInt v) : base(v) { }
+
+    public StrictMonomial(NonTermInt v, BigInt coeff) : base(v, coeff) { }
 
     public StrictMonomial(StrictMonomial other) : base(other) { }
 
@@ -20,11 +22,11 @@ public class StrictMonomial : MSet<NonTermInt> {
         foreach (var c in this) {
             if (!node.IntBounds.TryGetValue(c.t, out var bounds)) {
                 if (c.t is LenVar)
-                    bounds = new Interval(0, Len.PosInf);
+                    bounds = new Interval(0, BigIntInf.PosInf);
                 else
                     return Interval.Full;
             }
-            Interval curr = c.occ * bounds;
+            Interval curr = new BigIntInf(c.occ) * bounds;
             res = res.MergeMultiplication(curr);
             if (res.IsFull)
                 return res;
@@ -34,41 +36,41 @@ public class StrictMonomial : MSet<NonTermInt> {
 
     public new StrictMonomial Clone() => new(this);
 
-    public Poly Apply(Subst subst) {
-        Poly result = new(1);
+    public IntPoly Apply(Subst subst) {
+        IntPoly result = new(BigInt.One);
         foreach (var c in this) {
-            Debug.Assert(c.occ > 0);
+            Debug.Assert(c.occ.IsPos);
             var b = c.t.Apply(subst);
             var p = b;
-            for (int i = 1; i < c.occ; i++) {
-                p = Poly.Mul(p, b);
+            for (BigInt i = 1; i < c.occ; i += BigInt.One) {
+                p = IntPoly.Mul(p, b);
             }
-            result = Poly.Mul(result, p);
+            result = IntPoly.Mul(result, p);
         }
         return result;
     }
 
-    public Poly Apply(Interpretation subst) {
-        Poly result = new(1);
+    public IntPoly Apply(Interpretation subst) {
+        IntPoly result = new(BigInt.One);
         foreach (var c in this) {
-            Debug.Assert(c.occ > 0);
+            Debug.Assert(c.occ.IsPos);
             var b = c.t.Apply(subst);
             var p = b;
-            for (int i = 1; i < c.occ; i++) {
-                p = Poly.Mul(p, b);
+            for (BigInt i = 1; i < c.occ; i += BigInt.One) {
+                p = IntPoly.Mul(p, b);
             }
-            result = Poly.Mul(result, p);
+            result = IntPoly.Mul(result, p);
         }
         return result;
     }
 
-    public (Len coeff, StrictMonomial monomial) Simplify(NielsenNode node) {
+    public (BigInt coeff, StrictMonomial monomial) Simplify(NielsenNode node) {
         StrictMonomial mon = new();
-        Len coeff = 1;
+        BigInt coeff = BigInt.One;
         foreach (var c in this) {
-            if (node.IntBounds.TryGetValue(c.t, out var val) && val.IsUnit) {
-                for (int i = 0; i < c.occ; i++) {
-                    coeff *= val.Min;
+            if (node.IntBounds.TryGetValue(c.t, out var val) && val is { IsUnit: true, Min.IsInf: false }) {
+                for (BigInt i = 0; i < c.occ; i += BigInt.One) {
+                    coeff *= (BigInt)val.Min;
                 }
             }
             else
@@ -77,11 +79,30 @@ public class StrictMonomial : MSet<NonTermInt> {
         return (coeff, mon);
     }
 
-    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
-        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+    public RatPoly Apply(NonTermInt v, RatPoly expressed) =>
+        Apply(new Dictionary<NonTermInt, RatPoly> { { v, expressed } });
 
+    public RatPoly Apply(Dictionary<NonTermInt, RatPoly> intSubst) {
+        RatPoly result = new(BigRat.One);
         foreach (var c in this) {
-            c.t.CollectSymbols(vars, sChars, iVars, alphabet);
+            Debug.Assert(c.occ.IsPos);
+            RatPoly p;
+            if (intSubst.TryGetValue(c.t, out var b)) {
+                p = b;
+                for (int i = 1; i < c.occ; i++) {
+                    p = RatPoly.Mul(p, b);
+                }
+            }
+            else
+                p = new RatPoly(new StrictMonomial(c.t, c.occ));
+            result = RatPoly.Mul(result, p);
+        }
+        return result;
+    }
+
+    public void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+        foreach (var c in this) {
+            c.t.CollectSymbols(nonTermSet, alphabet);
         }
     }
 
@@ -108,4 +129,5 @@ public class StrictMonomial : MSet<NonTermInt> {
             string occStr = o.occ.ToString();
             return occStr.Length == 1 ? o.t + "^" + occStr : o.t + "^{" + occStr + "}";
         }));
+
 }

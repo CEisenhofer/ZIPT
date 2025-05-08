@@ -5,9 +5,9 @@ using StringBreaker.Tokens;
 namespace StringBreaker.IntUtils;
 
 public abstract class NonTermInt : IComparable<NonTermInt> {
-    public abstract Len MinLen { get; }
-    public abstract Poly Apply(Subst subst);
-    public abstract Poly Apply(Interpretation subst);
+    public abstract BigIntInf MinLen { get; }
+    public abstract IntPoly Apply(Subst subst);
+    public abstract IntPoly Apply(Interpretation subst);
     public abstract int CompareToInternal(NonTermInt other);
     public int CompareTo(NonTermInt? other) {
         if (other is null)
@@ -17,7 +17,7 @@ public abstract class NonTermInt : IComparable<NonTermInt> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
-    public abstract void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
     public abstract IntExpr ToExpr(NielsenGraph graph);
     public abstract override string ToString();
 }

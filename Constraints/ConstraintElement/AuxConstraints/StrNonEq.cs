@@ -55,7 +55,7 @@ public sealed class StrNonEq : StrEqBase {
         if (LHS.IsEmpty() || RHS.IsEmpty()) {
             var eq = LHS.IsEmpty() ? RHS : LHS;
             var l = LenVar.MkLenPoly(eq);
-            if (node.IsLt(new Poly(), l))
+            if (node.IsLt(new IntPoly(), l))
                 return SimplifyResult.Satisfied;
             SortStr();
             return SimplifyResult.Proceed;
@@ -65,7 +65,7 @@ public sealed class StrNonEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    public override ModifierBase Extend(NielsenNode node) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

@@ -64,9 +64,9 @@ public class StrPrefixOf : StrConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         (BoolExpr)graph.Cache.PrefixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
 
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
-        S.CollectSymbols(vars, sChars, iVars, alphabet);
-        Contained.CollectSymbols(vars, sChars, iVars, alphabet);
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+        S.CollectSymbols(nonTermSet, alphabet);
+        Contained.CollectSymbols(nonTermSet, alphabet);
     }
 
     public override StrPrefixOf Negate() =>
@@ -75,7 +75,7 @@ public class StrPrefixOf : StrConstraint {
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

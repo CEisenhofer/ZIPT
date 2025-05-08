@@ -20,12 +20,9 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         // V / Base^Power V
 
         IntVar newPow = new();
-        var power = new PowerToken(Power.Base.Clone(), new Poly(newPow));
+        var power = new PowerToken(Power.Base.Clone(), new IntPoly(newPow));
         var prefixes = Power.Base.GetPrefixes(Forwards);
-
         Str s;
-        SubstVar subst;
-        NielsenNode c;
         foreach (var p in prefixes) {
             s = new Str(power);
             s.AddRange(p.str, Forwards);
@@ -35,26 +32,25 @@ public class PowerSplitModifier : DirectedNielsenModifier {
                 Console.WriteLine("Could have compressed: " + s + " => " + cmp);
 #endif
             //s = StrEqBase.LcpCompression(s) ?? s;
-            subst = new SubstVar(Var, s);
+            List<Constraint> cond = [
+                IntLe.MkLe(new IntPoly(0), new IntPoly(newPow)),
+                IntLe.MkLt(new IntPoly(newPow), Power.Power),
+            ];
+            cond.AddRange(p.sideConstraints);
             if (p.varDecomp is null)
-                c = node.MkChild(node, [subst], true);
+                node.MkChild(node, 
+                    [new SubstVar(Var, s)],
+                    cond, Array.Empty<DisEq>(), true);
             else {
-                subst = new SubstVar(Var, s.Apply(p.varDecomp));
-                c = node.MkChild(node, [subst, p.varDecomp], true);
+                Debug.Assert(false);
+                node.MkChild(node,
+                    [new SubstVar(Var, s.Apply(p.varDecomp)), p.varDecomp],
+                    cond, Array.Empty<DisEq>(), false);
             }
-            c.Apply(subst);
-            c.AddConstraints(p.sideConstraints);
-            c.Parent!.SideConstraints.AddRange(p.sideConstraints);
-            c.AddConstraints(IntLe.MkLe(new Poly(0), new Poly(newPow)));
-            c.Parent!.SideConstraints.Add(IntLe.MkLe(new Poly(0), new Poly(newPow)));
-            c.AddConstraints(IntLe.MkLt(new Poly(newPow), Power.Power));
-            c.Parent!.SideConstraints.Add(IntLe.MkLt(new Poly(newPow), Power.Power));
         }
         s = new Str(Var);
         s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
-        subst = new SubstVar(Var, s);
-        c = node.MkChild(node, [subst], false);
-        c.Apply(subst);
+        node.MkChild(node, [new SubstVar(Var, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), false);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Intrinsics;
 using System.Text;
@@ -198,7 +199,7 @@ public sealed class StrEq : StrEqBase {
             if (t is StrVarToken v)
                 return sConstr.Add(new SubstVar(v));
             if (t is PowerToken p) {
-                if (node.IsLt(new Poly(), p.Power))
+                if (node.IsLt(new IntPoly(), p.Power))
                     // p.Power > 0
                     sConstr.Add(new StrEq(p.Base));
                 else if (!p.Base.IsNullable(node))
@@ -247,7 +248,7 @@ public sealed class StrEq : StrEqBase {
                     continue;
                 }
                 if (!IsPrefixConsistent(node, p1.Base, s2, dir)) {
-                    sConstr.Add(new IntEq(new Poly(), p1.Power));
+                    sConstr.Add(new IntEq(new IntPoly(), p1.Power));
                     return SimplifyResult.Proceed;
                 }
             }
@@ -257,7 +258,7 @@ public sealed class StrEq : StrEqBase {
                     continue;
                 }
                 if (!IsPrefixConsistent(node, p2.Base, s1, dir)) {
-                    sConstr.Add(new IntEq(new Poly(), p2.Power));
+                    sConstr.Add(new IntEq(new IntPoly(), p2.Power));
                     return SimplifyResult.Proceed;
                 }
             }
@@ -315,7 +316,7 @@ public sealed class StrEq : StrEqBase {
         // Check Multiset abstraction
         var lhsSet = LHS.ToSet();
         var rhsSet = RHS.ToSet();
-        MSet<StrToken>.ElimCommon(lhsSet, rhsSet);
+        MSet<StrToken, BigInt>.ElimCommon(lhsSet, rhsSet);
         if (lhsSet.IsEmpty() != rhsSet.IsEmpty()) {
             var nonEmpty = lhsSet.IsEmpty() ? rhsSet : lhsSet;
             // Remove powers that actually do not exist anymore
@@ -391,89 +392,112 @@ public sealed class StrEq : StrEqBase {
         return ret;
     }
 
-    static int splitEqCnt = 0;
+    static int splitEqCnt;
 
-    ModifierBase? SplitEq(bool dir) {
+    ModifierBase? SplitEq(bool dir, Dictionary<NonTermInt, RatPoly> intSubst) {
         if (LHS.IsEmpty() || RHS.IsEmpty())
             return null;
         splitEqCnt++;
-        Len constDiff = 0;
-        Len best = Len.PosInf;
-        int bestLhs = 0, bestRhs = 0;
-        Poly lhs, rhs;
+        BigRat constDiff = BigRat.Zero;
+
+        // If we already know that there is some variable to afterwards
+        BigInt? best = null;
+        int bestLhs = -1, bestRhs = -1;
+
+        // potentially better candidates, but we do not know yet that there is a variable coming
+        BigInt? bestPending = null;
+        int bestLhsPending = -1, bestRhsPending = -1;
+
         int lhsIdx = 1, rhsIdx = 1;
 
-        lhs = LenVar.MkLenPoly([LHS.Peek(dir, 0)]);
+        IntPoly len = LenVar.MkLenPoly([LHS.Peek(dir, 0)]);
+        RatPoly lhs = len.Apply(intSubst);
         constDiff += lhs.ConstPart;
         lhs.ElimConst();
-        rhs = LenVar.MkLenPoly([RHS.Peek(dir, 0)]);
+        len = LenVar.MkLenPoly([RHS.Peek(dir, 0)]);
+        RatPoly rhs = len.Apply(intSubst);
         constDiff -= rhs.ConstPart;
         rhs.ElimConst();
 
-        // We are only interested in the first time the variables are equal (but we are looking for that case for a minimal constant difference as well)
-        bool firstTimeEqVars = true;
+        // We ignore equal cases until we find the first variable
+        bool seenVariable = false;
+
         while (lhsIdx < LHS.Count || rhsIdx < RHS.Count) {
-            // Set best only if this is the first time the difference is empty
-            // But continue to find potential 0-splits
-            if (lhs.IsZero && rhs.IsZero) {
-                if (firstTimeEqVars && constDiff.Abs() < best) {
-                    best = constDiff;
-                    bestLhs = lhsIdx;
-                    bestRhs = rhsIdx;
+            if (seenVariable && lhs.IsZero && rhs.IsZero && constDiff.IsInt) {
+                if ((!bestPending.HasValue || BigInteger.Abs(constDiff.GetInt()) < bestPending)) {
+                    bestPending = BigInteger.Abs(constDiff.GetInt());
+                    bestLhsPending = lhsIdx;
+                    bestRhsPending = rhsIdx;
                 }
-                if (constDiff.IsZero)
-                    return new EqSplitModifier(this, lhsIdx, rhsIdx, dir);
             }
-            Poly len;
+            RatPoly? ratLen;
+            StrToken t;
             if (lhs.IsEmpty() && rhs.IsNonEmpty() ||
                 (lhs.IsEmpty() && rhs.IsEmpty() && constDiff.IsNeg)) {
 
                 if (LHS.Count <= lhsIdx)
                     break;
-                len = LenVar.MkLenPoly([LHS.Peek(dir, lhsIdx++)]);
-                constDiff += len.ConstPart;
-                len.ElimConst();
-                firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
-                if (!len.IsZero) {
-                    lhs.Plus(len);
-                    Poly.ElimCommon(lhs, rhs);
+                t = LHS.Peek(dir, lhsIdx++);
+                if (t is NamedStrToken) {
+                    if (bestPending.HasValue && (!best.HasValue || bestPending > best)) {
+                        best = bestPending;
+                        bestLhs = bestLhsPending;
+                        bestRhs = bestRhsPending;
+                        bestPending = null;
+                        bestLhsPending = -1;
+                        bestRhsPending = -1;
+                    }
+                    seenVariable = true;
+                }
+                len = LenVar.MkLenPoly([t]);
+                ratLen = len.Apply(intSubst);
+                constDiff += ratLen.ConstPart;
+                ratLen.ElimConst();
+                if (!ratLen.IsZero) {
+                    lhs.Plus(ratLen);
+                    RatPoly.ElimCommon(lhs, rhs);
                 }
                 continue;
             }
             if (RHS.Count <= rhsIdx)
                 break;
-            len = LenVar.MkLenPoly([RHS.Peek(dir, rhsIdx++)]);
-            constDiff -= len.ConstPart;
-            len.ElimConst();
-            firstTimeEqVars &= best.IsInf || len.IsZero /* there is no variable */;
-            if (!len.IsZero) {
-                rhs.Plus(len);
-                Poly.ElimCommon(lhs, rhs);
+            t = RHS.Peek(dir, rhsIdx++);
+            if (t is NamedStrToken) {
+                if (bestPending.HasValue && (!best.HasValue || bestPending > best)) {
+                    best = bestPending;
+                    bestLhs = bestLhsPending;
+                    bestRhs = bestRhsPending;
+                    bestPending = null;
+                    bestLhsPending = -1;
+                    bestRhsPending = -1;
+                }
+                seenVariable = true;
+            }
+            len = LenVar.MkLenPoly([t]);
+            ratLen = len.Apply(intSubst);
+            constDiff -= ratLen.ConstPart;
+            ratLen.ElimConst();
+            if (!ratLen.IsZero) {
+                rhs.Plus(ratLen);
+                RatPoly.ElimCommon(lhs, rhs);
             }
         }
-        if (best.IsInf)
+        if (!best.HasValue)
             return null;
         Debug.Assert(bestLhs > 0);
         Debug.Assert(bestRhs > 0);
-        Debug.Assert(!best.IsZero);
-        int val;
-        if (best.IsNeg) {
-            if (bestLhs < LHS.Count && LHS.Peek(dir, bestLhs) is StrVarToken v11 &&
-                best.TryGetInt(out val))
-                // ...|x... (=> x / o_1...o_p x)
-                return new VarPaddingModifier(v11, -val, dir);
-            if (bestRhs <= RHS.Count && RHS.Peek(dir, bestRhs - 1) is StrVarToken v22 &&
-                best.TryGetInt(out val))
-                // ...x|... (=> x / x o_1...o_p x)
-                return new VarPaddingModifier(v22, -val, !dir);
+        // if the difference is > int.MaxValue we have other problems anyway...
+        return !best.Value.TryGetInt(out int val) 
+            ? null 
+            : new EqSplitModifier(this, bestLhs, bestRhs, val, dir);
+    }
+
+    ModifierBase? SplitSCharSChar(Str s1, Str s2, bool dir) {
+        if (s1.IsEmpty() || s2.IsEmpty() || s1.Peek(dir) is not SymCharToken o1 || s2.Peek(dir) is not SymCharToken o2)
             return null;
-        }
-        if (bestRhs < RHS.Count && RHS.Peek(dir, bestRhs) is StrVarToken v21 && best.TryGetInt(out val))
-            return new VarPaddingModifier(v21, val, dir);
-        if (bestLhs <= LHS.Count && LHS.Peek(dir, bestLhs - 1) is StrVarToken v12 &&
-            best.TryGetInt(out val))
-            return new VarPaddingModifier(v12, val, !dir);
-        return null;
+        // Why could that happen?!
+        Debug.Assert(false);
+        return new SCharCharModifier(o1, o2);
     }
 
     ModifierBase? SplitVarVar(Str s1, Str s2, bool dir) {
@@ -550,7 +574,7 @@ public sealed class StrEq : StrEqBase {
         return new PowerSplitModifier(v, p, dir);
     }
 
-    ModifierBase ExtendDir(Dictionary<NamedStrToken, Dictionary<NamedStrToken, Str>> varDep, bool dir) {
+    ModifierBase ExtendDir(Dictionary<NamedStrToken, Dictionary<NamedStrToken, Str>> varDep, Dictionary<NonTermInt, RatPoly> intSubst, bool dir) {
         Str s1 = LHS;
         Str s2 = RHS;
         SortStr(ref s1, ref s2, dir);
@@ -583,7 +607,7 @@ public sealed class StrEq : StrEqBase {
             return ret;
         if ((ret = SplitGroundPower(t2, s1, varDep, dir)) is not null)
             return ret;
-        if ((ret = SplitEq(dir)) is not null)
+        if ((ret = SplitEq(dir, intSubst)) is not null)
             return ret;
         if ((ret = SplitVarPower(t1, s2, dir)) is not null)
             return ret;
@@ -592,6 +616,8 @@ public sealed class StrEq : StrEqBase {
         if ((ret = SplitVarChar(t1, s2, dir)) is not null)
             return ret;
         if ((ret = SplitVarChar(t2, s1, dir)) is not null)
+            return ret;
+        if ((ret = SplitSCharSChar(s1, s2, dir)) is not null)
             return ret;
         if ((ret = SplitVarVar(s1, s2, dir)) is not null)
             return ret;
@@ -602,7 +628,10 @@ public sealed class StrEq : StrEqBase {
         throw new NotSupportedException();
     }
 
-    public override ModifierBase Extend(NielsenNode node) {
+    static int extendCnt;
+
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst) {
+        extendCnt++;
         // Don't sort -- this should have happened before in simplify!!
 #if DEBUG
         Str lhs = LHS;
@@ -611,8 +640,8 @@ public sealed class StrEq : StrEqBase {
         Debug.Assert(ReferenceEquals(lhs, LHS));
         Debug.Assert(ReferenceEquals(rhs, RHS));
 #endif
-        var m1 = ExtendDir(node.forwardVarDep, true);
-        var m2 = ExtendDir(node.backwardVarDep, false);
+        var m1 = ExtendDir(node.forwardVarDep, intSubst, true);
+        var m2 = ExtendDir(node.backwardVarDep, intSubst, false);
 #if DEBUG
         lhs = LHS;
         rhs = RHS;

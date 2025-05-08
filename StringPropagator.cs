@@ -1,17 +1,12 @@
-﻿using System.ComponentModel.Design.Serialization;
-using System.Diagnostics;
-using System.Net.Security;
-using System.Security.Cryptography;
-using System.Xml.Linq;
+﻿using System.Diagnostics;
+using System.IO;
 using Microsoft.Z3;
 using StringBreaker.Constraints;
 using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
 using StringBreaker.Constraints.Modifier;
 using StringBreaker.IntUtils;
 using StringBreaker.MiscUtils;
 using StringBreaker.Tokens;
-using StringBreaker.Tokens.AuxTokens;
 
 namespace StringBreaker;
 
@@ -21,21 +16,11 @@ public abstract class StringPropagator : UserPropagator {
     public readonly Solver Solver;
     public readonly ExpressionCache Cache;
 
-    public Dictionary<SymCharToken, HashSet<UnitToken>> reportedDiseq = [];
-
     public abstract NielsenGraph Graph { get; }
 
     protected readonly UndoStack undoStack = new();
 
-    // For each string variable, we store the list of integer-constraints that contain it (e.g., x => { |x| })
-    readonly Dictionary<Expr, List<Expr>> watch = [];
-
-    // This is not necessarily unique. We might have x = ax' and x = b (clearly, this is inconsistent, sure)
-    // However, this is string solver business and not rewriting business
-    // It might still have x = ax' and x = b from different two branches. We don't know which is the current one, so rewrite w.r.t. both
-    readonly Dictionary<Expr, List<Expr>> rewrite = [];
-
-    public StringPropagator(Solver solver, ExpressionCache cache) : base(solver) {
+    protected StringPropagator(Solver solver, ExpressionCache cache) : base(solver) {
         Solver = solver;
         Ctx = solver.Context;
         Cache = cache;
@@ -67,7 +52,8 @@ public abstract class StringPropagator : UserPropagator {
         }
     }
 
-    protected virtual void GotNegContains(Expr e) {}
+    protected virtual void GotNegContains(BoolExpr e) {}
+    protected virtual void GotPathLiteral(BoolExpr e, bool val) {}
 
     int fixedCnt;
 
@@ -138,7 +124,7 @@ public abstract class StringPropagator : UserPropagator {
             }
             if (Cache.IsContains(f)) {
                 if (!val) {
-                    GotNegContains(e);
+                    GotNegContains((BoolExpr)e);
                     return;
                 }
                 // e := contains(u, v)
@@ -157,8 +143,7 @@ public abstract class StringPropagator : UserPropagator {
                 return;
             }
 
-            Log.WriteLine($"Fixed ({fixedCnt}): {StrToken.ExprToStr(Graph, e)} = {valExpr}");
-            Console.WriteLine($"Unexpected and ignored: {StrToken.ExprToStr(Graph, e)} = {valExpr}");
+            GotPathLiteral((BoolExpr)e, val);
         }
         catch (Exception ex) {
             Console.WriteLine("Exception (Fixed): " + ex.Message);
@@ -326,7 +311,7 @@ public abstract class StringPropagator : UserPropagator {
             );
             return;
         }
-        /*if (Cache.IsLen(f)) {
+        if (Cache.IsLen(f)) {
             Expr arg0 = e.Arg(0);
             FuncDecl f0 = arg0.FuncDecl;
             if (Cache.IsConcat(f0)) {
@@ -359,7 +344,11 @@ public abstract class StringPropagator : UserPropagator {
                     return;
                 }
                 Debug.Assert(s is NamedStrToken);
-                if (rewrite.TryGetValue(arg0, out List<Expr>? r)) {
+                var lenTerm = new LenVar((NamedStrToken)s).ToExpr(Graph);
+                Propagate([], Ctx.MkEq((IntExpr)e, lenTerm));
+                Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
+                
+                /*if (rewrite.TryGetValue(arg0, out List<Expr>? r)) {
                     foreach (var r0 in r) {
                         EqualityPairs eq = new();
                         eq.Add(arg0, r0);
@@ -367,17 +356,16 @@ public abstract class StringPropagator : UserPropagator {
                     }
                     return;
                 }
-                Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
                 if (!watch.TryGetValue(arg0, out var list)) {
                     Expr arg0d = arg0.Dup();
                     watch.Add(arg0d, list = []);
                     undoStack.Add(() => watch.Remove(arg0d));
                 }
                 list.Add(e.Dup());
-                undoStack.Add(() => list.Pop());
+                undoStack.Add(() => list.Pop());*/
             }
             return;
-        }*/
+        }
         // if (Cache.InvParikInfo.TryGetValue(f, out var ipi)) {
         //     Expr arg0 = e.Arg(0);
         //     FuncDecl f0 = arg0.FuncDecl;
@@ -434,39 +422,19 @@ public abstract class StringPropagator : UserPropagator {
         // }
     }
 
-    protected virtual void AddCharDiseqInternal(SymCharToken su1, UnitToken u2) {}
+    protected virtual void AddCharDiseqInternal(DisEq disEq) {}
 
     void AddCharDiseq(UnitToken u1, UnitToken u2) {
-        if (u1 is not SymCharToken su1) {
+        if (u1 is not SymCharToken o) {
             if (u2 is not SymCharToken)
                 return;
             (u1, u2) = (u2, u1);
-            su1 = (SymCharToken)u1;
+            o = (SymCharToken)u1;
         }
 
-        AddCharDiseqInternal(su1, u2);
-
-        if (!reportedDiseq.TryGetValue(su1, out var d1)) {
-            d1 = [];
-            reportedDiseq.Add(su1, d1);
-            undoStack.Add(() => reportedDiseq.Remove(su1));
-        }
-        if (d1.Add(u2))
-            undoStack.Add(() => d1.Remove(u2));
-
-        if (u2 is not SymCharToken su2) 
-            return;
-
-        if (!reportedDiseq.TryGetValue(su2, out var d2)) {
-            d2 = [];
-            reportedDiseq.Add(su2, d2);
-            undoStack.Add(() => reportedDiseq.Remove(su2));
-        }
-        if (d2.Add(su1))
-            undoStack.Add(() => d2.Remove(su1));
+        AddCharDiseqInternal(new DisEq(o, u2));
     }
 
-    protected virtual void AddCharEqInternal(UnitToken u1, UnitToken u2) {}
     public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
 
     static int eqCount;
@@ -695,82 +663,96 @@ public abstract class StringPropagator : UserPropagator {
     }
 }
 
-public class SaturatingStringPropagator : StringPropagator {
+public sealed class SaturatingStringPropagator : StringPropagator {
 
     public bool Cancel { get; set; }
 
     public override NielsenGraph Graph { get; }
-    public NielsenNode Root => Graph.Root;
+    public NielsenNode Root { get; } // This node is added as cloned to the graph - we can alter the constraints in it
 
     List<(Expr lhs, Expr rhs)> reportedEqs = [];
     List<BoolExpr> reportedFixed = [];
 
+    readonly HashSet<BoolExpr> forbidden = [];
+    HashSet<BoolExpr>? selectedPath;
+    bool newInformation;
+
     public SaturatingStringPropagator(Solver solver, ExpressionCache cache) : base(solver, cache) {
         Graph = new NielsenGraph(this);
+        Root = new NielsenNode(Graph);
         Final = FinalCB;
+        Decide = DecideCB;
     }
 
-    protected override void GotNegContains(Expr e) {
-        reportedFixed.Add((BoolExpr)e);
+    protected override void GotNegContains(BoolExpr e) {
+        reportedFixed.Add((BoolExpr)e.Dup());
         undoStack.Add(() => reportedFixed.Pop());
         // TODO
         throw new NotImplementedException("!contains");
     }
 
-    protected override void AddCharEqInternal(UnitToken u1, UnitToken u2) {
-        var eq = new StrEq([u1], [u2]);
-        if (!Root.StrEq.Add(eq)) 
+    protected override void GotPathLiteral(BoolExpr e, bool val) {
+        if (val) {
+            if (selectedPath is null)
+                return;
+            // Just chose another unassigned path literal
+            foreach (var path in selectedPath) {
+                if (NextSplit(path, 0, 1))
+                    break;
+            }
             return;
-        undoStack.Add(() =>
-        {
-            bool succ = Root.StrEq.Remove(eq);
-            Debug.Assert(succ);
-        });
+        }
+        if (selectedPath is not null && selectedPath.Contains(e)) {
+            var prev = selectedPath;
+            selectedPath = null;
+            undoStack.Add(() => selectedPath = prev);
+        }
+
+        var e2 = (BoolExpr)e.Dup();
+        var s = forbidden.Add(e2);
+        Debug.Assert(s);
+        undoStack.Add(() => forbidden.Remove(e2));
+
     }
 
-    protected override void AddCharDiseqInternal(SymCharToken su1, UnitToken u2) {
-        if (!reportedDiseq.TryGetValue(su1, out var d1)) {
-            d1 = [];
-            reportedDiseq.Add(su1, d1);
-            undoStack.Add(() => reportedDiseq.Remove(su1));
-        }
-        if (d1.Add(u2))
-            undoStack.Add(() => d1.Remove(u2));
-
-        if (u2 is not SymCharToken su2)
+    protected override void AddCharDiseqInternal(DisEq disEq) {
+        if (!Root.AddDisEq(disEq))
             return;
-
-        if (!reportedDiseq.TryGetValue(su2, out var d2)) {
-            d2 = [];
-            reportedDiseq.Add(su2, d2);
-            undoStack.Add(() => reportedDiseq.Remove(su2));
+        if (!newInformation) {
+            newInformation = true;
+            undoStack.Add(() => newInformation = false);
         }
-        if (d2.Add(su1))
-            undoStack.Add(() => d2.Remove(su1));
+        undoStack.Add(() => Root.RemoveDisEq(disEq));
     }
 
     public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
-        HashSet<NamedStrToken> vars = [];
-        HashSet<SymCharToken> sChars = [];
-        HashSet<IntVar> iVars = [];
+        NonTermSet nonTermSet = new();
         HashSet<CharToken> alph = [];
-        eq.CollectSymbols(vars, sChars, iVars, alph);
+        eq.CollectSymbols(nonTermSet, alph);
 
-        if (Root.StrEq.Add(eq)) // u = v
+        if (Root.StrEq.Add(eq)) { // u = v
             undoStack.Add(() =>
             {
-                bool succ = Root.StrEq.Remove(eq);
-                Debug.Assert(succ);
+                Log.Verify(Root.StrEq.Remove(eq));
             });
+            if (!newInformation) {
+                newInformation = true;
+                undoStack.Add(() => newInformation = false);
+            }
+        }
         var la = new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2));
-        if (!la.Poly.IsZero && Root.IntEq.Add(la)) // u = v => |u| = |v|
+        if (!la.Poly.IsZero && Root.IntEq.Add(la)) { // u = v => |u| = |v|
             undoStack.Add(() =>
             {
-                bool succ = Root.IntEq.Remove(la);
-                Debug.Assert(succ);
+                Log.Verify(Root.IntEq.Remove(la));
             });
+            if (!newInformation) {
+                newInformation = true;
+                undoStack.Add(() => newInformation = false);
+            }
+        }
         // foreach (var a in alph) {
         //     if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
         //         undoStack.Add(Root.IntEq.Pop);
@@ -783,13 +765,12 @@ public class SaturatingStringPropagator : StringPropagator {
     }
 
     protected override void AddNotEpsilonInternal(Str s) {
-        var c = IntLe.MkLt(new Poly(), LenVar.MkLenPoly(s));
+        var c = IntLe.MkLt(new IntPoly(), LenVar.MkLenPoly(s));
         if (!Root.IntLe.Add(c)) 
             return;
         undoStack.Add(() =>
-        {
-            bool succ = Root.IntLe.Remove(c);
-            Debug.Assert(succ);
+        { 
+            Log.Verify(Root.IntLe.Remove(c));
         });
     }
 
@@ -797,16 +778,45 @@ public class SaturatingStringPropagator : StringPropagator {
 
     void FinalCB() {
         try {
+            if (!newInformation && selectedPath is not null && selectedPath.All(o => !forbidden.Contains(o)))
+                // We made our choice and the solver did not backtrack it/contradict it - we silently agree
+                return;
             finalCnt++;
             Log.WriteLine("Final (" + finalCnt + ")");
-            var res = Graph.Check();
-            if (res)
-                return;
+
+            // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
+            HashSet<BoolExpr> usedForbidden = [];
+            var res = Graph.Check(Root, forbidden, usedForbidden);
+            if (newInformation) {
+                newInformation = false;
+                undoStack.Add(() => newInformation = true);
+            }
+            // For now, we just add all the reported equations/fixed literals and the relevant blockings
             EqualityPairs pair = new();
             foreach (var (lhs, rhs) in reportedEqs) {
                 pair.Add(lhs, rhs);
             }
-            Propagate(reportedFixed.ToArray(), pair, Ctx.MkFalse());
+            if (res) {
+                var prev = selectedPath;
+                selectedPath = new HashSet<BoolExpr>();
+                bool madeGuess = false;
+                foreach (var path in Graph.CurrentPath) {
+                    foreach (BoolExpr c in path.Asserted) {
+                        Propagate([], c);
+                    }
+                    selectedPath.Add(path.Assumption);
+                    Register(path.Assumption);
+                    if (!madeGuess)
+                        madeGuess = NextSplit(path.Assumption, 0, 1);
+                }
+                undoStack.Add(() => selectedPath = prev);
+            }
+            else {
+                var f = new BoolExpr[usedForbidden.Count + reportedFixed.Count];
+                usedForbidden.CopyTo(f, 0);
+                reportedFixed.CopyTo(f, usedForbidden.Count);
+                Propagate(f, pair, Ctx.MkFalse());
+            }
         }
         catch (SolverTimeoutException) {
         }
@@ -815,23 +825,50 @@ public class SaturatingStringPropagator : StringPropagator {
         }
     }
 
+    void DecideCB(Expr term, uint idx, bool phase) {
+        if (!phase && term.NumArgs == 0) 
+            // Path literals are better true
+            NextSplit(term, 0, 1);
+
+    }
+
     public bool GetModel(out Interpretation itp) {
 
-        HashSet<NamedStrToken> initSVars = [];
-        HashSet<SymCharToken> initSymChars = [];
-        HashSet<IntVar> initIVars = [];
+        Debug.Assert(Graph.CurrentRoot is not null);
+        var currentRoot = Graph.CurrentRoot!;
+        var currentPath = Graph.CurrentPath.ToList();
+        var satNode = currentPath.IsEmpty() ? currentRoot : currentPath[^1].Tgt;
+        Debug.Assert(satNode.StrEq.Count == 0);
+        
+        Graph.ResetIndices(); // We need the original indices for retrieving the correct root constraints
+
+        NonTermSet initNonTermSet = new();
         HashSet<CharToken> initAlphabet = [];
-        Graph.Root.CollectSymbols(initSVars, initSymChars, initIVars, initAlphabet);
+        currentRoot.CollectSymbols(initNonTermSet, initAlphabet);
 
-        Debug.Assert(Graph.SatNodes.IsNonEmpty());
-        var satNode = Graph.SatNodes[0];
+        foreach (Constraint c in currentRoot.AllConstraints.Where(o => o is not StrEq)) {
+            BoolExpr e = c.ToExpr(Graph);
+            Solver.Assert(e);
+        }
+        foreach (var diseq in currentRoot.DisEqs) {
+            // TODO: Optimize via distinct
+            Expr e = diseq.Key.ToExpr(Graph);
+            foreach (UnitToken d in diseq.Value) {
+                Solver.Assert(Ctx.MkDistinct(e, d.ToExpr(Graph)));
+            }
+        }
+        // TODO: Do this also in other places
+        foreach (var path in currentPath) {
+            foreach (BoolExpr c in path.Asserted) {
+                Solver.Assert(c);
+            }
+            Solver.Assert(path.Assumption);
+        }
 
-        if (satNode.Parent is not null)
-            Graph.SubSolver.Check(satNode.Parent!.Assumption);
-        else
-            Graph.SubSolver.Check();
+        var res = Solver.Check();
+        Debug.Assert(res == Status.SATISFIABLE);
+        var model = Solver.Model;
 
-        var model = Graph.SubSolver.Model;
         itp = new Interpretation();
         foreach (var c in model.Consts) {
             if (c.Key.Apply() is not IntExpr i)
@@ -844,8 +881,8 @@ public class SaturatingStringPropagator : StringPropagator {
         }
         Debug.Assert(model is not null);
 
-        foreach (var parent in satNode.EnumerateParents()) {
-            foreach (var subst in parent.Subst) {
+        for (int i = 0; i < currentPath.Count; i++) {
+            foreach (var subst in currentPath[^(i + 1)].Subst) {
                 subst.AddToInterpretation(itp);
             }
         }
@@ -854,12 +891,12 @@ public class SaturatingStringPropagator : StringPropagator {
             itp.Complete(initAlphabet);
 
         bool modelCheck = true;
-        var allConstraints = Root.AllConstraints.Select(o => o.Clone());
+        var allConstraints = currentRoot.AllConstraints.Select(o => o.Clone());
         foreach (var cnstr in allConstraints) {
             var orig = cnstr.Clone();
             cnstr.Apply(itp);
             BacktrackReasons reason = BacktrackReasons.Unevaluated;
-            if (cnstr.SimplifyAndPropagate(satNode, new DetModifier(), ref reason) == SimplifyResult.Satisfied)
+            if (cnstr.SimplifyAndPropagate(satNode, new NonTermSet(), new DetModifier(), ref reason, true) == SimplifyResult.Satisfied)
                 continue;
             modelCheck = false;
             Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
@@ -867,7 +904,7 @@ public class SaturatingStringPropagator : StringPropagator {
 
         Console.WriteLine(modelCheck ? "Model seems fine" : "ERROR: Created invalid model");
 
-        itp.ProjectTo(initSVars, initSymChars, initIVars);
+        itp.ProjectTo(initNonTermSet);
 
         return modelCheck;
     }
@@ -880,403 +917,4 @@ public class LemmaStringPropagator : StringPropagator {
     public LemmaStringPropagator(Solver solver, ExpressionCache cache, NielsenGraph graph) : base(solver, cache) {
         Graph = graph;
     }
-}
-
-public class ExpressionCache : IDisposable {
-
-    bool disposed;
-
-    public readonly Context Ctx;
-    public readonly Sort StringSort;
-
-    public readonly FuncDecl ConcatFct;
-    public readonly FuncDecl PowerFct;
-
-    public bool IsConcat(FuncDecl f) => f.Equals(ConcatFct);
-    public bool IsPower(FuncDecl f) => f.Equals(PowerFct);
-
-    public readonly FuncDecl LenFct;
-
-    public bool IsLen(FuncDecl f) => f.Equals(LenFct);
-
-    public readonly Dictionary<CharToken, ParikhInfo> ParikInfo = [];
-    public readonly Dictionary<FuncDecl, InvParikhInfo> InvParikInfo = [];
-
-    public readonly Expr Epsilon;
-
-    // The easy functions
-    public readonly FuncDecl StrAtFct;
-    public readonly FuncDecl PrefixOfFct;
-    public readonly FuncDecl SuffixOfFct;
-    public readonly FuncDecl SubstringFct;
-
-    public bool IsStrAt(FuncDecl f) => f.Equals(StrAtFct);
-    public bool IsPrefixOf(FuncDecl f) => f.Equals(PrefixOfFct);
-    public bool IsSuffixOf(FuncDecl f) => f.Equals(SuffixOfFct);
-    public bool IsSubstring(FuncDecl f) => f.Equals(SubstringFct);
-
-    // The tricky ones
-    // contains, indexOf, (replace, replaceAll)
-    public readonly FuncDecl ContainsFct;
-    public readonly FuncDecl IndexOfFct;
-
-    public bool IsContains(FuncDecl f) => f.Equals(ContainsFct);
-    public bool IsIndexOf(FuncDecl f) => f.Equals(IndexOfFct);
-
-    public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
-    public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
-
-    public readonly Dictionary<(NonTermInt v, int modifications), IntExpr> IntTokenToExpr = [];
-    public readonly Dictionary<IntExpr, NonTermInt> ExprToIntToken = [];
-
-    public ExpressionCache(Context ctx) {
-        Ctx = ctx;
-        StringSort = ctx.MkUninterpretedSort("Str");
-        Epsilon = ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
-        ConcatFct = ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
-        PowerFct = ctx.MkUserPropagatorFuncDecl("power", [StringSort, ctx.IntSort], StringSort);
-        LenFct = ctx.MkUserPropagatorFuncDecl("len", [StringSort], ctx.IntSort);
-
-        StrAtFct = ctx.MkUserPropagatorFuncDecl("strAt", [StringSort], StringSort);
-        PrefixOfFct = ctx.MkUserPropagatorFuncDecl("prefixOf", [StringSort, StringSort], ctx.BoolSort);
-        SuffixOfFct = ctx.MkUserPropagatorFuncDecl("suffixOf", [StringSort, StringSort], ctx.BoolSort);
-        SubstringFct = ctx.MkUserPropagatorFuncDecl("subStr", [StringSort, ctx.IntSort, ctx.IntSort], StringSort);
-
-        ContainsFct = ctx.MkUserPropagatorFuncDecl("contains", [StringSort, StringSort], ctx.BoolSort);
-        IndexOfFct = ctx.MkUserPropagatorFuncDecl("indexOf", [StringSort, StringSort, ctx.IntSort], ctx.IntSort);
-    }
-
-    public void Dispose() {
-        if (disposed)
-            return;
-        disposed = true;
-        StrTokenToExpr.Clear();
-        ExprToIntToken.Clear();
-        StrVarToken.DisposeAll();
-    }
-
-    public Expr? GetCachedStrExpr(StrToken t, NielsenGraph graph) {
-        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
-        return StrTokenToExpr.GetValueOrDefault((t, mod));
-    }
-
-    public IntExpr? GetCachedIntExpr(NonTermInt t, NielsenGraph graph) {
-        if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
-            mod = 0;
-        return IntTokenToExpr.GetValueOrDefault((t, mod));
-    }
-
-    public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
-        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
-            mod = 0;
-        StrTokenToExpr.Add((t, mod), e);
-        ExprToStrToken.Add(e, t);
-    }
-
-    public void SetCachedExpr(NonTermInt t, IntExpr e, NielsenGraph graph) {
-        if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
-            mod = 0;
-        IntTokenToExpr.Add((t, mod), e);
-        ExprToIntToken.Add((IntExpr)e.Dup(), t);
-    }
-
-    public ParikhInfo GetParikhInfo(CharToken c) {
-        if (!ParikInfo.TryGetValue(c, out ParikhInfo? info)) {
-            info = new ParikhInfo(c, this);
-            ParikInfo.Add(c, info);
-        }
-        return info;
-    }
-
-
-    public IntExpr MkLen(Expr e) =>
-        (IntExpr)LenFct.Apply(e);
-
-    public IntExpr MkParikh(CharToken c, Expr e) {
-        var info = GetParikhInfo(c);
-        return (IntExpr)info.Total.Apply(e);
-    }
-
-
-    public Expr MkConcat(Expr e1, Expr e2) {
-        if (e1.Equals(Epsilon))
-            return e2;
-        if (e2.Equals(Epsilon))
-            return e1;
-        return ConcatFct.Apply(e1, e2);
-    }
-
-    public Expr MkPower(Expr e, IntExpr n) {
-        if (n.Equals(Ctx.MkInt(0)))
-            return Epsilon;
-        if (n.Equals(Ctx.MkInt(1)))
-            return e;
-        return PowerFct.Apply(e, n);
-    }
-
-
-    public Constraint? TryParse(BoolExpr expr) {
-        FuncDecl decl = expr.FuncDecl;
-        if (decl.Equals(PrefixOfFct))
-            return ParsePrefix(expr.Arg(0), expr.Arg(1));
-        if (decl.Equals(SuffixOfFct))
-            return ParseSuffix(expr.Arg(0), expr.Arg(1));
-        if (decl.Equals(ContainsFct))
-            return ParseContains(expr.Arg(0), expr.Arg(1));
-        switch (decl.DeclKind) {
-            case Z3_decl_kind.Z3_OP_EQ:
-                return expr.Arg(0) is IntExpr
-                    ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
-                    : ParseStrEq(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_NOT:
-                return TryParse((BoolExpr)expr.Args[0])?.Negate();
-            case Z3_decl_kind.Z3_OP_LE:
-                return ParseLe((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_GE:
-                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
-            case Z3_decl_kind.Z3_OP_LT:
-                return ParseLt((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_GT:
-                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
-            case Z3_decl_kind.Z3_OP_SEQ_PREFIX:
-                return ParsePrefix(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_SEQ_SUFFIX:
-                return ParseSuffix(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_SEQ_CONTAINS:
-                return ParseContains(expr.Args[0], expr.Args[1]);
-            default:
-                throw new NotSupportedException(expr.FuncDecl.Name.ToString());
-        }
-    }
-
-    public StrEq? ParseStrEq(Expr left, Expr right) {
-        var lhs = TryParseStr(left);
-        if (lhs is null)
-            return null;
-        var rhs = TryParseStr(right);
-        return rhs is null ? null : new StrEq(lhs, rhs);
-    }
-
-    public IntEq? ParseIntEq(IntExpr left, IntExpr right) {
-        var lhs = TryParseInt(left);
-        if (lhs is null)
-            return null;
-        var rhs = TryParseInt(right);
-        return rhs is null ? null : new IntEq(lhs, rhs);
-    }
-
-    public IntLe? ParseLe(IntExpr left, IntExpr right) {
-        var lhs = TryParseInt(left);
-        if (lhs is null)
-            return null;
-        var rhs = TryParseInt(right);
-        return rhs is null ? null : IntLe.MkLe(lhs, rhs);
-    }
-
-    public IntLe? ParseLt(IntExpr left, IntExpr right) {
-        var lhs = TryParseInt(left);
-        if (lhs is null)
-            return null;
-        var rhs = TryParseInt(right);
-        return rhs is null ? null : IntLe.MkLt(lhs, rhs);
-    }
-
-    public StrPrefixOf? ParsePrefix(Expr contained, Expr str) {
-        var c = TryParseStr(contained);
-        if (c is null)
-            return null;
-        var s = TryParseStr(str);
-        return s is null ? null : new StrPrefixOf(c, s, false);
-    }
-
-    public StrSuffixOf? ParseSuffix(Expr contained, Expr str) {
-        var c = TryParseStr(contained);
-        if (c is null)
-            return null;
-        var s = TryParseStr(str);
-        return s is null ? null : new StrSuffixOf(c, s, false);
-    }
-
-    public StrContains? ParseContains(Expr str, Expr contained) {
-        var s = TryParseStr(str);
-        if (s is null)
-            return null;
-        var c = TryParseStr(contained);
-        return c is null ? null : new StrContains(s, c, false);
-    }
-
-    public Str? TryParseStr(Expr expr) {
-        FuncDecl f = expr.FuncDecl;
-        if (expr.Sort.Equals(StringSort)) {
-            // Custom Z3
-            if (expr.Equals(Epsilon))
-                return [];
-            if (IsConcat(f)) {
-                List<StrToken> res = [];
-                for (uint i = 0; i < expr.NumArgs; i++) {
-                    if (TryParseStr(expr.Arg(i)) is not { } str)
-                        return null;
-                    res.AddRange(str);
-                }
-                return new Str(res);
-            }
-            if (IsPower(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
-                if (@base is null)
-                    return null;
-                Poly? p = TryParseInt((IntExpr)expr.Arg(1));
-                if (p is null)
-                    return null;
-                return new Str([new PowerToken(@base, p)]);
-            }
-            if (IsStrAt(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
-                if (@base is null)
-                    return null;
-                Poly? at = TryParseInt((IntExpr)expr.Arg(1));
-                if (at is null)
-                    return null;
-                return [new StrAtToken(@base, at)];
-            }
-            if (IsSubstring(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
-                if (@base is null)
-                    return null;
-                Poly? from = TryParseInt((IntExpr)expr.Arg(1));
-                if (from is null)
-                    return null;
-                Poly? len = TryParseInt((IntExpr)expr.Arg(2));
-                if (len is null)
-                    return null;
-                return [new SubStrToken(@base, from, len)];
-            }
-            if (ExprToStrToken.TryGetValue(expr, out StrToken? s))
-                return [s];
-        }
-        else if (expr.Sort is SeqSort) {
-            // Native Z3
-            if (expr.IsString)
-                return new Str(expr.String.Select(o => (StrToken)new CharToken(o)).ToArray());
-            if (expr.IsConst)
-                return new Str([StrVarToken.GetOrCreate(f.Name.ToString())]);
-            if (expr.IsConcat) {
-                Str r = [];
-                foreach (var arg in expr.Args) {
-                    Str? q = TryParseStr(arg);
-                    if (q is null)
-                        return null;
-                    r.AddLastRange(q);
-                }
-                return r;
-            }
-            if (expr.IsAt) {
-                Str? s = TryParseStr(expr.Args[0]);
-                if (s is null)
-                    return null;
-                Poly? p = TryParseInt((IntExpr)expr.Args[1]);
-                if (p is null)
-                    return null;
-                return [new StrAtToken(s, p)];
-            }
-            if (expr.IsExtract) {
-                Str? @base = TryParseStr(expr.Arg(0));
-                if (@base is null)
-                    return null;
-                Poly? from = TryParseInt((IntExpr)expr.Arg(1));
-                if (from is null)
-                    return null;
-                Poly? len = TryParseInt((IntExpr)expr.Arg(2));
-                if (len is null)
-                    return null;
-                return [new SubStrToken(@base, from, len)];
-            }
-        }
-        throw new NotSupportedException(f.Name.ToString());
-    }
-
-    public Poly? TryParseInt(IntExpr expr) {
-        if (expr.Sort is not IntSort)
-            return null;
-        if (expr is IntNum num)
-            return new Poly(num.BigInteger);
-        if (expr.FuncDecl.Equals(LenFct) || expr.IsLength) {
-            Str? str = TryParseStr(expr.Arg(0));
-            return str is null ? null : LenVar.MkLenPoly(str);
-        }
-        if (expr.FuncDecl.Equals(IndexOfFct) || expr.IsIndex) {
-            if (expr.NumArgs != 3)
-                return null;
-            Str? str = TryParseStr(expr.Arg(0));
-            if (str is null)
-                return null;
-            Str? contained = TryParseStr(expr.Arg(1));
-            if (contained is null)
-                return null;
-            Poly? start = TryParseInt((IntExpr)expr.Arg(2));
-            return start is null ? null : new Poly(new IndexOfVar(str, contained, start));
-        }
-        if (InvParikInfo.TryGetValue(expr.FuncDecl, out var parikhInfo)) {
-            var s = TryParseStr((IntExpr)expr.Arg(0));
-            if (s is null)
-                return null;
-            if (parikhInfo.IsTotal)
-                return Parikh.MkParikhPoly(parikhInfo.Info.Char, s);
-            throw new NotImplementedException();
-        }
-        if (ExprToIntToken.TryGetValue(expr, out var v))
-            return new Poly(v);
-        if (expr.IsAdd) {
-            var polys = new Poly[expr.NumArgs];
-            for (uint i = 0; i < expr.NumArgs; i++) {
-                Poly? p = TryParseInt((IntExpr)expr.Arg(i));
-                if (p is null)
-                    return null;
-                polys[i] = p;
-            }
-            if (polys.Length == 0)
-                return new Poly();
-            Poly poly = polys[0];
-            for (int i = 1; i < polys.Length; i++) {
-                poly.Plus(polys[i]);
-            }
-            return poly;
-        }
-        if (expr.IsSub) {
-            // What if we have more than two arguments?
-            Debug.Assert(expr.NumArgs <= 2);
-            var polys = new Poly[expr.NumArgs];
-            for (uint i = 0; i < expr.NumArgs; i++) {
-                Poly? p = TryParseInt((IntExpr)expr.Arg(i));
-                if (p is null)
-                    return null;
-                polys[i] = p;
-            }
-            if (polys.Length == 0)
-                return new Poly();
-            Poly poly = polys[0];
-            for (int i = 1; i < polys.Length; i++) {
-                poly.Sub(polys[i]);
-            }
-            return poly;
-        }
-        if (expr.IsMul) {
-            var polys = new Poly[expr.NumArgs];
-            for (uint i = 0; i < expr.NumArgs; i++) {
-                Poly? p = TryParseInt((IntExpr)expr.Arg(i));
-                if (p is null)
-                    return null;
-                polys[i] = p;
-            }
-            if (polys.Length == 0)
-                return new Poly(1);
-            Poly poly = polys[0];
-            for (int i = 1; i < polys.Length; i++) {
-                poly = Poly.Mul(poly, polys[i]);
-            }
-            return poly;
-        }
-        throw new NotSupportedException(expr.FuncDecl.Name.ToString());
-    }
-
 }

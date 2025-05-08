@@ -19,6 +19,8 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(ConstNumUnwindingModifier), TypeOrder.Count);
         // lhs = rhs => lhs' = rhs' && lhs'' = rhs''
         TypeOrder.Add(typeof(EqSplitModifier), TypeOrder.Count);
+        // o / @ || o != @
+        TypeOrder.Add(typeof(SCharCharModifier), TypeOrder.Count);
         // \/ x := u^n prefix(u); u const
         TypeOrder.Add(typeof(GPowerIntrModifier), TypeOrder.Count);
         // x := o_1 ... o_{k - 1} || x := o_1 ... o_k x
@@ -29,8 +31,6 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(PowerSplitModifier), TypeOrder.Count);
         // x := "" || (y := "" && |x| > 0) || (x := y && |x| > 0) || (x := yx && |x| > 0 && |y| > 0) ||( y := xy && |x| > 0 && |y| > 0)
         TypeOrder.Add(typeof(VarNielsenModifier), TypeOrder.Count);
-        // \/ x := u^n prefix(u); u not const
-        TypeOrder.Add(typeof(PowerIntrModifier), TypeOrder.Count);
         // n := 0 || n > 0 (coming from power vs. variable)
         TypeOrder.Add(typeof(VarNumUnwindingModifier), TypeOrder.Count);
     }

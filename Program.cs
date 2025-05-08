@@ -21,8 +21,9 @@ public enum SolveResult {
 public static class Program {
 
     [DoesNotReturn]
-    static void Usage() {
-        Console.Error.WriteLine("Usage: " + Assembly.GetExecutingAssembly().Location + " <input> [timeout]");
+    static void Usage(string error) {
+        Console.Error.WriteLine(error);
+        Console.Error.WriteLine("Usage: " + Assembly.GetExecutingAssembly().Location + " [timeout] <input>");
         Environment.Exit(-1);
     }
 
@@ -45,28 +46,28 @@ public static class Program {
         }
 
         if (!(args.Length is >= 1 and <= 2))
-            Usage();
+            Usage("Expected 1-2 arguments. Got: " + args.Length);
 
-        if (!File.Exists(args[0]) && !Directory.Exists(args[0]))
-            Usage();
+        if (!File.Exists(args[^1]) && !Directory.Exists(args[^1]))
+            Usage("Could not find file " + args[^1]);
 
         int timeout = 0;
         if (args.Length > 1) {
-            if (!int.TryParse(args[1], out timeout) || timeout < 0)
-                Usage();
+            if (!int.TryParse(args[0], out timeout) || timeout < 0)
+                Usage("Could not parse integer " + args[0]);
         }
 
         // Global.SetParameter("proof", "true");
         Global.SetParameter("smt.up.persist_clauses", "false");
 
-        if (File.Exists(args[0])) {
-            Console.WriteLine(args[0]);
+        if (File.Exists(args[^1])) {
+            Console.WriteLine(args[^1]);
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
             using ExpressionCache cache = new(ctx);
             using SaturatingStringPropagator propagator = new(solver, cache);
             try {
-                AssertSMTLIB(ctx, solver, propagator, args[0]);
+                AssertSMTLIB(ctx, solver, propagator, args[^1]);
             }
             catch (NotSupportedException ex) {
                 Console.WriteLine("Unsupported feature: " + ex.Message);
@@ -77,7 +78,7 @@ public static class Program {
         }
         int solved = 0;
         int total = 0;
-        foreach (var file in Directory.EnumerateFiles(args[0], "*.smt2", SearchOption.AllDirectories)) {
+        foreach (var file in Directory.EnumerateFiles(args[^1], "*.smt2", SearchOption.AllDirectories)) {
             Console.WriteLine(file);
             using Context ctx = new();
             using Solver solver = ctx.MkSimpleSolver();
@@ -108,40 +109,42 @@ public static class Program {
             Global.SetParameter("nlsat.seed", "10");
             Global.SetParameter("smt.arith.random_initial_value", "false");
             if (timeout > 0)
-                Console.WriteLine("Timeout: " + timeout + "s");
+                Console.WriteLine("Timeout: " + timeout + "ms");
             if (timeout != 0)
-                Global.SetParameter("timeout", ((ulong)timeout * 1000).ToString());
+                Global.SetParameter("timeout", ((ulong)timeout).ToString());
             SymCharToken.ResetCounter();
             var res = propagator.Solver.Check();
             Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
 #if DEBUG
             // Console.WriteLine(propagator.Graph.ToDot());
 #endif
-            if (res == Status.SATISFIABLE && propagator.Graph.SatNodes.IsNonEmpty()) {
-                Console.WriteLine("SAT");
-                if (Options.GetAndCheckModel) {
-                    bool succ = propagator.GetModel(out var itp);
-                    Console.WriteLine(itp);
+            if (!propagator.Cancel) {
+                if (res == Status.SATISFIABLE) {
+                    Console.WriteLine("SAT");
+                    if (Options.GetAndCheckModel) {
+                        bool success = propagator.GetModel(out var itp);
+                        Console.WriteLine(itp);
+                        propagator.Solver.Pop(propagator.Solver.NumScopes);
+                        result = success ? SolveResult.SAT : SolveResult.UNSOUND;
+                        return;
+                    }
                     propagator.Solver.Pop(propagator.Solver.NumScopes);
-                    result = succ ? SolveResult.SAT : SolveResult.UNSOUND;
+                    result = SolveResult.SAT;
                     return;
                 }
-                propagator.Solver.Pop(propagator.Solver.NumScopes);
-                result = SolveResult.SAT;
-                return;
-            }
-            if (res == Status.UNSATISFIABLE) {
-                Console.WriteLine("UNSAT");
-                // Console.WriteLine(solver.Proof);
-                result = SolveResult.UNSAT;
-                return;
+                if (res == Status.UNSATISFIABLE) {
+                    Console.WriteLine("UNSAT");
+                    // Console.WriteLine(solver.Proof);
+                    result = SolveResult.UNSAT;
+                    return;
+                }
             }
             Console.WriteLine("UNKNOWN");
             result = SolveResult.UNKNOWN;
         });
         thread.Start();
         if (timeout > 0)
-            thread.Join(timeout * 1000);
+            thread.Join(timeout);
         else
             thread.Join();
         if (thread.IsAlive) {
@@ -156,10 +159,7 @@ public static class Program {
         string content = File.ReadAllText(path);
         BoolExpr[]? exprs = ctx.ParseSMTLIB2String(content);
         foreach (var expr in exprs) {
-            var cnstr = propagator.Cache.TryParse(expr);
-            if (cnstr is null)
-                throw new NotSupportedException(expr.ToString());
-            solver.Assert(cnstr.ToExpr(propagator.Graph));
+            solver.Assert((BoolExpr)(propagator.Cache.TranslateStr(expr, propagator.Graph) ?? expr));
         }
     }
 
@@ -172,7 +172,7 @@ public static class Program {
                     new CharToken('b'),
                     new CharToken('c'),
                     new CharToken('a')
-                ], new Poly(new IntVar())),
+                ], new IntPoly(new IntVar())),
                 new CharToken('b'),
                 new CharToken('c')
             ],
@@ -182,7 +182,7 @@ public static class Program {
                     new CharToken('a'),
                     new CharToken('b'),
                     new CharToken('c')
-                ], new Poly(new IntVar())),
+                ], new IntPoly(new IntVar())),
             ]
         );
         using Context ctx = new();

@@ -19,9 +19,12 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
-            var powerConstant = new Poly(v.GetPowerExtension());
+            var powerConstant = new IntPoly(v.GetPowerExtension());
 
+            // TODO: If b = u^n => b = u
             Str b = StrEqBase.LcpCompressionFull(@base) ?? @base;
+            if (b.Count == 1 && b.Peek(true) is PowerToken pt)
+                b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
             var prefixes = b.GetPrefixes(Forwards);
             var power = new PowerToken(b, powerConstant);
@@ -31,14 +34,12 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
                 s.AddRange(p.str, !Forwards);
                 var subst = new SubstVar(v, s);
                 Debug.Assert(p.varDecomp is null);
-                var c = node.MkChild(node, [subst], true);
-                c.Apply(subst);
-                c.AddConstraints(p.sideConstraints);
-                c.Parent!.SideConstraints.AddRange(p.sideConstraints);
-                var lowerBound = new Poly();
-                lowerBound.Sub(powerConstant);
-                c.AddConstraints(new IntLe(lowerBound)); // -Power <= 0 => Power >= 0
-                c.Parent!.SideConstraints.Add(new IntLe(lowerBound));
+                Constraint[] cnstr = new Constraint[p.sideConstraints.Count + 1];
+                for (int i = 0; i < p.sideConstraints.Count; i++) {
+                    cnstr[i] = p.sideConstraints[i];
+                }
+                cnstr[^1] = IntLe.MkLe(new IntPoly(), new IntPoly(powerConstant));
+                node.MkChild(node, [subst], cnstr, Array.Empty<DisEq>(), true);
             }
         }
     }

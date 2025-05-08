@@ -7,13 +7,13 @@ namespace StringBreaker.Constraints;
 
 public class Interpretation {
 
-    public Dictionary<IntVar, Len> IntVal { get; } = [];
+    public Dictionary<IntVar, BigInt> IntVal { get; } = [];
     public Dictionary<NamedStrToken, Str> Substitution { get; } = [];
     public Dictionary<SymCharToken, UnitToken> CharSubstitution { get; } = [];
 
     public Str ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
     public UnitToken ResolveVar(SymCharToken v) => CharSubstitution.GetValueOrDefault(v, v);
-    public Poly ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new Poly(i) : new Poly(v);
+    public IntPoly ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new IntPoly(i) : new IntPoly(v);
 
     public void Add(SubstVar subst) => 
         Substitution[subst.Var] = subst.Str.Apply(this);
@@ -21,27 +21,25 @@ public class Interpretation {
     public void Add(SubstSChar subst) => 
         CharSubstitution[subst.Sym] = subst.C is SymCharToken c ? ResolveVar(c) : subst.C;
 
-    public void Add(IntVar v, Len l) {
+    public void Add(IntVar v, BigInt l) {
         Debug.Assert(!IntVal.ContainsKey(v));
         IntVal[v] = l;
     }
 
     public void Complete(HashSet<CharToken> alphabet) {
-        HashSet<NamedStrToken> vars = [];
-        HashSet<SymCharToken> sChars = [];
-        HashSet<IntVar> iVars = [];
+        NonTermSet nonTermSet = new();
         var ch = alphabet.IsNonEmpty() ? alphabet.First() : new CharToken('a');
         foreach (var v in Substitution.Values) {
-            v.CollectSymbols(vars, sChars, iVars, []);
+            v.CollectSymbols(nonTermSet, []);
         }
         Interpretation clean = new();
-        foreach (var v in vars) {
+        foreach (var v in nonTermSet.StrVars) {
             clean.Add(new SubstVar(v));
         }
-        foreach (var c in sChars) {
+        foreach (var c in nonTermSet.SymChars) {
             clean.Add(new SubstSChar(c, ch));
         }
-        foreach (var v in iVars) {
+        foreach (var v in nonTermSet.IntVars) {
             clean.Add(v, !IntVal.ContainsKey(v) ? 0 : IntVal[v]);
         }
         var prev = Substitution.ToList();
@@ -49,7 +47,7 @@ public class Interpretation {
         foreach (var p in prev) {
             Substitution.Add(p.Key, p.Value.Apply(clean));
         }
-        foreach (var p in vars) {
+        foreach (var p in nonTermSet.StrVars) {
             Substitution.TryAdd(p, []);
         }
         var prev2 = CharSubstitution.ToList();
@@ -57,27 +55,26 @@ public class Interpretation {
         foreach (var p in prev2) {
             CharSubstitution.Add(p.Key, p.Value is SymCharToken c ? clean.ResolveVar(c) : p.Value);
         }
-        foreach (var p in sChars) {
+        foreach (var p in nonTermSet.SymChars) {
             CharSubstitution.TryAdd(p, ch);
         }
     }
 
-    public void ProjectTo(HashSet<NamedStrToken> initSVars, HashSet<SymCharToken> initSymChars, 
-        HashSet<IntVar> initIVars) {
+    public void ProjectTo(NonTermSet nonTermSet) {
 
-        HashSet<NamedStrToken> toSRemove = [];
-        HashSet<SymCharToken> toCRemove = [];
-        HashSet<IntVar> toIRemove = [];
+        List<NamedStrToken> toSRemove = [];
+        List<SymCharToken> toCRemove = [];
+        List<IntVar> toIRemove = [];
         foreach (var v in Substitution.Keys) {
-            if (!initSVars.Contains(v))
+            if (!nonTermSet.Contains(v))
                 toSRemove.Add(v);
         }
         foreach (var v in CharSubstitution.Keys) {
-            if (!initSymChars.Contains(v))
+            if (!nonTermSet.Contains(v))
                 toCRemove.Add(v);
         }
         foreach (var v in IntVal.Keys) {
-            if (!initIVars.Contains(v))
+            if (!nonTermSet.Contains(v))
                 toIRemove.Add(v);
         }
 

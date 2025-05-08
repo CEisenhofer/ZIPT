@@ -5,21 +5,25 @@ namespace StringBreaker.Constraints.Modifier;
 
 public abstract class NumUnwindingModifier : ModifierBase {
 
-    public Poly Num { get; }
+    public IntPoly Num { get; }
 
-    public NumUnwindingModifier(Poly num) => 
+    public NumUnwindingModifier(IntPoly num) => 
         Num = num;
 
     public override void Apply(NielsenNode node) {
 
-        var c = node.MkChild(node, [], true);
-        c.AddConstraints(new IntEq(Num.Clone())); // N1 == 0
-        c.Parent!.SideConstraints.Add(new IntEq(Num.Clone()));
+        node.MkChild(node, 
+            Array.Empty<Subst>(),
+            [new IntEq(Num.Clone())],
+            Array.Empty<DisEq>(),
+            true); // Num == 0
 
-        c = node.MkChild(node, [], false); // TODO: Maybe also true?
-        var sc = IntLe.MkLe(new Poly(1), Num.Clone());
-        c.AddConstraints(sc); // 1 <= N1
-        c.Parent!.SideConstraints.Add(sc.Clone());
+
+        node.MkChild(node,
+            Array.Empty<Subst>(),
+            [IntLe.MkLe(new IntPoly(1), Num)],
+            Array.Empty<DisEq>(),
+            false); // 1 <= Num
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 
@@ -29,9 +33,9 @@ public abstract class NumUnwindingModifier : ModifierBase {
 }
 
 class ConstNumUnwindingModifier : NumUnwindingModifier {
-    public ConstNumUnwindingModifier(Poly num) : base(num) { }
+    public ConstNumUnwindingModifier(IntPoly num) : base(num) { }
 }
 
 class VarNumUnwindingModifier : NumUnwindingModifier {
-    public VarNumUnwindingModifier(Poly num) : base(num) { }
+    public VarNumUnwindingModifier(IntPoly num) : base(num) { }
 }

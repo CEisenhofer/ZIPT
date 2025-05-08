@@ -25,6 +25,8 @@ public class NList<T> : IEquatable<NList<T>>, IEnumerable<T> where T : IComparab
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
+    public T this[int idx] => items[idx];
+
     public bool Contains(T item) => 
         items.BinarySearch(item) >= 0;
 

@@ -91,21 +91,21 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
         return last;
     }
 
-    public void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, HashSet<IntVar> iVars, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         foreach (var token in this) {
             switch (token) {
-                case StrVarToken v:
-                    vars.Add(v);
+                case NamedStrToken v:
+                    nonTermSet.Add(v);
                     break;
                 case CharToken c:
                     alphabet.Add(c);
                     break;
                 case SymCharToken s:
-                    sChars.Add(s);
+                    nonTermSet.Add(s);
                     break;
                 case PowerToken p:
-                    p.Base.CollectSymbols(vars, sChars, iVars, alphabet);
-                    p.Power.CollectSymbols(vars, sChars, iVars, alphabet);
+                    p.Base.CollectSymbols(nonTermSet, alphabet);
+                    p.Power.CollectSymbols(nonTermSet, alphabet);
                     break;
                 default:
                     throw new NotSupportedException();
@@ -124,6 +124,29 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
 
     public bool Equals(Str other) =>
         Count == other.Count && this.SequenceEqual(other);
+
+    // Compare if this[shift:]this[:shift] == other
+    public bool RotationEquals(Str other, int shift) {
+        Debug.Assert(shift > 0 && shift < other.Count);
+        if (Count != other.Count)
+            return false;
+#if DEBUG
+        if (Count != 2 || shift != 1) {
+            ;
+            // Console.WriteLine("Debug stop");
+        }
+#endif
+        int to = Count - shift;
+        for (int i = 0; i < to; i++) {
+            if (!this[i + shift].Equals(other[i]))
+                return false;
+        }
+        for (int i = to; i < Count; i++) {
+            if (!this[i - to].Equals(other[i]))
+                return false;
+        }
+        return true;
+    }
 
     public override int GetHashCode() => 
         this.Aggregate(387815837, (current, token) => current * 941706509 + token.GetHashCode());
@@ -152,7 +175,7 @@ public class Str : IndexedQueue<StrToken>, IComparable<Str> {
     public void DropFirst() => PopFirst();
     public void DropLast() => PopLast();
 
-    public MSet<StrToken> ToSet() => new(this);
+    public MSet<StrToken, BigInt> ToSet() => new(this);
 
     public Str Clone() => new(this);
 

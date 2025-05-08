@@ -44,8 +44,7 @@ public static class CollectionExtension {
         var cartesianEnumerator = cases.Select(o =>
         {
             var ret = o.GetEnumerator();
-            bool success = ret.MoveNext();
-            Debug.Assert(success); // we checked this before with the return
+            Log.Verify(ret.MoveNext());
             result.Add(ret.Current);
             return ret;
         }).ToList();
@@ -54,8 +53,7 @@ public static class CollectionExtension {
 
             for (int i = cartesianEnumerator.Count; i < cases.Count; i++) {
                 cartesianEnumerator.Add(cases[i].GetEnumerator());
-                bool success = cartesianEnumerator[^1].MoveNext();
-                Debug.Assert(success); // again, it is not empty
+                Log.Verify(cartesianEnumerator[^1].MoveNext());
                 result.Add(cartesianEnumerator[^1].Current);
             }
             yield return result;
@@ -98,4 +96,5 @@ public static class CollectionExtension {
         }
     }
 
+    public static T[] EmptyOrUnit<T>(T? elem) => elem is null ? Array.Empty<T>() : [elem];
 }

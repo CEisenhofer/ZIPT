@@ -10,25 +10,25 @@ namespace StringBreaker.Constraints.ConstraintElement;
 // Poly <= 0
 public class IntLe : IntConstraint {
 
-    public Poly Poly { get; set; }
+    public IntPoly Poly { get; set; }
 
-    public IntLe(Poly poly) => Poly = poly;
+    public IntLe(IntPoly poly) => Poly = poly;
 
     // rhs does not need to be cloned
-    public IntLe(Poly lhs, Poly rhs) {
+    public IntLe(IntPoly lhs, IntPoly rhs) {
         lhs.Sub(rhs);
         Poly = lhs;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLt(Poly lhs, Poly rhs) {
+    public static IntLe MkLt(IntPoly lhs, IntPoly rhs) {
         var ret = new IntLe(lhs.Clone(), rhs);
         ret.Poly.Plus(1);
         return ret;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLe(Poly lhs, Poly rhs) => new(lhs, rhs);
+    public static IntLe MkLe(IntPoly lhs, IntPoly rhs) => new(lhs, rhs);
 
     public override IntLe Clone() => new(Poly.Clone());
 
@@ -51,14 +51,14 @@ public class IntLe : IntConstraint {
 
     public SimplifyResult Simplify(NielsenNode node) {
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out Len val))
+        if (Poly.IsConst(out BigInt val))
             return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Max.IsPos)
             return SimplifyResult.Satisfied;
         if (bounds.Min.IsPos)
             return SimplifyResult.Conflict;
-        BigInteger gcd = (BigInteger)Poly.NonConst.First().occ.Abs();
+        BigInteger gcd = Poly.NonConst.First().occ.Abs();
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
@@ -71,7 +71,7 @@ public class IntLe : IntConstraint {
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
-        var newPoly = new Poly();
+        var newPoly = new IntPoly();
         foreach (var p in Poly.NonConst) {
             Debug.Assert(p.t.IsEmpty() || p.occ.DivRem(gcd).m.IsZero);
             newPoly.Add(p.t, p.occ.Div(gcd));
@@ -120,11 +120,11 @@ public class IntLe : IntConstraint {
                 i++;
                 continue;
             }
-            var lb = Poly.GetBounds(node, Poly.Where((_, j) => i != j));
+            var lb = IntPoly.GetBounds(node, Poly.Where((_, j) => i != j));
             bool isHigh = n.occ.IsPos;
             if (isHigh)
                 lb = lb.Negate();
-            lb /= (BigInteger)n.occ.Abs();
+            lb /= n.occ.Abs();
             switch (isHigh
                         ? node.AddHigherIntBound(r.t, lb.Max)
                         : node.AddLowerIntBound(r.t, lb.Min)) {
@@ -144,12 +144,11 @@ public class IntLe : IntConstraint {
     public override BoolExpr ToExpr(NielsenGraph graph) =>
         graph.Ctx.MkLe(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
     
-    public override void CollectSymbols(HashSet<NamedStrToken> vars, HashSet<SymCharToken> sChars, 
-        HashSet<IntVar> iVars, HashSet<CharToken> alphabet) =>
-        Poly.CollectSymbols(vars, sChars, iVars, alphabet);
+    public override void CollectSymbols(NonTermSet nonTermSet,  HashSet<CharToken> alphabet) =>
+        Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
-        MkLt(new Poly(), Poly);
+        MkLt(new IntPoly(), Poly);
 
     public override int CompareToInternal(IntConstraint other) =>
         Poly.CompareTo(((IntLe)other).Poly);

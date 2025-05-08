@@ -1,23 +1,29 @@
 ﻿using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using StringBreaker.Constraints;
 using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.MiscUtils;
 
-// TODO: Maybe occ should be an int or long...
-public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T : IComparable<T> {
+public class MSet<T, L> : IEnumerable<(T t, L occ)>, IComparable<MSet<T, L>> where T : IComparable<T> where L : IArith<L>, new() {
 
     // Should not contain zero entries, but might negative ones!!
-    protected readonly SortedDictionary<T, Len> occurrences;
+    protected readonly SortedDictionary<T, L> occurrences;
+
+    static readonly L zero;
+    static readonly L one;
+
+    static MSet() {
+        zero = new L();
+        one = zero.Inc();
+    }
 
     public MSet() =>
         occurrences = [];
 
-    public MSet(MSet<T> other) =>
-        occurrences = new SortedDictionary<T, Len>(other.occurrences);
+    public MSet(MSet<T, L> other) =>
+        occurrences = new SortedDictionary<T, L>(other.occurrences);
 
     public MSet(IReadOnlyCollection<T> s) {
         occurrences = [];
@@ -29,6 +35,11 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
         Add(s);
     }
 
+    public MSet(T s, L occ) {
+        occurrences = [];
+        Add(s, occ);
+    }
+
     public int Count => occurrences.Count;
 
     public bool IsEmpty() => occurrences.Count == 0;
@@ -37,23 +48,24 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
     public bool Contains(T t) =>
         occurrences.ContainsKey(t);
 
-    public IEnumerator<(T t, Len occ)> GetEnumerator() =>
+    public IEnumerator<(T t, L occ)> GetEnumerator() =>
         occurrences.Select(o => (o.Key, o.Value)).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public IEnumerable<T> Keys => occurrences.Keys;
 
-    public void Add(T token) => Add(token, 1);
+    public void Add(T token) => Add(token, one);
 
-    public void Add(T token, Len add) {
+    public void Add(T token, L add) {
         if (add.IsZero)
             return;
         if (occurrences.TryGetValue(token, out var count)) {
-            if (count + add == 0)
+            var sum = count.Add(add);
+            if (sum.IsZero)
                 occurrences.Remove(token);
             else
-                occurrences[token] = count + add;
+                occurrences[token] = sum;
         }
         else
             occurrences.Add(token, add);
@@ -68,19 +80,19 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
     public void RemoveAll(T t) =>
         occurrences.Remove(t);
 
-    public static void ElimCommon(MSet<T> m1, MSet<T> m2) {
+    public static void ElimCommon(MSet<T, L> m1, MSet<T, L> m2) {
         using var enum1 = m1.occurrences.GetEnumerator();
         using var enum2 = m2.occurrences.GetEnumerator();
         if (!enum1.MoveNext() || !enum2.MoveNext())
             return;
 
-        List<(T t, Len subst)> modification = [];
+        List<(T t, L subst)> modification = [];
 
         do {
             int cmp = enum1.Current.Key.CompareTo(enum2.Current.Key);
             if (cmp == 0) {
                 // RemoveAt common subset
-                Len common = Len.Min(enum1.Current.Value, enum2.Current.Value);
+                L common = enum1.Current.Value.Min(enum2.Current.Value);
                 modification.Add((enum1.Current.Key, common));
                 if (!enum1.MoveNext() || !enum2.MoveNext())
                     break;
@@ -97,16 +109,17 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
         } while (true);
 
         foreach (var (t, subst) in modification) {
-            var newVal = m1.occurrences[t] -= subst;
-            if (newVal == 0)
+            m1.occurrences[t] = m1.occurrences[t].Sub(subst);
+            if (m1.occurrences[t].IsZero)
                 m1.occurrences.Remove(t);
-            newVal = m2.occurrences[t] -= subst;
-            if (newVal == 0)
+
+            m2.occurrences[t] = m2.occurrences[t].Sub(subst);
+            if (m2.occurrences[t].IsZero)
                 m2.occurrences.Remove(t);
         }
     }
 
-    public int CompareTo(MSet<T>? other) {
+    public int CompareTo(MSet<T, L>? other) {
         if (other is null)
             return 1;
         if (occurrences.Count > other.occurrences.Count)
@@ -132,15 +145,15 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
     }
 
     public override bool Equals(object? obj) =>
-        obj is MSet<T> set && Equals(set);
+        obj is MSet<T, L> set && Equals(set);
 
-    public bool Equals(MSet<T> other) {
+    public bool Equals(MSet<T, L> other) {
         if (occurrences.Count != other.occurrences.Count)
             return false;
         var enum1 = occurrences.GetEnumerator();
         var enum2 = other.occurrences.GetEnumerator();
         while (enum1.MoveNext() && enum2.MoveNext()) {
-            if (!enum1.Current.Key.Equals(enum2.Current.Key) || enum1.Current.Value != enum2.Current.Value)
+            if (!enum1.Current.Key.Equals(enum2.Current.Key) || !enum1.Current.Value.Equals(enum2.Current.Value))
                 return false;
         }
         Debug.Assert(!enum1.MoveNext() && !enum2.MoveNext());
@@ -152,65 +165,65 @@ public class MSet<T> : IEnumerable<(T t, Len occ)>, IComparable<MSet<T>> where T
             (acc, kv) => acc * 743032429 + kv.Key.GetHashCode() * 689001223 + kv.Value.GetHashCode());
 
     // Note: Multi-Sets are not totally ordered. i.e., !(A <= B) =/=> A > B
-    public bool IsSubset(MSet<T> other) {
+    public bool IsSubset(MSet<T, L> other) {
         if (other.occurrences.Count < occurrences.Count)
             return false;
         bool proper = other.occurrences.Count > occurrences.Count;
         foreach (var kv in occurrences) {
-            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count < kv.Value)
+            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count.LessThan(kv.Value))
                 return false;
-            proper |= count > kv.Value;
+            proper |= kv.Value.LessThan(count);
         }
         return proper;
     }
 
-    public bool IsSubsetEq(MSet<T> other) {
+    public bool IsSubsetEq(MSet<T, L> other) {
         if (other.occurrences.Count < occurrences.Count)
             return false;
         foreach (var kv in occurrences) {
-            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count < kv.Value)
+            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count.LessThan(kv.Value))
                 return false;
         }
         return true;
     }
 
-    public MSet<T>? Subtraction(MSet<T> other) {
+    public MSet<T, L>? Subtraction(MSet<T, L> other) {
         if (other.Count > Count)
             return null;
-        MSet<T> ret = new();
+        MSet<T, L> ret = new();
         int found = 0;
         foreach (var kv in occurrences) {
-            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count < kv.Value)
+            if (!other.occurrences.TryGetValue(kv.Key, out var count) || count.LessThan(kv.Value))
                 return null;
-            if (count > 0)
+            if (count.IsPos)
                 found++;
-            if (count > kv.Value)
-                ret.Add(kv.Key, count - kv.Value);
+            if (kv.Value.LessThan(count))
+                ret.Add(kv.Key, count.Sub(kv.Value));
         }
         return found != other.occurrences.Count ? null : ret;
     }
 
     public bool IsSingleVar([NotNullWhen(true)] out StrVarToken? varToken) =>
-        IsSingleVar(out varToken, out Len mult) && mult == 1;
+        IsSingleVar(out varToken, out L m) && m.IsOne;
 
-    public bool IsSingleVar([NotNullWhen(true)] out StrVarToken? varToken, out Len mult) {
+    public bool IsSingleVar([NotNullWhen(true)] out StrVarToken? varToken, out L m) {
         if (occurrences.Count != 1) {
             varToken = null;
-            mult = 0;
+            m = new L();
             return false;
         }
         var first = occurrences.First();
         if (first.Key is not StrVarToken v) {
             varToken = null;
-            mult = 0;
+            m = new L();
             return false;
         }
         varToken = v;
-        mult = first.Value;
+        m = first.Value;
         return true;
     }
 
-    public MSet<T> Clone() => new(this);
+    public MSet<T, L> Clone() => new(this);
 
     public override string ToString() =>
         "{{ " + string.Join(", ", occurrences.Select(kv => $"{kv.Key}^{kv.Value}")) + " }}";

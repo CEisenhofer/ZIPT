@@ -10,14 +10,14 @@ namespace StringBreaker.Tokens;
 public sealed class PowerToken : StrToken {
 
     public Str Base { get; }
-    public Poly Power { get; }
+    public IntPoly Power { get; }
 
-    public PowerToken(Str b, Poly power) {
+    public PowerToken(Str b, IntPoly power) {
         Base = b;
         Power = power;
         if (Base is [PowerToken p]) {
             Base = p.Base;
-            Power = Poly.Mul(power, p.Power);
+            Power = IntPoly.Mul(power, p.Power);
         }
     }
 
@@ -26,7 +26,7 @@ public sealed class PowerToken : StrToken {
     public override bool IsNullable(NielsenNode node) => 
         Power.GetBounds(node).Max > 0 && Base.IsNullable(node);
         // !(0 < Power) && Base is nullable
-        // !node.IsLt(new Poly(), Power) && Base.IsNullable(node);
+        // !node.IsLt(new IntPoly(), Power) && Base.IsNullable(node);
 
     public override Str Apply(Subst subst) {
         var @base = Base.Apply(subst);
@@ -55,9 +55,9 @@ public sealed class PowerToken : StrToken {
     public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(u^n) := u^m P(u) with 0 <= m < n
         IntVar m = new();
-        PowerToken token = new PowerToken(Base, new Poly(m));
-        IntLe leastZero = new IntLe(new Poly(0), new Poly(m));
-        IntLe lessThanPower = IntLe.MkLt(new Poly(m), Power);
+        PowerToken token = new PowerToken(Base, new IntPoly(m));
+        IntLe leastZero = new IntLe(new IntPoly(0), new IntPoly(m));
+        IntLe lessThanPower = IntLe.MkLt(new IntPoly(m), Power);
 
         var prefixes = Base.GetPrefixes(dir);
 

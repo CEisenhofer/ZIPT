@@ -1,11 +1,12 @@
 ﻿using StringBreaker.Constraints.Modifier;
+using StringBreaker.IntUtils;
 using StringBreaker.Tokens;
 
 namespace StringBreaker.Constraints.ConstraintElement;
 
 public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
     public abstract bool Contains(NamedStrToken namedStrToken);
-    public abstract ModifierBase Extend(NielsenNode node);
+    public abstract ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst);
     public abstract int CompareToInternal(StrConstraint other);
     public int CompareTo(StrConstraint? other) {
         if (other is null)

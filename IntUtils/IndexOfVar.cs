@@ -7,11 +7,11 @@ public class IndexOfVar : IntVar {
 
     public Str S { get; }
     public Str Contained { get; }
-    public Poly Start { get; }
+    public IntPoly Start { get; }
 
-    public override Len MinLen => -1;
+    public override BigIntInf MinLen => -1;
 
-    public IndexOfVar(Str s, Str contained, Poly start) {
+    public IndexOfVar(Str s, Str contained, IntPoly start) {
         S = s;
         Contained = contained;
         Start = start;

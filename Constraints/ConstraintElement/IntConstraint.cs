@@ -1,7 +1,4 @@
-﻿using Microsoft.Z3;
-using StringBreaker.Tokens;
-
-namespace StringBreaker.Constraints.ConstraintElement;
+﻿namespace StringBreaker.Constraints.ConstraintElement;
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
     public abstract int CompareToInternal(IntConstraint other);

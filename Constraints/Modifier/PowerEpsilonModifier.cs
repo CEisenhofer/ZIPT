@@ -12,12 +12,14 @@ public class PowerEpsilonModifier : ModifierBase {
     public override void Apply(NielsenNode node) {
         // Power.Power = 0 (progress)
         // Power.Base / "" (progress)
-        var c = node.MkChild(node, [], true);
-        c.AddConstraints(new IntEq(Power.Power.Clone()));
-        c.Parent!.SideConstraints.Add(new IntEq(Power.Power.Clone()));
-        c = node.MkChild(node, [], true);
-        c.AddConstraints(new StrEq(Power.Base));
-        c.Parent!.SideConstraints.Add(new StrEq(Power.Base));
+        node.MkChild(node, 
+            Array.Empty<Subst>(),
+            [new IntEq(Power.Power.Clone())],
+            Array.Empty<DisEq>(), true);
+        node.MkChild(node, 
+            Array.Empty<Subst>(),
+            [new StrEq(Power.Base)],
+            Array.Empty<DisEq>(), true);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 
