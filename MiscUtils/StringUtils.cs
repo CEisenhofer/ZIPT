@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using ZIPT.Tokens;
+using ZIPT.Constraints;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public static class StringUtils {
 

@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Text;
-using StringBreaker.MiscUtils;
+using ZIPT.MiscUtils;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public class Poly<L, T> : MSet<StrictMonomial, L> where L : IArith<L>, new() where T : Poly<L, T>, new() {
 

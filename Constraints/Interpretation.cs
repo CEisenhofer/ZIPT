@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.MiscUtils;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public class Interpretation {
 

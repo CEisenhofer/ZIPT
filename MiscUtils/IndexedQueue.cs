@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : notnull {
 

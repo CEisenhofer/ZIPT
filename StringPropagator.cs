@@ -1,14 +1,13 @@
 ﻿using System.Diagnostics;
-using System.IO;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker;
+namespace ZIPT;
 
 public abstract class StringPropagator : UserPropagator {
 

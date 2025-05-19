@@ -1,8 +1,8 @@
 ﻿using System.Buffers;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class NumCmpModifier : ModifierBase {
 

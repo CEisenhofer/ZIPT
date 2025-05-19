@@ -3,13 +3,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker;
+namespace ZIPT;
 
 public enum SolveResult {
     SAT,
@@ -38,12 +38,6 @@ public static class Program {
         Options.ItDeepDepthStart = 1;
         Options.GetAndCheckModel = true;
         // Options.FullGraphExpansion = true;
-
-        if (args.Length == 0) {
-            Console.WriteLine("Test");
-            Test();
-            return;
-        }
 
         if (!(args.Length is >= 1 and <= 2))
             Usage("Expected 1-2 arguments. Got: " + args.Length);

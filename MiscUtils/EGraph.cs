@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public class EGraph {
 

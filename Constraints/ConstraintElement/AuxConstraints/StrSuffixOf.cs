@@ -1,9 +1,9 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.ConstraintElement.AuxConstraints;
+namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 
 public class StrSuffixOf : StrConstraint {
 

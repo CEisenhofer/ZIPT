@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
+using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
 
-namespace StringBreaker.Tokens;
+namespace ZIPT.Tokens;
 
 public abstract class NamedStrToken : StrToken {
     public sealed override bool Ground => false;

@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.Constraints.Modifier;
+﻿namespace ZIPT.Constraints.Modifier;
 
 public abstract class DirectedNielsenModifier : ModifierBase {
     public bool Forwards { get; }

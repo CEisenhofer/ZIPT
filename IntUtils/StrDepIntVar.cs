@@ -1,7 +1,7 @@
-﻿using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+﻿using ZIPT.Constraints;
+using ZIPT.Tokens;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 // TODO: Do we still need this?
 public abstract class StrDepIntVar : NonTermInt {

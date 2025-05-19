@@ -1,7 +1,7 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints;
+using ZIPT.Constraints;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public class IndexOfVar : IntVar {
 

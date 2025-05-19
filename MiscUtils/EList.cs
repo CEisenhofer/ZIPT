@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.MiscUtils;
+﻿namespace ZIPT.MiscUtils;
 
 public class EList<T> : List<T>, IEquatable<EList<T>> where T : notnull {
 

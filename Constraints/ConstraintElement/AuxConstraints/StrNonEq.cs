@@ -1,11 +1,11 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.ConstraintElement.AuxConstraints;
+namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 
 public sealed class StrNonEq : StrEqBase {
 

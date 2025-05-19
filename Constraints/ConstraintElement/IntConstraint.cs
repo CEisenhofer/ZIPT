@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.Constraints.ConstraintElement;
+﻿namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
     public abstract int CompareToInternal(IntConstraint other);

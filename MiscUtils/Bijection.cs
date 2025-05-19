@@ -2,7 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public class Bijection<T1, T2> where T1 : class where T2 : class {
 

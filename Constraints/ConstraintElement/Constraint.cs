@@ -1,10 +1,10 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints.Modifier;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.ConstraintElement;
+namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class Constraint {
 

@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.IntUtils;
+﻿namespace ZIPT.IntUtils;
 
 public interface IArith<T> : IComparable<T> {
 

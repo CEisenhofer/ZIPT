@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class EqSplitModifier : DirectedNielsenModifier {
 

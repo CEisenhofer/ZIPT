@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.MiscUtils;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.ConstraintElement;
+namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public Str LHS { get; protected set; }

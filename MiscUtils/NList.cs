@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public class NList<T> : IEquatable<NList<T>>, IEnumerable<T> where T : IComparable<T> {
 

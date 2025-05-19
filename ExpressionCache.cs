@@ -1,13 +1,13 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
-using StringBreaker.Tokens.AuxTokens;
+using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Constraints.ConstraintElement.AuxConstraints;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
+using ZIPT.Tokens.AuxTokens;
 
-namespace StringBreaker;
+namespace ZIPT;
 
 public class ExpressionCache : IDisposable {
 

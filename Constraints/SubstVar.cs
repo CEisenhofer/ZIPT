@@ -1,8 +1,8 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public class SubstVar : Subst {
 

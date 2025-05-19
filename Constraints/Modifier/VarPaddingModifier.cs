@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Tokens;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class VarPaddingModifier : DirectedNielsenModifier {
 

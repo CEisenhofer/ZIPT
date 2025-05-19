@@ -1,4 +1,4 @@
-﻿namespace StringBreaker;
+﻿namespace ZIPT;
 
 public static class Options {
     public static bool ModelCompletion { get; set; }= true;

@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens.AuxTokens;
+using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Tokens.AuxTokens;
 
-namespace StringBreaker.Tokens;
+namespace ZIPT.Tokens;
 
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 

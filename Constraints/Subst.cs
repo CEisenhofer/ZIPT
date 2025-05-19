@@ -1,8 +1,8 @@
 ﻿using System.ComponentModel;
 using Microsoft.Z3;
-using StringBreaker.Tokens;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public abstract class Subst {
 

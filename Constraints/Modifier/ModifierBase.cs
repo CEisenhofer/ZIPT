@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public abstract class ModifierBase : IComparable<ModifierBase> {
 

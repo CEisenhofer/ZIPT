@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Microsoft.Z3;
-using StringBreaker.Tokens;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public class DisEq {
     public SymCharToken O { get; }

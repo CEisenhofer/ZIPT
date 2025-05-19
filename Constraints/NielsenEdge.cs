@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public class NielsenEdge : IEquatable<NielsenEdge> {
     public NielsenNode Src { get; }

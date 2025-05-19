@@ -1,9 +1,9 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public class IntPoly : Poly<BigInt, IntPoly> {
 

@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.Constraints.ConstraintElement;
+﻿namespace ZIPT.Constraints.ConstraintElement;
 
 public enum SimplifyResult {
     Proceed,

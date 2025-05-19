@@ -1,10 +1,10 @@
 ﻿using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.MiscUtils;
+namespace ZIPT.MiscUtils;
 
 public class MSet<T, L> : IEnumerable<(T t, L occ)>, IComparable<MSet<T, L>> where T : IComparable<T> where L : IArith<L>, new() {
 

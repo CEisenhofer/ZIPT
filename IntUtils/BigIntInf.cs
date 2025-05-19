@@ -1,9 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
-using Microsoft.Z3;
-using StringBreaker.Constraints;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public readonly struct BigIntInf : IComparable<BigIntInf> {
 

@@ -1,17 +1,13 @@
 ﻿using System.Diagnostics;
-using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices.JavaScript;
-using System.Runtime.Intrinsics;
-using System.Text;
 using Microsoft.Z3;
-using StringBreaker.Constraints.ConstraintElement.AuxConstraints;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.ConstraintElement.AuxConstraints;
+using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.ConstraintElement;
+namespace ZIPT.Constraints.ConstraintElement;
 
 public sealed class StrEq : StrEqBase {
 

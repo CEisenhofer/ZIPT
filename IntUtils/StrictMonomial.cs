@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 // A monomial with factor 1
 public class StrictMonomial : MSet<NonTermInt, BigInt> {

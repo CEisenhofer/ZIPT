@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
+using ZIPT.Constraints;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public readonly struct Interval {
     public readonly BigIntInf Min;

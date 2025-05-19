@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace StringBreaker;
+namespace ZIPT;
 
 public static class Log {
 

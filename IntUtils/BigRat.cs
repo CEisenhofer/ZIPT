@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public struct BigRat : IArith<BigRat> {
 

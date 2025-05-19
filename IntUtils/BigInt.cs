@@ -1,10 +1,10 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Numerics;
+using ZIPT.Constraints;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public readonly struct BigInt : IArith<BigInt> {
 

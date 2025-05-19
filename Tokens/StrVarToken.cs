@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.MiscUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints;
 
-namespace StringBreaker.Tokens;
+namespace ZIPT.Tokens;
 
 public sealed class StrVarToken : NamedStrToken, IDisposable {
 

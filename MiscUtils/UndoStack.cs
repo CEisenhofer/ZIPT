@@ -1,4 +1,4 @@
-﻿namespace StringBreaker.MiscUtils;
+﻿namespace ZIPT.MiscUtils;
 
 public class UndoStack {
 

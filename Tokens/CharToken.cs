@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
+using ZIPT.Constraints;
 
-namespace StringBreaker.Tokens;
+namespace ZIPT.Tokens;
 
 public sealed class CharToken : UnitToken {
 

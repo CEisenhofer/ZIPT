@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
-using StringBreaker.MiscUtils;
+using ZIPT.MiscUtils;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class CombinedModifier : ModifierBase {
     

@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
-using StringBreaker.Tokens;
-using StringBreaker.MiscUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class PowerSplitModifier : DirectedNielsenModifier {
     public StrVarToken Var { get; }

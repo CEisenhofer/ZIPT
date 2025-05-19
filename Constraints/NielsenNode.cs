@@ -1,17 +1,13 @@
-﻿using System.ComponentModel.Design;
-using System.Diagnostics;
-using System.Runtime.Serialization;
-using System.Security.Cryptography;
+﻿using System.Diagnostics;
 using System.Text;
-using System.Xml.Linq;
 using Microsoft.Z3;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.Constraints.Modifier;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public enum BacktrackReasons {
     Unevaluated,
@@ -419,7 +415,7 @@ public class NielsenNode {
                 throw new SolverTimeoutException();
             node.evalIdx = node.Graph.RunIdx;
 
-            NonTermSet modSet = edge?.GetNonTermModSet() ?? new NonTermSet();
+            NonTermSet modSet = new(); //edge?.GetNonTermModSet() ?? new NonTermSet();
             DetModifier outSideCnstr = new();
             var reason = node.Simplify(modSet, outSideCnstr, false);
             if (reason is not BacktrackReasons.Unevaluated) {

@@ -1,11 +1,11 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
 
-namespace StringBreaker.Tokens;
+namespace ZIPT.Tokens;
 
 public sealed class PowerToken : StrToken {
 

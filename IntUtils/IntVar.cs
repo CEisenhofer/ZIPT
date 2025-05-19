@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.Tokens;
+using ZIPT.Constraints;
+using ZIPT.Tokens;
 
-namespace StringBreaker.IntUtils;
+namespace ZIPT.IntUtils;
 
 public class IntVar : NonTermInt {
     

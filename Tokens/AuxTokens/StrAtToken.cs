@@ -1,8 +1,8 @@
 ﻿using Microsoft.Z3;
-using StringBreaker.Constraints;
-using StringBreaker.IntUtils;
+using ZIPT.Constraints;
+using ZIPT.IntUtils;
 
-namespace StringBreaker.Tokens.AuxTokens;
+namespace ZIPT.Tokens.AuxTokens;
 
 public sealed class StrAtToken : NamedStrToken {
 

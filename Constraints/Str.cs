@@ -1,12 +1,12 @@
 ﻿using System.Collections.Specialized;
 using System.Diagnostics;
 using Microsoft.Z3;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.IntUtils;
-using StringBreaker.MiscUtils;
-using StringBreaker.Tokens;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
+using ZIPT.Tokens;
 
-namespace StringBreaker.Constraints;
+namespace ZIPT.Constraints;
 
 public class Str : IndexedQueue<StrToken>, IComparable<Str> {
 

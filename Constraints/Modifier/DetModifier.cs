@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
-using StringBreaker.Constraints.ConstraintElement;
-using StringBreaker.MiscUtils;
+using ZIPT.Constraints.ConstraintElement;
+using ZIPT.MiscUtils;
 
-namespace StringBreaker.Constraints.Modifier;
+namespace ZIPT.Constraints.Modifier;
 
 public class DetModifier : ModifierBase {
 
