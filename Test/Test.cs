@@ -2,7 +2,6 @@
 using ZIPT;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
-using ZIPT.MiscUtils;
 using ZIPT.Tokens;
 using Environment = ZIPT.Environment;
 
@@ -10,7 +9,7 @@ namespace Test;
 
 public static class Test {
 
-    const bool IsCheckStrEquations = false;
+    const bool IsCheckStrEquations = true;
     const bool IsCheckParikh = true;
 
     static void Main(string[] args) {
@@ -37,6 +36,7 @@ public static class Test {
     }
 
     static bool CheckEquation(Str lhs, Str rhs) {
+        Console.WriteLine($"Checking eq {lhs} = {rhs}");
         using Context ctx = new();
         using Solver solver = ctx.MkSimpleSolver();
         using Environment cache = new(ctx);
@@ -89,6 +89,7 @@ public static class Test {
     }
 
     static void ParikhUNSAT(Str lhs, Str rhs) {
+        Console.WriteLine($"Checking Parikh {lhs} = {rhs}");
         if (!StrEq.CheckMultiSequenceParikh(lhs, rhs))
             return;
         Console.WriteLine($"Expected UNSAT (Parikh) on \"{lhs}\" = \"{rhs}\"");

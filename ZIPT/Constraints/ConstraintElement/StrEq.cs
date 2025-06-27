@@ -377,17 +377,17 @@ public sealed class StrEq : StrEqBase {
             SortStr();
             return SimplifyResult.Proceed;
         }
-        /*if (lhsSet.IsNonEmpty() && rhsSet.IsNonEmpty()) {
+        if (lhsSet.IsNonEmpty() && rhsSet.IsNonEmpty()) {
             if (lhsSet.All(o => o.t is CharToken) &&
                 rhsSet.All(o => o.t is CharToken)) {
                 reason = BacktrackReasons.ParikhImage;
                 return SimplifyResult.Conflict;
             }
-            if (CheckMultiSequenceParikh(LHS, RHS)) {
+            /*if (CheckMultiSequenceParikh(LHS, RHS)) {
                 reason = BacktrackReasons.ParikhImage;
                 return SimplifyResult.Conflict;
-            }
-        }*/
+            }*/
+        }
         // Propagate assignments
 
         if (LHS is [StrVarToken] || RHS is [StrVarToken]) {
