@@ -8,9 +8,9 @@ namespace ZIPT.Constraints.Modifier;
 
 public class GPowerIntrModifier : DirectedNielsenModifier {
 
-    public List<(NamedStrToken x, Str val)> Cases { get; }
+    public List<(NamedStrToken x, IStr val)> Cases { get; }
 
-    public GPowerIntrModifier(List<(NamedStrToken x, Str val)> cases, bool forward) : base(forward) {
+    public GPowerIntrModifier(List<(NamedStrToken x, IStr val)> cases, bool forward) : base(forward) {
         Debug.Assert(cases.IsNonEmpty());
         Cases = cases;
     }
@@ -22,15 +22,15 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
             var powerConstant = new IntPoly(v.GetPowerExtension());
 
             // TODO: If b = u^n => b = u
-            Str b = StrEqBase.LcpCompressionFull(@base) ?? @base;
-            if (b.Count == 1 && b.Peek(true) is PowerToken pt)
+            IStr b = StrEqBase.LcpCompressionFull(@base) ?? @base;
+            if (b.Length == 1 && b.Peek(true) is PowerToken pt)
                 b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
             var prefixes = b.GetPrefixes(Forwards);
             var power = new PowerToken(b, powerConstant);
 
             foreach (var p in prefixes) {
-                Str s = new Str(power);
+                IStr s = new IStr(power);
                 s.AddRange(p.str, !Forwards);
                 var subst = new SubstVar(v, s);
                 Debug.Assert(p.varDecomp is null);

@@ -13,7 +13,7 @@ public class NielsenGraph {
 
     public SaturatingStringPropagator OuterPropagator { get; }
     public Context Ctx => OuterPropagator.Ctx;
-    public Environment Cache => OuterPropagator.Cache;
+    public Environment Env => OuterPropagator.Env;
     public uint DepthBound { get; private set; }
     public StringPropagator InnerStringPropagator { get; }
     public Solver SubSolver { get; } // Solver for assumption based integer reasoning
@@ -38,7 +38,7 @@ public class NielsenGraph {
     public NielsenGraph(SaturatingStringPropagator outerPropagator) {
         OuterPropagator = outerPropagator;
         SubSolver = Ctx.MkSimpleSolver();
-        InnerStringPropagator = new LemmaStringPropagator(SubSolver, Cache, this);
+        InnerStringPropagator = new LemmaStringPropagator(SubSolver, Env, this);
         SubSolver.Push();
     }
 
@@ -137,7 +137,7 @@ public class NielsenGraph {
         return null;
     }
 
-    public Str? TryParseStr(Expr e) => Cache.TryParseStr(e);
+    public IStr? TryParseStr(Expr e) => Env.TryParseStr(e);
 
     public string ToDot() {
         List<NielsenNode> subsumed = [];

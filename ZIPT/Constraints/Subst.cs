@@ -8,8 +8,8 @@ public abstract class Subst {
 
     public abstract bool IsEliminating { get; }
 
-    public abstract Str ResolveVar(NamedStrToken v);
-    public abstract Str ResolveVar(SymCharToken v);
+    public abstract IStr ResolveVar(NamedStrToken v);
+    public abstract IStr ResolveVar(SymCharToken v);
 
     public abstract void AddToInterpretation(Interpretation itp);
 

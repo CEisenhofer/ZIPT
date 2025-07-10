@@ -6,12 +6,12 @@ namespace ZIPT.Tokens.AuxTokens;
 
 public sealed class StrAtToken : NamedStrToken {
 
-    public Str S { get; }
+    public IStr S { get; }
     public IntPoly I { get; }
 
     public override string OriginalName => $"strAt({S},{I})";
 
-    public StrAtToken(Str s, IntPoly i) {
+    public StrAtToken(IStr s, IntPoly i) {
         S = s;
         I = i;
     }
@@ -20,11 +20,11 @@ public sealed class StrAtToken : NamedStrToken {
     public override StrAtToken GetExtension2() => (StrAtToken)(Extension2 ??= new StrAtToken(S, I));
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        e = graph.Cache.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
-        graph.Cache.SetCachedExpr(this, e, graph);
+        e = graph.Env.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 }

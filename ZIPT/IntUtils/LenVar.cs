@@ -18,7 +18,7 @@ public sealed class LenVar : StrDepIntVar {
     public override IntPoly Apply(Interpretation subst) =>
         MkLenPoly(subst.ResolveVar(Var));
 
-    public static IntPoly MkLenPoly(Str s) {
+    public static IntPoly MkLenPoly(IStr s) {
         IntPoly poly = new();
         foreach (var t in s) {
             switch (t) {
@@ -47,12 +47,12 @@ public sealed class LenVar : StrDepIntVar {
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(Var);
 
     public override IntExpr ToExpr(NielsenGraph graph) {
-        IntExpr? e = graph.Cache.GetCachedIntExpr(this, graph);
+        IntExpr? e = graph.Env.GetCachedIntExpr(this, graph);
         if (e is not null)
             return e;
 
         e = (IntExpr)graph.Ctx.MkFreshConst("len_" + Var, graph.Ctx.IntSort);
-        graph.Cache.SetCachedExpr(this, e, graph);
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 

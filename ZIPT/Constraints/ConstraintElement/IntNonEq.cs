@@ -10,14 +10,14 @@ public class IntNonEq : IntConstraint {
 
     public IntPoly Poly { get; set; }
 
-    public IntNonEq(IntPoly poly, NonTermSet dependencies) : base(dependencies) => Poly = poly;
+    public IntNonEq(IntPoly poly, NonTermSet dependencies) : base() => Poly = poly;
 
-    public IntNonEq(IntPoly lhs, IntPoly rhs, NonTermSet dependencies) : base(dependencies) {
+    public IntNonEq(IntPoly lhs, IntPoly rhs, NonTermSet dependencies) : base() {
         Poly = lhs.Clone();
         Poly.Sub(rhs);
     }
 
-    public override IntConstraint Clone() => 
+    public override Constraint Clone() => 
         new IntNonEq(Poly.Clone(), Dependencies.Clone());
 
     public override bool Equals(object? obj) =>

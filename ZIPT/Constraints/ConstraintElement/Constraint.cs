@@ -6,15 +6,9 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class Constraint {
 
-    // There is no problem if this set contains elements that are not actually present (anymore)
-    // Used only to detect if there is potential need to rewrite constraint
-    // e.g., x / u does not require a constraint to be rewritten if it does not contain x...
-    public NonTermSet Dependencies { get; } = new();
-
     public bool Satisfied { get; private set; }
     
-    protected Constraint(NonTermSet dependencies) {
-        //Dependencies = dependencies;
+    protected Constraint() {
         Satisfied = false;
     }
 

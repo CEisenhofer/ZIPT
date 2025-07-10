@@ -12,25 +12,25 @@ public class IntLe : IntConstraint {
 
     public IntPoly Poly { get; set; }
 
-    public IntLe(IntPoly poly, NonTermSet dependencies) : base(dependencies) => Poly = poly;
+    public IntLe(IntPoly poly) => Poly = poly;
 
     // rhs does not need to be cloned
-    public IntLe(IntPoly lhs, IntPoly rhs, NonTermSet dependencies) : base(dependencies) {
+    public IntLe(IntPoly lhs, IntPoly rhs) {
         lhs.Sub(rhs);
         Poly = lhs;
     }
 
     // rhs does not need to be cloned
     public static IntLe MkLt(IntPoly lhs, IntPoly rhs) {
-        var ret = new IntLe(lhs.Clone(), rhs, IntPoly.CollectSymbols(lhs, rhs));
+        var ret = new IntLe(lhs.Clone(), rhs);
         ret.Poly.Plus(1);
         return ret;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLe(IntPoly lhs, IntPoly rhs) => new(lhs, rhs, IntPoly.CollectSymbols(lhs, rhs));
+    public static IntLe MkLe(IntPoly lhs, IntPoly rhs) => new(lhs, rhs);
 
-    public override IntLe Clone() => new(Poly.Clone(), Dependencies.Clone());
+    public override IntLe Clone() => new(Poly.Clone());
 
     public override bool Equals(object? obj) =>
         obj is IntLe le && Equals(le);

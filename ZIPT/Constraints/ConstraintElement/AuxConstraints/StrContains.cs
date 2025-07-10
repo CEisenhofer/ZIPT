@@ -8,16 +8,16 @@ namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 public class StrContains : StrConstraint {
 
     public bool Negated { get; }
-    public Str S { get; }
-    public Str Contained { get; }
+    public IStr S { get; }
+    public IStr Contained { get; }
 
-    public StrContains(Str s, Str contained, bool negated, NonTermSet dependencies) : base(dependencies) {
+    public StrContains(IStr s, IStr contained, bool negated, NonTermSet dependencies) : base() {
         Negated = negated;
         S = s;
         Contained = contained;
     }
 
-    public override StrContains Clone() => new(S.Clone(), Contained.Clone(), Negated, Dependencies.Clone());
+    public override Constraint Clone() => new(S.Clone(), Contained.Clone(), Negated, Dependencies.Clone());
 
     public override bool Equals(object? obj) =>
         obj is StrContains contains && Equals(contains);
@@ -43,10 +43,10 @@ public class StrContains : StrConstraint {
     // Just very rudimentary implementation - it will get eliminated anyway...
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
         ref BacktrackReasons reason) {
-        if (S.Count < Contained.Count)
+        if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
         int i = 0;
-        for (; i < Contained.Count && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
+        for (; i < Contained.Length && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
             if (c1.Equals(c2)) 
                 continue;
             if (Negated)
@@ -54,7 +54,7 @@ public class StrContains : StrConstraint {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
-        for (; i < Contained.Count; i++) {
+        for (; i < Contained.Length; i++) {
             if (!S[i].Equals(Contained[i]))
                 return SimplifyResult.Proceed;
         }
@@ -62,7 +62,7 @@ public class StrContains : StrConstraint {
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Cache.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
+        (BoolExpr)graph.Env.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         S.CollectSymbols(nonTermSet, alphabet);

@@ -62,8 +62,8 @@ public class NielsenNode {
     // x... = uy... and u ground
     // If multiple x... = vy... then we keep one of them (preferably the shorter one)
     // We just cache it, as both simplify and splitting need this (no need to clone)
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, Str>> forwardVarDep = []; // x... = uy... => (x, y) -> u 
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, Str>> backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, IStr>> forwardVarDep = []; // x... = uy... => (x, y) -> u 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, IStr>> backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
 
     public IEnumerable<Constraint> AllConstraints =>
         StrEq.OfType<Constraint>().Concat(IntEq).Concat(IntLe);
@@ -529,8 +529,8 @@ public class NielsenNode {
         foreach (var eq in StrEq) {
             if (eq.Satisfied)
                 continue;
-            eq.GetNielsenDep(forwardVarDep, true);
-            eq.GetNielsenDep(backwardVarDep, false);
+            eq.GetNielsenDep(Graph.Env, forwardVarDep, true);
+            eq.GetNielsenDep(Graph.Env, backwardVarDep, false);
         }
         foreach (var eq in StrEq) {
             if (eq.Satisfied)
@@ -682,16 +682,12 @@ public class NielsenNode {
     }
 
     public bool AddConstraint(Constraint cnstr) {
-        switch (cnstr) {
-            case StrEq sEq:
-                return StrEq.Add(sEq);
-            case IntEq iEq:
-                return IntEq.Add(iEq);
-            case IntLe iLe:
-                return IntLe.Add(iLe);
-            default:
-                throw new NotSupportedException();
-        }
+        return cnstr switch {
+            StrEq sEq => StrEq.Add(sEq),
+            IntEq iEq => IntEq.Add(iEq),
+            IntLe iLe => IntLe.Add(iLe),
+            _ => throw new NotSupportedException(),
+        };
     }
 
     void GcConstraints() {

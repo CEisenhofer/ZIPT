@@ -13,16 +13,16 @@ public abstract class StringPropagator : UserPropagator {
 
     public readonly Context Ctx;
     public readonly Solver Solver;
-    public readonly Environment Cache;
+    public readonly Environment Env;
 
     public abstract NielsenGraph Graph { get; }
 
     protected readonly UndoStack undoStack = new();
 
-    protected StringPropagator(Solver solver, Environment cache) : base(solver) {
+    protected StringPropagator(Solver solver, Environment env) : base(solver) {
         Solver = solver;
         Ctx = solver.Context;
-        Cache = cache;
+        Env = env;
 
         Fixed = FixedCB;
         Created = CreatedCB;
@@ -63,7 +63,7 @@ public abstract class StringPropagator : UserPropagator {
             bool val = valExpr.IsTrue;
 
             var f = e.FuncDecl;
-            if (Cache.IsPrefixOf(f)) {
+            if (Env.IsPrefixOf(f)) {
                 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
@@ -72,27 +72,27 @@ public abstract class StringPropagator : UserPropagator {
                 if (val) {
                     // e := prefixOf(u, v)
                     // e |- v = ux
-                    Propagate([e], Ctx.MkEq(v, Cache.MkConcat(u, x)));
+                    Propagate([e], Ctx.MkEq(v, Env.MkConcat(u, x)));
                     return;
                 }
                 // e :=: !prefixOf(u, v)
                 // e |- |u| > |v| || (v = xy && |x| = |u| && x != u)
-                IntExpr lenU = Cache.MkLen(u);
-                IntExpr lenV = Cache.MkLen(v);
+                IntExpr lenU = Env.MkLen(u);
+                IntExpr lenV = Env.MkLen(v);
                 Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
                         Ctx.MkAnd(
-                            Ctx.MkEq(v, Cache.MkConcat(x, y)),
-                            Ctx.MkEq(Cache.MkLen(x), Cache.MkLen(u)),
+                            Ctx.MkEq(v, Env.MkConcat(x, y)),
+                            Ctx.MkEq(Env.MkLen(x), Env.MkLen(u)),
                             Ctx.MkNot(Ctx.MkEq(u, x))
                         )
                     )
                 );
                 return;
             }
-            if (Cache.IsSuffixOf(f)) {
+            if (Env.IsSuffixOf(f)) {
 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
@@ -101,27 +101,27 @@ public abstract class StringPropagator : UserPropagator {
                 if (val) {
                     // e := suffixOf(u, v)
                     // e |- v = xu
-                    Propagate([e], Ctx.MkEq(v, Cache.MkConcat(x, u)));
+                    Propagate([e], Ctx.MkEq(v, Env.MkConcat(x, u)));
                     return;
                 }
                 // e :=: !suffixOf(u, v)
                 // e |- |u| > |v| || (v = yx && |x| = |u| && x != u)
-                IntExpr lenU = Cache.MkLen(u);
-                IntExpr lenV = Cache.MkLen(v);
+                IntExpr lenU = Env.MkLen(u);
+                IntExpr lenV = Env.MkLen(v);
                 Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
                         Ctx.MkAnd(
-                            Ctx.MkEq(v, Cache.MkConcat(y, x)),
-                            Ctx.MkEq(Cache.MkLen(x), Cache.MkLen(u)),
+                            Ctx.MkEq(v, Env.MkConcat(y, x)),
+                            Ctx.MkEq(Env.MkLen(x), Env.MkLen(u)),
                             Ctx.MkNot(Ctx.MkEq(u, x))
                         )
                     )
                 );
                 return;
             }
-            if (Cache.IsContains(f)) {
+            if (Env.IsContains(f)) {
                 if (!val) {
                     GotNegContains((BoolExpr)e);
                     return;
@@ -130,13 +130,13 @@ public abstract class StringPropagator : UserPropagator {
                 // e |- |v| = 0 || u = xvy (the first case only to speed up)
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                IntExpr lenV = Cache.MkLen(v);
+                IntExpr lenV = Env.MkLen(v);
                 Expr x = GetFreshAuxStr().ToExpr(Graph);
                 Expr y = GetFreshAuxStr().ToExpr(Graph);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkEq(lenV, Ctx.MkInt(0)),
-                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(v, y)))
+                        Ctx.MkEq(u, Env.MkConcat(x, Env.MkConcat(v, y)))
                     )
                 );
                 return;
@@ -152,19 +152,19 @@ public abstract class StringPropagator : UserPropagator {
     void CreatedCB(Expr e) {
 
         // Just rewrite complicated function symbols
-        if (e.Sort is not BoolSort && !e.Sort.Equals(Cache.StringSort) && e.Sort is not IntSort)
+        if (e.Sort is not BoolSort && !e.Sort.Equals(Env.StringSort) && e.Sort is not IntSort)
             return;
 
         var f = e.FuncDecl;
 
-        if (Cache.IsStrAt(f)) {
+        if (Env.IsStrAt(f)) {
             // e := strAt(u, i)
             // (i < 0 || i >= |u|) => |e| = 0
             // !(i < 0 || i >= |u|) => (|e| = 1 && u = xey && |x| = i)
             Expr u = e.Arg(0);
             IntExpr i = (IntExpr)e.Arg(1);
-            IntExpr lenU = Cache.MkLen(u);
-            IntExpr lenE = Cache.MkLen(e);
+            IntExpr lenU = Env.MkLen(u);
+            IntExpr lenE = Env.MkLen(e);
             IntExpr zero = Ctx.MkInt(0);
             IntExpr one = Ctx.MkInt(1);
             BoolExpr outsideBounds = Ctx.MkOr(
@@ -173,20 +173,20 @@ public abstract class StringPropagator : UserPropagator {
             );
             Expr x = GetFreshAuxStr().ToExpr(Graph);
             Expr y = GetFreshAuxStr().ToExpr(Graph);
-            IntExpr lenX = Cache.MkLen(x);
+            IntExpr lenX = Env.MkLen(x);
             Propagate([], Ctx.MkImplies(outsideBounds, Ctx.MkEq(lenE, zero)));
             Propagate([],
                 Ctx.MkImplies(Ctx.MkNot(outsideBounds),
                     Ctx.MkAnd(
                         Ctx.MkEq(lenE, one),
                         Ctx.MkEq(lenX, i),
-                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(e, y)))
+                        Ctx.MkEq(u, Env.MkConcat(x, Env.MkConcat(e, y)))
                     )
                 )
             );
             return;
         }
-        if (Cache.IsSubstring(f)) {
+        if (Env.IsSubstring(f)) {
             // e := subStr(u, from, len)
             // (from < 0 || len <= 0 || from >= |u|) => |e| = 0
             // (from >= 0 && len > 0 && from < |u| && from + len >= |u|) =>
@@ -196,8 +196,8 @@ public abstract class StringPropagator : UserPropagator {
             Expr u = e.Arg(0);
             IntExpr from = (IntExpr)e.Arg(1);
             IntExpr len = (IntExpr)e.Arg(2);
-            IntExpr lenU = Cache.MkLen(u);
-            IntExpr lenE = Cache.MkLen(e);
+            IntExpr lenU = Env.MkLen(u);
+            IntExpr lenE = Env.MkLen(e);
             IntExpr zero = Ctx.MkInt(0);
             Propagate([],
                 Ctx.MkImplies(
@@ -211,7 +211,7 @@ public abstract class StringPropagator : UserPropagator {
             );
             Expr x = GetFreshAuxStr().ToExpr(Graph);
             Expr y = GetFreshAuxStr().ToExpr(Graph);
-            IntExpr lenX = Cache.MkLen(x);
+            IntExpr lenX = Env.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
                     Ctx.MkAnd(
@@ -221,7 +221,7 @@ public abstract class StringPropagator : UserPropagator {
                         Ctx.MkGe(Ctx.MkAdd(from, len), lenU)
                     ),
                     Ctx.MkAnd(
-                        Ctx.MkEq(u, Cache.MkConcat(x, e)),
+                        Ctx.MkEq(u, Env.MkConcat(x, e)),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkEq(lenE, Ctx.MkSub(lenU, from))
                     )
@@ -235,7 +235,7 @@ public abstract class StringPropagator : UserPropagator {
                         Ctx.MkLt(Ctx.MkAdd(from, len), lenU)
                     ),
                     Ctx.MkAnd(
-                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(e, y))),
+                        Ctx.MkEq(u, Env.MkConcat(x, Env.MkConcat(e, y))),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkEq(lenE, len)
                     )
@@ -243,7 +243,7 @@ public abstract class StringPropagator : UserPropagator {
             );
             return;
         }
-        if (Cache.IsIndexOf(f)) {
+        if (Env.IsIndexOf(f)) {
             // e := indexOf(u, v, from)
             // from < 0 => e = -1
             // from > |u| + |v| => e = -1
@@ -254,13 +254,13 @@ public abstract class StringPropagator : UserPropagator {
             Expr u = e.Arg(0);
             Expr v = e.Arg(1);
             IntExpr from = (IntExpr)e.Arg(2);
-            IntExpr lenU = Cache.MkLen(u);
-            IntExpr lenV = Cache.MkLen(v);
+            IntExpr lenU = Env.MkLen(u);
+            IntExpr lenV = Env.MkLen(v);
             IntExpr zero = Ctx.MkInt(0);
             IntExpr negOne = Ctx.MkInt(-1);
             Expr x = GetFreshAuxStr().ToExpr(Graph);
             Expr y = GetFreshAuxStr().ToExpr(Graph);
-            IntExpr lenX = Cache.MkLen(x);
+            IntExpr lenX = Env.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
                     Ctx.MkLt(from, zero),
@@ -275,7 +275,7 @@ public abstract class StringPropagator : UserPropagator {
             );
             Propagate([],
                 Ctx.MkImplies(
-                    Ctx.MkNot((BoolExpr)Cache.ContainsFct.Apply(u, v)),
+                    Ctx.MkNot((BoolExpr)Env.ContainsFct.Apply(u, v)),
                     Ctx.MkEq(e, negOne)
                 )
             );
@@ -299,45 +299,45 @@ public abstract class StringPropagator : UserPropagator {
                     Ctx.MkAnd(
                         Ctx.MkGe((IntExpr)e, zero),
                         Ctx.MkLe((IntExpr)e, Ctx.MkSub(lenU, lenV)),
-                        Ctx.MkEq(u, Cache.MkConcat(x, Cache.MkConcat(v, y))),
+                        Ctx.MkEq(u, Env.MkConcat(x, Env.MkConcat(v, y))),
                         Ctx.MkEq(lenX, from),
                         Ctx.MkNot(
-                            (BoolExpr)Cache.ContainsFct.Apply(
-                                Cache.SubstringFct.Apply(Cache.MkConcat(x, v), zero, Ctx.MkAdd(lenX, lenV, negOne)), v)
+                            (BoolExpr)Env.ContainsFct.Apply(
+                                Env.SubstringFct.Apply(Env.MkConcat(x, v), zero, Ctx.MkAdd(lenX, lenV, negOne)), v)
                         )
                     )
                 )
             );
             return;
         }
-        if (Cache.IsLen(f)) {
+        if (Env.IsLen(f)) {
             Expr arg0 = e.Arg(0);
             FuncDecl f0 = arg0.FuncDecl;
-            if (Cache.IsConcat(f0)) {
+            if (Env.IsConcat(f0)) {
                 Stack<Expr> args = [];
                 args.Push(arg0);
                 IntExpr sum = Ctx.MkInt(0);
                 while (args.IsNonEmpty()) {
                     var arg = args.Pop();
-                    if (Cache.IsConcat(arg.FuncDecl)) {
+                    if (Env.IsConcat(arg.FuncDecl)) {
                         args.Push(arg.Arg(0));
                         args.Push(arg.Arg(1));
                         continue;
                     }
-                    sum = (IntExpr)Ctx.MkAdd(sum, Cache.MkLen(arg));
+                    sum = (IntExpr)Ctx.MkAdd(sum, Env.MkLen(arg));
                 }
                 Propagate([], Ctx.MkEq(e, sum));
                 return;
             }
-            if (f0.Equals(Cache.Epsilon.FuncDecl)) {
+            if (f0.Equals(Env.Epsilon.FuncDecl)) {
                 Propagate([], Ctx.MkEq(e, Ctx.MkInt(0)));
                 return;
             }
-            if (Cache.IsPower(f0)) {
-                Propagate([], Ctx.MkEq(e, Ctx.MkMul(Cache.MkLen(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
+            if (Env.IsPower(f0)) {
+                Propagate([], Ctx.MkEq(e, Ctx.MkMul(Env.MkLen(arg0.Arg(0)), (IntExpr)arg0.Arg(1))));
                 return;
             }
-            if (Cache.ExprToStrToken.TryGetValue(arg0, out var s)) {
+            if (Env.ExprToStrToken.TryGetValue(arg0, out var s)) {
                 if (s is UnitToken) {
                     Propagate([], Ctx.MkEq(e, Ctx.MkInt(1)));
                     return;
@@ -434,7 +434,7 @@ public abstract class StringPropagator : UserPropagator {
         AddCharDiseqInternal(new DisEq(o, u2));
     }
 
-    public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
+    public virtual void EqInternal(IStr s1, Expr e1, IStr s2, Expr e2) {}
 
     static int eqCount;
 
@@ -443,7 +443,7 @@ public abstract class StringPropagator : UserPropagator {
             if (e1.Equals(e2))
                 return;
 
-            if (!e1.Sort.Equals(Cache.StringSort))
+            if (!e1.Sort.Equals(Env.StringSort))
                 return;
 
             eqCount++;
@@ -503,8 +503,8 @@ public abstract class StringPropagator : UserPropagator {
                 }
             }*/
 
-            Str? s1r = Cache.TryParseStr(e1);
-            Str? s2r = Cache.TryParseStr(e2);
+            var s1r = Env.TryParseStr(e1);
+            var s2r = Env.TryParseStr(e2);
             Debug.Assert(s1r is not null);
             Debug.Assert(s2r is not null);
 
@@ -568,44 +568,44 @@ public abstract class StringPropagator : UserPropagator {
 #endif
             }
 
-            EqInternal(s1r, e1, s2r, e2);
+            EqInternal(Env.MkString(s1r), e1, Env.MkString(s2r), e2);
         }
         catch (Exception ex) {
             Console.WriteLine("Exception (Eq): " + ex.Message);
         }
     }
 
-    protected virtual void AddNotEpsilonInternal(Str s) {}
+    protected virtual void AddNotEpsilonInternal(IStr s) {}
 
     void DisEqCB(Expr e1, Expr e2) {
         try {
-            if (!e1.Sort.Equals(Cache.StringSort))
+            if (!e1.Sort.Equals(Env.StringSort))
                 return;
             // TODO: Fix for characters. e.g., o1 != o2 clauses infinite recursion!
 
-            if (Cache.Epsilon.Equals(e2))
+            if (Env.Epsilon.Equals(e2))
                 (e1, e2) = (e2, e1);
 
-            if (Cache.Epsilon.Equals(e1)) {
-                if (Cache.ExprToStrToken.TryGetValue(e2, out var t) && t is UnitToken) {
+            if (Env.Epsilon.Equals(e1)) {
+                if (Env.ExprToStrToken.TryGetValue(e2, out var t) && t is UnitToken) {
                     Propagate([], Ctx.MkDistinct(e1, e2));
                     return;
                 }
                 Propagate([],
                     Ctx.MkImplies(
                         Ctx.MkNot(Ctx.MkEq(e1, e2)),
-                        Ctx.MkGt(Cache.MkLen(e2), Ctx.MkInt(0))
+                        Ctx.MkGt(Env.MkLen(e2), Ctx.MkInt(0))
                     )
                 );
-                var s = Cache.TryParseStr(e1);
+                var s = Env.TryParseStr(e1);
                 Debug.Assert(s is not null);
                 AddNotEpsilonInternal(s);
                 return;
             }
 
             if (
-                Cache.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is UnitToken c1 &&
-                Cache.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is UnitToken c2) {
+                Env.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is UnitToken c1 &&
+                Env.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is UnitToken c2) {
                 if (c1 is CharToken ch1 && c2 is CharToken ch2) {
                     if (!ch1.Equals(ch2))
                         return;
@@ -627,18 +627,18 @@ public abstract class StringPropagator : UserPropagator {
             SymCharToken o2 = new();
             StrVarToken y2 = GetFreshAuxStr();
 
-            Str u1 = [x1, o1, y1];
-            Str u2 = [x2, o2, y2];
+            IStr u1 = [x1, o1, y1];
+            IStr u2 = [x2, o2, y2];
 
             Propagate([],
                 Ctx.MkEq(
                     Ctx.MkNot(Ctx.MkEq(e1, e2)),
                     Ctx.MkOr(
-                        Ctx.MkNot(Ctx.MkEq(Cache.MkLen(e1), Cache.MkLen(e2))),
+                        Ctx.MkNot(Ctx.MkEq(Env.MkLen(e1), Env.MkLen(e2))),
                         Ctx.MkAnd(
                             Ctx.MkEq(e1, u1.ToExpr(Graph)),
                             Ctx.MkEq(e2, u2.ToExpr(Graph)),
-                            Ctx.MkEq(Cache.MkLen(x1e), Cache.MkLen(x2e)),
+                            Ctx.MkEq(Env.MkLen(x1e), Env.MkLen(x2e)),
                             Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Graph), o2.ToExpr(Graph)))
                         )
                     )
@@ -676,7 +676,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     HashSet<BoolExpr>? selectedPath;
     bool newInformation;
 
-    public SaturatingStringPropagator(Solver solver, Environment cache) : base(solver, cache) {
+    public SaturatingStringPropagator(Solver solver, Environment env) : base(solver, env) {
         Graph = new NielsenGraph(this);
         Root = new NielsenNode(Graph);
         Final = FinalCB;
@@ -724,7 +724,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         undoStack.Add(() => Root.RemoveDisEq(disEq));
     }
 
-    public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
+    public override void EqInternal(IStr s1, Expr e1, IStr s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
         NonTermSet nonTermSet = new();
@@ -763,7 +763,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         });
     }
 
-    protected override void AddNotEpsilonInternal(Str s) {
+    protected override void AddNotEpsilonInternal(IStr s) {
         var c = IntLe.MkLt(new IntPoly(), LenVar.MkLenPoly(s));
         if (!Root.IntLe.Add(c)) 
             return;
@@ -872,7 +872,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         foreach (var c in model.Consts) {
             if (c.Key.Apply() is not IntExpr i)
                 continue;
-            if (!Cache.ExprToIntToken.TryGetValue(i, out var vt) || vt is not IntVar v)
+            if (!Env.ExprToIntToken.TryGetValue(i, out var vt) || vt is not IntVar v)
                 continue;
             itp.Add(v, ((IntNum)c.Value).BigInteger);
             if (!satNode.ConsistentIntVal(v, ((IntNum)c.Value).BigInteger))
@@ -916,7 +916,7 @@ public class LemmaStringPropagator : StringPropagator {
 
     public override NielsenGraph Graph { get; }
 
-    public LemmaStringPropagator(Solver solver, Environment cache, NielsenGraph graph) : base(solver, cache) {
+    public LemmaStringPropagator(Solver solver, Environment env, NielsenGraph graph) : base(solver, env) {
         Graph = graph;
     }
 }

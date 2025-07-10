@@ -31,7 +31,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        Str s = [V2];
+        IStr s = [V2];
         subst = new SubstVar(V1, s);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
@@ -68,7 +68,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V2 (progress)
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
-        Str s = [V2];
+        IStr s = [V2];
         node.MkChild(node, [new SubstVar(V1, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), true);
 
         s = Forwards ? [V2, V1] : [V1, V2];

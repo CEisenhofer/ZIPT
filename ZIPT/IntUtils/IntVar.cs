@@ -30,10 +30,10 @@ public class IntVar : NonTermInt {
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(this);
 
     public override IntExpr ToExpr(NielsenGraph graph) {
-        if (graph.Cache.GetCachedIntExpr(this, graph) is { } e)
+        if (graph.Env.GetCachedIntExpr(this, graph) is { } e)
             return e;
         e = graph.Ctx.MkIntConst(ToString());
-        graph.Cache.SetCachedExpr(this, e, graph);
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 

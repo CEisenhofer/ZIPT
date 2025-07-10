@@ -12,12 +12,10 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public abstract bool Ground { get; }
     public abstract bool IsNullable(NielsenNode node);
 
-    public abstract Str Apply(Subst subst);
-    public abstract Str Apply(Interpretation itp);
-    public abstract List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
+    public abstract IStr Apply(Subst subst);
+    public abstract IStr Apply(Interpretation itp);
+    public abstract List<(IStr str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
     public abstract Expr ToExpr(NielsenGraph graph);
-
-    public abstract bool RecursiveIn(NamedStrToken v);
 
     public override bool Equals(object? other) =>
         other is StrToken token && Equals(token);
@@ -86,7 +84,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
         if (e.IsLE)
             return $"({ExprToStr(graph, e.Arg(0))} \u2264 {ExprToStr(graph, e.Arg(1))})";
         if (graph is not null) {
-            if (graph.Cache.IsLen(e.FuncDecl))
+            if (graph.Env.IsLen(e.FuncDecl))
                 return $"|[{ExprToStr(graph, e.Args[0])}]|";
             var s = graph.TryParseStr(e);
             if (s is not null)

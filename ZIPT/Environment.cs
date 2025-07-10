@@ -55,11 +55,12 @@ public class Environment : IDisposable {
     public readonly Dictionary<IntExpr, NonTermInt> ExprToIntToken = [];
 
     public List<StrToken> BaseSlices { get; } = [];
-    public List<StrSlice> RefSlices { get; } = [];
+    public List<SharedStr> RefSlices { get; } = [];
+    public Trie StringCache { get; } = new();
 
     public Environment(Context ctx) {
         Ctx = ctx;
-        StringSort = ctx.MkUninterpretedSort("Str");
+        StringSort = ctx.MkUninterpretedSort("IStr");
         Epsilon = ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
         ConcatFct = ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
         PowerFct = ctx.MkUserPropagatorFuncDecl("power", [StringSort, ctx.IntSort], StringSort);
@@ -87,10 +88,22 @@ public class Environment : IDisposable {
 
     uint MkStrSliceTokenRef(StrToken token) {
         Debug.Assert(token.Id < BaseSlices.Count);
-        return (uint)(token.Id * 2);
+        return token.Id * 2;
     }
 
-    public StrSliceRef MkNewString(List<StrToken> tokens) {
+    public IStr MkString(IReadOnlyList<StrToken> tokens) {
+        if (Options.ExplicitStrings)
+            return MkExplicitStr(tokens);
+        return MkSharedStr(tokens);
+    }
+
+    // Not every string is cached, but the ones created this way are
+    public SharedStr MkSharedStr(IReadOnlyList<StrToken> tokens) {
+        uint id = StringCache.Get(tokens);
+        if (id != uint.MaxValue) {
+            Debug.Assert(id < RefSlices.Count);
+            return RefSlices[(int)id];
+        }
         uint[] refIndexes = new uint[tokens.Count];
         Dictionary<NamedStrToken, uint> vars = [];
         for (int i = 0; i < tokens.Count; i++) {
@@ -98,10 +111,19 @@ public class Environment : IDisposable {
             if (tokens[i] is NamedStrToken n)
                 vars.Inc(n);
         }
-        var slice = new StrSlice(this, (uint)RefSlices.Count, refIndexes, (uint)refIndexes.Length, vars);
+        SharedStr slice = new(this, (uint)RefSlices.Count, refIndexes, (uint)refIndexes.Length, vars);
         RefSlices.Add(slice);
-        return new StrSliceRef(slice);
+        StringCache.Add(tokens, slice.Id);
+        return slice;
     }
+
+    public IStr MkEmptySharedStr() =>
+        MkSharedStr(Array.Empty<StrToken>());
+
+    public IStr MkEmptyStr() =>
+        MkString(Array.Empty<StrToken>());
+
+    public ExplStr MkExplicitStr(IReadOnlyList<StrToken> tokens) => new(tokens);
 
     public int GetModCnt(StrToken t, NielsenGraph graph) =>
         t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod) ? 0 : mod;
@@ -157,7 +179,7 @@ public class Environment : IDisposable {
         if (e.IsVar)
             return null;
         if (e.IsString)
-            return new Str(e.String.Select(o => (StrToken)new CharToken(o)).ToArray()).ToExpr(graph);
+            return MkString(e.String.Select(o => (StrToken)new CharToken(o)).ToArray()).ToExpr(graph);
 
         var f = e.FuncDecl;
         var kind = f.DeclKind;
@@ -202,7 +224,7 @@ public class Environment : IDisposable {
                     TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
                     TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
             default:
-                Expr[] args = new Expr[e.NumArgs];
+                var args = new Expr[e.NumArgs];
                 bool mod = false;
                 for (uint i = 0; i < e.NumArgs; i++) {
                     var arg = e.Arg(i);
@@ -225,30 +247,20 @@ public class Environment : IDisposable {
             return ParseSuffix(expr.Arg(0), expr.Arg(1));
         if (decl.Equals(ContainsFct))
             return ParseContains(expr.Arg(0), expr.Arg(1));
-        switch (decl.DeclKind) {
-            case Z3_decl_kind.Z3_OP_EQ:
-                return expr.Arg(0) is IntExpr
-                    ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
-                    : ParseStrEq(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_NOT:
-                return TryParse((BoolExpr)expr.Args[0])?.Negate();
-            case Z3_decl_kind.Z3_OP_LE:
-                return ParseLe((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_GE:
-                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
-            case Z3_decl_kind.Z3_OP_LT:
-                return ParseLt((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_GT:
-                return ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]);
-            case Z3_decl_kind.Z3_OP_SEQ_PREFIX:
-                return ParsePrefix(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_SEQ_SUFFIX:
-                return ParseSuffix(expr.Args[0], expr.Args[1]);
-            case Z3_decl_kind.Z3_OP_SEQ_CONTAINS:
-                return ParseContains(expr.Args[0], expr.Args[1]);
-            default:
-                throw new NotSupportedException(expr.FuncDecl.Name.ToString());
-        }
+        return decl.DeclKind switch {
+            Z3_decl_kind.Z3_OP_EQ => expr.Arg(0) is IntExpr
+                ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
+                : ParseStrEq(expr.Args[0], expr.Args[1]),
+            Z3_decl_kind.Z3_OP_NOT => TryParse((BoolExpr)expr.Args[0])?.Negate(),
+            Z3_decl_kind.Z3_OP_LE => ParseLe((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]),
+            Z3_decl_kind.Z3_OP_GE => ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]),
+            Z3_decl_kind.Z3_OP_LT => ParseLt((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]),
+            Z3_decl_kind.Z3_OP_GT => ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]),
+            Z3_decl_kind.Z3_OP_SEQ_PREFIX => ParsePrefix(expr.Args[0], expr.Args[1]),
+            Z3_decl_kind.Z3_OP_SEQ_SUFFIX => ParseSuffix(expr.Args[0], expr.Args[1]),
+            Z3_decl_kind.Z3_OP_SEQ_CONTAINS => ParseContains(expr.Args[0], expr.Args[1]),
+            _ => throw new NotSupportedException(expr.FuncDecl.Name.ToString())
+        };
     }
 
     public StrEq? ParseStrEq(Expr left, Expr right) {
@@ -256,7 +268,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseStr(right);
-        return rhs is null ? null : new StrEq(lhs, rhs);
+        return rhs is null ? null : new StrEq(MkString(lhs), MkString(rhs));
     }
 
     public IntEq? ParseIntEq(IntExpr left, IntExpr right) {
@@ -288,7 +300,11 @@ public class Environment : IDisposable {
         if (c is null)
             return null;
         var s = TryParseStr(str);
-        return s is null ? null : new StrPrefixOf(c, s, false, Str.CollectSymbols(s, c));
+        if (s is null)
+            return null;
+        var ss = MkString(s);
+        var sc = MkString(c);
+        return new StrPrefixOf(sc, ss, false, IStr.CollectSymbols(ss, sc));
     }
 
     public StrSuffixOf? ParseSuffix(Expr contained, Expr str) {
@@ -296,7 +312,11 @@ public class Environment : IDisposable {
         if (c is null)
             return null;
         var s = TryParseStr(str);
-        return s is null ? null : new StrSuffixOf(c, s, false, Str.CollectSymbols(c, s));
+        if (s is null)
+            return null;
+        var ss = MkString(s);
+        var sc = MkString(c);
+        return new StrSuffixOf(sc, ss, false, IStr.CollectSymbols(ss, sc));
     }
 
     public StrContains? ParseContains(Expr str, Expr contained) {
@@ -304,10 +324,14 @@ public class Environment : IDisposable {
         if (s is null)
             return null;
         var c = TryParseStr(contained);
-        return c is null ? null : new StrContains(s, c, false, Str.CollectSymbols(s, c));
+        if (c is null)
+            return null;
+        var ss = MkString(s);
+        var sc = MkString(c);
+        return new StrContains(ss, sc, false, IStr.CollectSymbols(ss, sc));
     }
 
-    public Str? TryParseStr(Expr expr) {
+    public List<StrToken>? TryParseStr(Expr expr) {
         FuncDecl f = expr.FuncDecl;
         if (expr.Sort.Equals(StringSort)) {
             // Custom Z3
@@ -320,28 +344,28 @@ public class Environment : IDisposable {
                         return null;
                     res.AddRange(str);
                 }
-                return new Str(res);
+                return res;
             }
             if (IsPower(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
+                var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
                 IntPoly? p = TryParseInt((IntExpr)expr.Arg(1));
                 if (p is null)
                     return null;
-                return new Str([new PowerToken(@base, p)]);
+                return [new PowerToken(MkString(@base), p)];
             }
             if (IsStrAt(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
+                var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
                 IntPoly? at = TryParseInt((IntExpr)expr.Arg(1));
                 if (at is null)
                     return null;
-                return [new StrAtToken(@base, at)];
+                return [new StrAtToken(MkString(@base), at)];
             }
             if (IsSubstring(f)) {
-                Str? @base = TryParseStr(expr.Arg(0));
+                var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
                 IntPoly? from = TryParseInt((IntExpr)expr.Arg(1));
@@ -350,7 +374,7 @@ public class Environment : IDisposable {
                 IntPoly? len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
-                return [new SubStrToken(@base, from, len)];
+                return [new SubStrToken(MkString(@base), from, len)];
             }
             if (ExprToStrToken.TryGetValue(expr, out StrToken? s))
                 return [s];
@@ -358,30 +382,30 @@ public class Environment : IDisposable {
         else if (expr.Sort is SeqSort) {
             // Native Z3
             if (expr.IsString)
-                return new Str(expr.String.Select(o => (StrToken)new CharToken(o)).ToArray());
+                return expr.String.Select(o => (StrToken)new CharToken(o)).ToList();
             if (expr.IsConst)
-                return new Str([StrVarToken.GetOrCreate(f.Name.ToString())]);
+                return [StrVarToken.GetOrCreate(f.Name.ToString())];
             if (expr.IsConcat) {
-                Str r = [];
+                List<StrToken> r = [];
                 foreach (var arg in expr.Args) {
-                    Str? q = TryParseStr(arg);
+                    var q = TryParseStr(arg);
                     if (q is null)
                         return null;
-                    r.AddLastRange(q);
+                    r.AddRange(q);
                 }
                 return r;
             }
             if (expr.IsAt) {
-                Str? s = TryParseStr(expr.Args[0]);
+                var s = TryParseStr(expr.Args[0]);
                 if (s is null)
                     return null;
                 IntPoly? p = TryParseInt((IntExpr)expr.Args[1]);
                 if (p is null)
                     return null;
-                return [new StrAtToken(s, p)];
+                return [new StrAtToken(MkString(s), p)];
             }
             if (expr.IsExtract) {
-                Str? @base = TryParseStr(expr.Arg(0));
+                var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
                 IntPoly? from = TryParseInt((IntExpr)expr.Arg(1));
@@ -390,7 +414,7 @@ public class Environment : IDisposable {
                 IntPoly? len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
-                return [new SubStrToken(@base, from, len)];
+                return [new SubStrToken(MkString(@base), from, len)];
             }
         }
         throw new NotSupportedException(f.Name.ToString());
@@ -402,20 +426,20 @@ public class Environment : IDisposable {
         if (expr is IntNum num)
             return new IntPoly(num.BigInteger);
         if (expr.FuncDecl.Equals(LenFct) || expr.IsLength) {
-            Str? str = TryParseStr(expr.Arg(0));
-            return str is null ? null : LenVar.MkLenPoly(str);
+            var str = TryParseStr(expr.Arg(0));
+            return str is null ? null : LenVar.MkLenPoly(MkString(str));
         }
         if (expr.FuncDecl.Equals(IndexOfFct) || expr.IsIndex) {
             if (expr.NumArgs != 3)
                 return null;
-            Str? str = TryParseStr(expr.Arg(0));
+            var str = TryParseStr(expr.Arg(0));
             if (str is null)
                 return null;
-            Str? contained = TryParseStr(expr.Arg(1));
+            var contained = TryParseStr(expr.Arg(1));
             if (contained is null)
                 return null;
             IntPoly? start = TryParseInt((IntExpr)expr.Arg(2));
-            return start is null ? null : new IntPoly(new IndexOfVar(str, contained, start));
+            return start is null ? null : new IntPoly(new IndexOfVar(MkString(str), MkString(contained), start));
         }
         if (ExprToIntToken.TryGetValue(expr, out var v))
             return new IntPoly(v);
@@ -471,5 +495,4 @@ public class Environment : IDisposable {
         }
         throw new NotSupportedException(expr.FuncDecl.Name.ToString());
     }
-
 }

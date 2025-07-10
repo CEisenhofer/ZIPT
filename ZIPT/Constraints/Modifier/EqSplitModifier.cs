@@ -15,9 +15,9 @@ public class EqSplitModifier : DirectedNielsenModifier {
     public EqSplitModifier(StrEq eq, int lhsIdx, int rhsIdx, int padding, bool forward) : base(forward) {
         Debug.Assert(lhsIdx >= 0);
         Debug.Assert(rhsIdx >= 0);
-        Debug.Assert(lhsIdx <= eq.LHS.Count);
-        Debug.Assert(rhsIdx <= eq.RHS.Count);
-        Debug.Assert(lhsIdx < eq.LHS.Count || rhsIdx < eq.RHS.Count);
+        Debug.Assert(lhsIdx <= eq.LHS.Length);
+        Debug.Assert(rhsIdx <= eq.RHS.Length);
+        Debug.Assert(lhsIdx < eq.LHS.Length || rhsIdx < eq.RHS.Length);
         Eq = eq;
         LhsIdx = lhsIdx;
         RhsIdx = rhsIdx;
@@ -27,25 +27,25 @@ public class EqSplitModifier : DirectedNielsenModifier {
     public override void Apply(NielsenNode node) {
         Debug.Assert(LhsIdx >= 0);
         Debug.Assert(RhsIdx >= 0);
-        Debug.Assert(LhsIdx <= Eq.LHS.Count);
-        Debug.Assert(RhsIdx <= Eq.RHS.Count);
-        Debug.Assert(LhsIdx < Eq.LHS.Count || RhsIdx < Eq.RHS.Count);
+        Debug.Assert(LhsIdx <= Eq.LHS.Length);
+        Debug.Assert(RhsIdx <= Eq.RHS.Length);
+        Debug.Assert(LhsIdx < Eq.LHS.Length || RhsIdx < Eq.RHS.Length);
 
         // Eq.LHS[0..LhsIdx] [Padding] = Eq.RHS[0..RhsIdx] && Eq.LHS[LhsIdx..] = [Padding] Eq.RHS[RhsIdx..] (progress)
-        Str lhs1 = new Str(Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
-        Str rhs1 = new Str(Forwards ? RhsIdx : Eq.RHS.Count - RhsIdx);
-        Str lhs2 = new Str(!Forwards ? LhsIdx : Eq.LHS.Count - LhsIdx);
-        Str rhs2 = new Str(!Forwards ? RhsIdx : Eq.RHS.Count - RhsIdx);
+        IStr lhs1 = new IStr(Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
+        IStr rhs1 = new IStr(Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
+        IStr lhs2 = new IStr(!Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
+        IStr rhs2 = new IStr(!Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
         for (int i = 0; i < LhsIdx; i++) {
             lhs1.Add(Eq.LHS.Peek(Forwards, i), !Forwards);
         }
-        for (int i = LhsIdx; i < Eq.LHS.Count; i++) {
+        for (int i = LhsIdx; i < Eq.LHS.Length; i++) {
             lhs2.Add(Eq.LHS.Peek(Forwards, i), !Forwards);
         }
         for (int i = 0; i < RhsIdx; i++) {
             rhs1.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
         }
-        for (int i = RhsIdx; i < Eq.RHS.Count; i++) {
+        for (int i = RhsIdx; i < Eq.RHS.Length; i++) {
             rhs2.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
         }
 

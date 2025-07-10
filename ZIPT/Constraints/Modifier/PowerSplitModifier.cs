@@ -22,9 +22,9 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         IntVar newPow = new();
         var power = new PowerToken(Power.Base.Clone(), new IntPoly(newPow));
         var prefixes = Power.Base.GetPrefixes(Forwards);
-        Str s;
+        IStr s;
         foreach (var p in prefixes) {
-            s = new Str(power);
+            s = new IStr(power);
             s.AddRange(p.str, Forwards);
 #if DEBUG
             var cmp = StrEqBase.LcpCompression(s);
@@ -48,7 +48,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
                     cond, Array.Empty<DisEq>(), false);
             }
         }
-        s = new Str(Var);
+        s = new IStr(Var);
         s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
         node.MkChild(node, [new SubstVar(Var, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), false);
     }

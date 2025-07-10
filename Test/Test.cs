@@ -19,8 +19,8 @@ public static class Test {
         CheckParikh();
     }
 
-    static Str ParseStr(string str, Dictionary<char, StrVarToken> symToVar) {
-        Str ret = [];
+    static IStr ParseStr(string str, Dictionary<char, StrVarToken> symToVar) {
+        IStr ret = [];
         foreach (char c in str) {
             if (char.IsUpper(c)) {
                 if (!symToVar.TryGetValue(c, out var v)) {
@@ -35,7 +35,7 @@ public static class Test {
         return ret;
     }
 
-    static bool CheckEquation(Str lhs, Str rhs) {
+    static bool CheckEquation(IStr lhs, IStr rhs) {
         Console.WriteLine($"Checking eq {lhs} = {rhs}");
         using Context ctx = new();
         using Solver solver = ctx.MkSimpleSolver();
@@ -46,14 +46,14 @@ public static class Test {
         return propagator.Graph.Check(root, [], []);
     }
 
-    static void SAT(Str lhs, Str rhs) {
+    static void SAT(IStr lhs, IStr rhs) {
         if (CheckEquation(lhs, rhs))
             return;
         Console.WriteLine($"Expected SAT on \"{lhs}\" = \"{rhs}\" but got UNSAT");
         System.Environment.Exit(-1);
     }
 
-    static void UNSAT(Str lhs, Str rhs) {
+    static void UNSAT(IStr lhs, IStr rhs) {
         if (!CheckEquation(lhs, rhs))
             return;
         Console.WriteLine($"Expected UNSAT on \"{lhs}\" = \"{rhs}\" but got SAT");
@@ -88,7 +88,7 @@ public static class Test {
         SAT(ParseStr("aX", s2v), ParseStr("YX", s2v));
     }
 
-    static void ParikhUNSAT(Str lhs, Str rhs) {
+    static void ParikhUNSAT(IStr lhs, IStr rhs) {
         Console.WriteLine($"Checking Parikh {lhs} = {rhs}");
         if (!StrEq.CheckMultiSequenceParikh(lhs, rhs))
             return;

@@ -13,16 +13,16 @@ public sealed class SymCharToken : UnitToken {
 
     public SymCharToken() => VarId = nextId++;
 
-    public override Str Apply(Subst subst) => subst.ResolveVar(this);
-    public override Str Apply(Interpretation itp) => [itp.ResolveVar(this)];
+    public override IStr Apply(Subst subst) => subst.ResolveVar(this);
+    public override IStr Apply(Interpretation itp) => [itp.ResolveVar(this)];
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
-        graph.Cache.SetCachedExpr(this, e, graph);
+        FuncDecl f = graph.Ctx.MkFreshConstDecl("'" + nextId + "'", graph.Env.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Env.StringSort).Apply();
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 

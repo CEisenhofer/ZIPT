@@ -1,8 +1,6 @@
 ﻿namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
-    
-    protected IntConstraint(NonTermSet dependencies) : base(dependencies) { }
 
     public abstract int CompareToInternal(IntConstraint other);
     public int CompareTo(IntConstraint? other) {

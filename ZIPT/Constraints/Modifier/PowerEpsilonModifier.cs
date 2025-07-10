@@ -18,7 +18,7 @@ public class PowerEpsilonModifier : ModifierBase {
             Array.Empty<DisEq>(), true);
         node.MkChild(node, 
             Array.Empty<Subst>(),
-            [new StrEq(Power.Base)],
+            [new StrEq(Power.Base, node.Graph.Env.MkEmptyStr())],
             Array.Empty<DisEq>(), true);
     }
 

@@ -6,13 +6,13 @@ namespace ZIPT.Tokens.AuxTokens;
 
 public sealed class SubStrToken : NamedStrToken {
 
-    public Str S { get; }
+    public IStr S { get; }
     public IntPoly From { get; }
     public IntPoly Len { get; }
 
     public override string OriginalName => $"subStr({S},{From},{Len})";
 
-    public SubStrToken(Str s, IntPoly from, IntPoly len) {
+    public SubStrToken(IStr s, IntPoly from, IntPoly len) {
         S = s;
         From = from;
         Len = len;
@@ -22,11 +22,11 @@ public sealed class SubStrToken : NamedStrToken {
     public override SubStrToken GetExtension2() => (SubStrToken)(Extension2 ??= new SubStrToken(S, From, Len));
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        e = graph.Cache.StrAtFct.Apply(S.ToExpr(graph), From.ToExpr(graph), Len.ToExpr(graph));
-        graph.Cache.SetCachedExpr(this, e, graph);
+        e = graph.Env.StrAtFct.Apply(S.ToExpr(graph), From.ToExpr(graph), Len.ToExpr(graph));
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 }

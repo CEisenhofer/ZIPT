@@ -40,7 +40,7 @@ public abstract class NamedStrToken : StrToken {
     public sealed override bool IsNullable(NielsenNode node) => 
         LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
 
-    public sealed override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
+    public sealed override List<(IStr str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(x) := y with x = yz, |y| < |x|
         // TODO
         NamedStrToken y = GetExtension1();
@@ -53,10 +53,8 @@ public abstract class NamedStrToken : StrToken {
         return [([y], [IntLe.MkLe(yl, xl)], new SubstVar(this, [z, y]))];
     }
 
-    public sealed override Str Apply(Subst subst) => subst.ResolveVar(this);
-    public sealed override Str Apply(Interpretation itp) => itp.ResolveVar(this);
-
-    public sealed override bool RecursiveIn(NamedStrToken v) => Equals(v);
+    public sealed override IStr Apply(Subst subst) => subst.ResolveVar(this);
+    public sealed override IStr Apply(Interpretation itp) => itp.ResolveVar(this);
 
     protected sealed override int CompareToInternal(StrToken other) {
         Debug.Assert(other is NamedStrToken);

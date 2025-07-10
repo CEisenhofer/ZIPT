@@ -8,16 +8,16 @@ namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 public class StrSuffixOf : StrConstraint {
 
     public bool Negated { get; }
-    public Str S { get; }
-    public Str Contained { get; }
+    public IStr S { get; }
+    public IStr Contained { get; }
 
-    public StrSuffixOf(Str s, Str contained, bool negated, NonTermSet dependencies) : base(dependencies) {
+    public StrSuffixOf(IStr s, IStr contained, bool negated, NonTermSet dependencies) : base() {
         Negated = negated;
         S = s;
         Contained = contained;
     }
 
-    public override StrSuffixOf Clone() => new(S.Clone(), Contained.Clone(), Negated, Dependencies.Clone());
+    public override Constraint Clone() => new(S.Clone(), Contained.Clone(), Negated, Dependencies.Clone());
 
     public override bool Equals(object? obj) =>
         obj is StrSuffixOf suffixOf && Equals(suffixOf);
@@ -43,9 +43,9 @@ public class StrSuffixOf : StrConstraint {
     // Just very rudimentary implementation - it will get eliminated anyway...
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
         ref BacktrackReasons reason) {
-        if (S.Count < Contained.Count)
+        if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
-        int i = Contained.Count;
+        int i = Contained.Length;
         for (; i > 0 && S[i - 1] is CharToken c1 && Contained[i - 1] is CharToken c2; i--) {
             if (c1.Equals(c2)) 
                 continue;
@@ -62,7 +62,7 @@ public class StrSuffixOf : StrConstraint {
     }
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Cache.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
+        (BoolExpr)graph.Env.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         S.CollectSymbols(nonTermSet, alphabet);

@@ -17,8 +17,8 @@ public class SubstSChar : Subst {
         Debug.Assert(!v.Equals(c));
     }
 
-    public override Str ResolveVar(NamedStrToken v) => [v];
-    public override Str ResolveVar(SymCharToken v) => v.Equals(Sym) ? [C] : [v];
+    public override IStr ResolveVar(NamedStrToken v) => [v];
+    public override IStr ResolveVar(SymCharToken v) => v.Equals(Sym) ? [C] : [v];
     public override void AddToInterpretation(Interpretation itp) => itp.Add(this);
 
     public override Expr KeyExpr(NielsenGraph graph) => Sym.ToExpr(graph);

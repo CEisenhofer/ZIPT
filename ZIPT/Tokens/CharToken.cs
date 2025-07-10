@@ -11,16 +11,16 @@ public sealed class CharToken : UnitToken {
     public CharToken(char value) =>
         Value = value;
 
-    public override Str Apply(Subst subst) => [this];
-    public override Str Apply(Interpretation itp) => [this];
+    public override IStr Apply(Subst subst) => [this];
+    public override IStr Apply(Interpretation itp) => [this];
 
     public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Cache.GetCachedStrExpr(this, graph);
+        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Ctx.MkFreshConstDecl(Value.ToString(), graph.Cache.StringSort);
-        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Cache.StringSort).Apply();
-        graph.Cache.SetCachedExpr(this, e, graph);
+        FuncDecl f = graph.Ctx.MkFreshConstDecl(Value.ToString(), graph.Env.StringSort);
+        e = graph.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Env.StringSort).Apply();
+        graph.Env.SetCachedExpr(this, e, graph);
         return e;
     }
 

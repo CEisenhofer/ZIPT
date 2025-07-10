@@ -9,48 +9,51 @@ namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 
 public sealed class StrNonEq : StrEqBase {
 
-    public StrNonEq(Str lhs, Str rhs, NonTermSet dependencies) : base(lhs, rhs, dependencies) { }
+    public StrNonEq(IStr lhs, IStr rhs) : base(lhs, rhs) { }
 
-    public override StrNonEq Clone() => new(LHS, RHS, Dependencies.Clone());
+    public override StrNonEq Clone() => new(LHS, RHS);
 
-    SimplifyResult SimplifyDir(NielsenNode node, bool dir) {
+    SimplifyResult SimplifyDir(NielsenNode node, ref uint i1, ref uint i2, bool dir) {
         var s1 = LHS;
         var s2 = RHS;
-        SortStr(ref s1, ref s2, dir);
+		SortStr(ref s1, ref i1, ref s2, ref i2, dir);
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
-            SortStr(ref s1, ref s2, dir);
-            Debug.Assert(s1.Count > 0);
-            Debug.Assert(s2.Count > 0);
+            SortStr(ref s1, ref i1, ref s2, ref i2, dir);
+            Debug.Assert(s1.IsNonEmpty());
+            Debug.Assert(s2.IsNonEmpty());
 
-            if (SimplifySame(s1, s2, dir))
+            if (SimplifySame(s1, ref i1, s2, ref i2, dir))
                 continue;
 
             if (s1.Peek(dir) is UnitToken u1 && s2.Peek(dir) is UnitToken u2 && node.AreDiseq(u1, u2))
                 return SimplifyResult.Satisfied;
 
-            if (SimplifyPower(node, s1, s2, dir))
+            if (SimplifyPower(node, s1, ref i1, s2, ref i2, dir))
                 continue;
             break;
         }
         return SimplifyResult.Proceed;
     }
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node,
-        DetModifier sConstr,
-        ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
         Log.WriteLine($"Simplify DisEq: {LHS} != {RHS}");
         SimplifyResult res;
-        if ((res = SimplifyDir(node, true)) != SimplifyResult.Proceed) {
+        uint i1t = 0, i2t = 0;
+        uint i1f = 0, i2f = 0;
+        if ((res = SimplifyDir(node, ref i1t, ref i2t, true)) != SimplifyResult.Proceed) {
             reason = res == SimplifyResult.Conflict ? BacktrackReasons.SymbolClash : reason;
             return res;
         }
-        if ((res = SimplifyDir(node, false)) != SimplifyResult.Proceed) {
+        if ((res = SimplifyDir(node, ref i1t, ref i2t, false)) != SimplifyResult.Proceed) {
             reason = res == SimplifyResult.Conflict ? BacktrackReasons.SymbolClash : reason;
             return res;
         }
 
         if (LHS.IsEmpty() && RHS.IsEmpty())
             return SimplifyResult.Conflict;
+
+        LHS = LHS.Drop(i1t, i1f);
+        RHS = RHS.Drop(i2t, i2f);
 
         if (LHS.IsEmpty() || RHS.IsEmpty()) {
             var eq = LHS.IsEmpty() ? RHS : LHS;
@@ -70,10 +73,10 @@ public sealed class StrNonEq : StrEqBase {
 
     public override int CompareToInternal(StrConstraint other) {
         StrNonEq otherNonEq = (StrNonEq)other;
-        int cmp = LHS.Count.CompareTo(otherNonEq.LHS.Count);
+        int cmp = LHS.Length.CompareTo(otherNonEq.LHS.Length);
         if (cmp != 0)
             return cmp;
-        cmp = RHS.Count.CompareTo(otherNonEq.RHS.Count);
+        cmp = RHS.Length.CompareTo(otherNonEq.RHS.Length);
         if (cmp != 0)
             return cmp;
         cmp = LHS.CompareTo(otherNonEq.LHS);

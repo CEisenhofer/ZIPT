@@ -12,17 +12,14 @@ public class IntEq : IntConstraint {
 
     public IntPoly Poly { get; set; }
 
-    public IntEq(IntPoly poly, NonTermSet dependencies) : base(dependencies) => Poly = poly;
-    public IntEq(IntPoly poly) : this(poly, IntPoly.CollectSymbols(poly)) { }
+    public IntEq(IntPoly poly) => Poly = poly;
 
-    public IntEq(IntPoly lhs, IntPoly rhs, NonTermSet dependencies) : base(dependencies) {
+    public IntEq(IntPoly lhs, IntPoly rhs) {
         Poly = lhs.Clone();
         Poly.Sub(rhs);
     }
 
-    public IntEq(IntPoly lhs, IntPoly rhs) : this(lhs, rhs, IntPoly.CollectSymbols(lhs, rhs)) { }
-
-    public override IntEq Clone() => new(Poly.Clone(), Dependencies.Clone());
+    public override IntEq Clone() => new(Poly.Clone());
 
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);

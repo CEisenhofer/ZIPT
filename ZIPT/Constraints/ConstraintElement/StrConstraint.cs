@@ -6,8 +6,6 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
 
-    protected StrConstraint(NonTermSet dependencies) : base(dependencies) { }
-
     public abstract bool Contains(NamedStrToken namedStrToken);
     public abstract ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst);
     public abstract int CompareToInternal(StrConstraint other);

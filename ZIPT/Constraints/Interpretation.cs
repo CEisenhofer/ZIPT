@@ -8,15 +8,15 @@ namespace ZIPT.Constraints;
 public class Interpretation {
 
     public Dictionary<IntVar, BigInt> IntVal { get; } = [];
-    public Dictionary<NamedStrToken, Str> Substitution { get; } = [];
+    public Dictionary<NamedStrToken, IStr> Substitution { get; } = [];
     public Dictionary<SymCharToken, UnitToken> CharSubstitution { get; } = [];
 
-    public Str ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
+    public IStr ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
     public UnitToken ResolveVar(SymCharToken v) => CharSubstitution.GetValueOrDefault(v, v);
     public IntPoly ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new IntPoly(i) : new IntPoly(v);
 
     public void Add(SubstVar subst) => 
-        Substitution[subst.Var] = subst.Str.Apply(this);
+        Substitution[subst.Var] = subst.IStr.Apply(this);
 
     public void Add(SubstSChar subst) => 
         CharSubstitution[subst.Sym] = subst.C is SymCharToken c ? ResolveVar(c) : subst.C;

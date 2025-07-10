@@ -196,7 +196,7 @@ public static class ZiptSolver {
         string content = File.ReadAllText(path);
         BoolExpr[]? exprs = ctx.ParseSMTLIB2String(content);
         foreach (var expr in exprs) {
-            solver.Assert((BoolExpr)(propagator.Cache.TranslateStr(expr, propagator.Graph) ?? expr));
+            solver.Assert((BoolExpr)(propagator.Env.TranslateStr(expr, propagator.Graph) ?? expr));
         }
     }
 }

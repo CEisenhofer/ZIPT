@@ -9,10 +9,10 @@ namespace ZIPT.Tokens;
 
 public sealed class PowerToken : StrToken {
 
-    public Str Base { get; }
+    public IStr Base { get; }
     public IntPoly Power { get; }
 
-    public PowerToken(Str b, IntPoly power) {
+    public PowerToken(IStr b, IntPoly power) {
         Base = b;
         Power = power;
         if (Base is [PowerToken p]) {
@@ -28,14 +28,14 @@ public sealed class PowerToken : StrToken {
         // !(0 < Power) && Base is nullable
         // !node.IsLt(new IntPoly(), Power) && Base.IsNullable(node);
 
-    public override Str Apply(Subst subst) {
+    public override IStr Apply(Subst subst) {
         var @base = Base.Apply(subst);
         if (@base.IsEmpty())
             return [];
         return [new PowerToken(@base, Power)];
     }
 
-    public override Str Apply(Interpretation itp) {
+    public override IStr Apply(Interpretation itp) {
         var @base = Base.Apply(itp);
         if (@base.IsEmpty())
             return [];
@@ -45,14 +45,14 @@ public sealed class PowerToken : StrToken {
         Debug.Assert(!val.IsNeg);
         if (!val.IsPos)
             return [];
-        Str result = [];
+        IStr result = [];
         for (int i = 0; i < val; i++) {
             result.AddLastRange(@base);
         }
         return result;
     }
 
-    public override List<(Str str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
+    public override List<(IStr str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
         // P(u^n) := u^m P(u) with 0 <= m < n
         IntVar m = new();
         PowerToken token = new PowerToken(Base, new IntPoly(m));
@@ -71,10 +71,7 @@ public sealed class PowerToken : StrToken {
     }
 
     public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Cache.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
-
-    public override bool RecursiveIn(NamedStrToken v) =>
-        Base.RecursiveIn(v);
+        graph.Env.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
 
     protected override int CompareToInternal(StrToken other) {
         int cmp = Base.CompareTo(((PowerToken)other).Base);
