@@ -5,7 +5,8 @@ using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT;
 
@@ -317,7 +318,7 @@ public abstract class StringPropagator : UserPropagator {
                 Stack<Expr> args = [];
                 args.Push(arg0);
                 IntExpr sum = Ctx.MkInt(0);
-                while (args.IsNonEmpty()) {
+                while (args.NonEmpty) {
                     var arg = args.Pop();
                     if (Env.IsConcat(arg.FuncDecl)) {
                         args.Push(arg.Arg(0));
@@ -372,7 +373,7 @@ public abstract class StringPropagator : UserPropagator {
         //         Stack<Expr> args = [];
         //         args.Push(arg0);
         //         IntExpr sum = Ctx.MkInt(0);
-        //         while (args.IsNonEmpty()) {
+        //         while (args.NonEmpty) {
         //             var arg = args.Pop();
         //             if (Cache.IsConcat(arg.FuncDecl)) {
         //                 args.Push(arg.Arg(0));
@@ -434,7 +435,7 @@ public abstract class StringPropagator : UserPropagator {
         AddCharDiseqInternal(new DisEq(o, u2));
     }
 
-    public virtual void EqInternal(IStr s1, Expr e1, IStr s2, Expr e2) {}
+    public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
 
     static int eqCount;
 
@@ -575,7 +576,7 @@ public abstract class StringPropagator : UserPropagator {
         }
     }
 
-    protected virtual void AddNotEpsilonInternal(IStr s) {}
+    protected virtual void AddNotEpsilonInternal(Str s) {}
 
     void DisEqCB(Expr e1, Expr e2) {
         try {
@@ -627,8 +628,8 @@ public abstract class StringPropagator : UserPropagator {
             SymCharToken o2 = new();
             StrVarToken y2 = GetFreshAuxStr();
 
-            IStr u1 = [x1, o1, y1];
-            IStr u2 = [x2, o2, y2];
+            Str u1 = [x1, o1, y1];
+            Str u2 = [x2, o2, y2];
 
             Propagate([],
                 Ctx.MkEq(
@@ -724,17 +725,17 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         undoStack.Add(() => Root.RemoveDisEq(disEq));
     }
 
-    public override void EqInternal(IStr s1, Expr e1, IStr s2, Expr e2) {
+    public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
         NonTermSet nonTermSet = new();
         HashSet<CharToken> alph = [];
         eq.CollectSymbols(nonTermSet, alph);
 
-        if (Root.StrEq.Add(eq)) { // u = v
+        if (Root.ConstraintsStrEq.Add(eq)) { // u = v
             undoStack.Add(() =>
             {
-                Log.Verify(Root.StrEq.Remove(eq));
+                Log.Verify(Root.ConstraintsStrEq.Remove(eq));
             });
             if (!newInformation) {
                 newInformation = true;
@@ -742,10 +743,10 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             }
         }
         var la = new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2));
-        if (!la.Poly.IsZero && Root.IntEq.Add(la)) { // u = v => |u| = |v|
+        if (!la.Poly.IsZero && Root.ConstraintsIntEq.Add(la)) { // u = v => |u| = |v|
             undoStack.Add(() =>
             {
-                Log.Verify(Root.IntEq.Remove(la));
+                Log.Verify(Root.ConstraintsIntEq.Remove(la));
             });
             if (!newInformation) {
                 newInformation = true;
@@ -763,13 +764,13 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         });
     }
 
-    protected override void AddNotEpsilonInternal(IStr s) {
-        var c = IntLe.MkLt(new IntPoly(), LenVar.MkLenPoly(s));
-        if (!Root.IntLe.Add(c)) 
+    protected override void AddNotEpsilonInternal(Str s) {
+        var c = IntLe.MkLt(new PDD(), LenVar.MkLenPoly(s));
+        if (!Root.ConstraintsIntLe.Add(c)) 
             return;
         undoStack.Add(() =>
         { 
-            Log.Verify(Root.IntLe.Remove(c));
+            Log.Verify(Root.ConstraintsIntLe.Remove(c));
         });
     }
 
@@ -836,8 +837,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         Debug.Assert(Graph.CurrentRoot is not null);
         var currentRoot = Graph.CurrentRoot!;
         var currentPath = Graph.CurrentPath.ToList();
-        var satNode = currentPath.IsEmpty() ? currentRoot : currentPath[^1].Tgt;
-        Debug.Assert(satNode.StrEq.Count == 0);
+        var satNode = currentPath.Count == 0 ? currentRoot : currentPath[^1].Tgt;
+        Debug.Assert(satNode.ConstraintsStrEq.Count == 0);
         
         Graph.ResetIndices(); // We need the original indices for retrieving the correct root constraints
 

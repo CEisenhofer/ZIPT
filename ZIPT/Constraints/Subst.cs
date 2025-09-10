@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using Microsoft.Z3;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
@@ -8,8 +9,8 @@ public abstract class Subst {
 
     public abstract bool IsEliminating { get; }
 
-    public abstract IStr ResolveVar(NamedStrToken v);
-    public abstract IStr ResolveVar(SymCharToken v);
+    public abstract Str ResolveVar(NamedStrToken v);
+    public abstract Str ResolveVar(SymCharToken v);
 
     public abstract void AddToInterpretation(Interpretation itp);
 

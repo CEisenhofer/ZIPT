@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
@@ -17,7 +18,6 @@ public abstract class Constraint {
     public abstract override int GetHashCode();
     public abstract override string ToString();
 
-    public abstract void Apply(Subst subst);
     public abstract void Apply(Interpretation itp);
 
     public SimplifyResult SimplifyAndPropagate(NielsenNode node, NonTermSet modSet, DetModifier outSideCnstr, ref BacktrackReasons reason, bool force) {

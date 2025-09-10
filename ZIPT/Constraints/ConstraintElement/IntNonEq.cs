@@ -1,24 +1,35 @@
-﻿using Microsoft.Z3;
+﻿using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
 // Poly != 0
 public class IntNonEq : IntConstraint {
 
-    public IntPoly Poly { get; set; }
+    public PDD<BigInteger> Poly { get; set; }
 
-    public IntNonEq(IntPoly poly, NonTermSet dependencies) : base() => Poly = poly;
+    public IntNonEq(IntNonEq eq) {
+        Poly = eq.Poly;
+    }
 
-    public IntNonEq(IntPoly lhs, IntPoly rhs, NonTermSet dependencies) : base() {
-        Poly = lhs.Clone();
-        Poly.Sub(rhs);
+    public IntNonEq(PDD<BigInteger> poly) {
+        Poly = poly;
+        if (!Poly.IsNormal)
+            Poly = Poly.Negate();
+    }
+
+    public IntNonEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        Poly = lhs;
+        Poly = Poly.Sub(rhs);
+        if (!Poly.IsNormal)
+            Poly = Poly.Negate();
     }
 
     public override Constraint Clone() => 
-        new IntNonEq(Poly.Clone(), Dependencies.Clone());
+        new IntNonEq(this);
 
     public override bool Equals(object? obj) =>
         obj is IntNonEq neq && Equals(neq);
@@ -46,12 +57,9 @@ public class IntNonEq : IntConstraint {
     }
 
     public override string ToString() {
-        Poly.GetPosNeg(out var pos, out var neg);
+        var (pos, neg) = Poly.GetPosNeg();
         return $"{pos} != {neg}";
     }
-
-    public override void Apply(Subst subst) => 
-        Poly = Poly.Apply(subst);
 
     public override void Apply(Interpretation itp) => 
         Poly = Poly.Apply(itp);
@@ -65,7 +73,7 @@ public class IntNonEq : IntConstraint {
             return SimplifyResult.Conflict;
         }
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out BigInt val)) {
+        if (Poly.IsConst(out BigInteger val)) {
             if (!val.IsZero)
                 return SimplifyResult.Satisfied;
             reason = BacktrackReasons.Arithmetic;
@@ -81,5 +89,5 @@ public class IntNonEq : IntConstraint {
         Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
-        new IntEq(Poly.Clone());
+        new IntEq(Poly);
 }

@@ -2,7 +2,7 @@
 using Microsoft.Z3;
 using ZIPT.MiscUtils;
 using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Tokens;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 

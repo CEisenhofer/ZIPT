@@ -2,11 +2,12 @@
 using System.Diagnostics;
 using System.Text;
 using ZIPT.MiscUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
-public interface IStr : IEquatable<IStr>, IComparable<IStr> {
+public interface OldIStr : IEquatable<OldIStr>, IComparable<OldIStr> {
 
     public StrToken this[int index] { get; }
     public IReadOnlyDictionary<NamedStrToken, uint> ContainedVariables { get; }
@@ -27,7 +28,7 @@ public interface IStr : IEquatable<IStr>, IComparable<IStr> {
     public StrToken Peek(bool dir);
     public StrToken Peek(bool dir, int idx);
 
-    public IStr Drop(uint left, uint right);
+    public OldIStr Drop(uint left, uint right);
 
     public Expr ToExpr(NielsenGraph graph) {
         if (IsEmpty())
@@ -43,9 +44,9 @@ public interface IStr : IEquatable<IStr>, IComparable<IStr> {
         }
         return last;
     }
-    public static NonTermSet CollectSymbols(params IStr[] strings) {
+    public static NonTermSet CollectSymbols(params OldIStr[] strings) {
         NonTermSet nonTermSet = new();
-        foreach (IStr s in strings) {
+        foreach (OldIStr s in strings) {
             s.CollectSymbols(nonTermSet, []);
         }
         return nonTermSet;
@@ -73,7 +74,7 @@ public interface IStr : IEquatable<IStr>, IComparable<IStr> {
         }
     }
 
-    int IComparable<IStr>.CompareTo(IStr? other) {
+    int IComparable<OldIStr>.CompareTo(OldIStr? other) {
         if (other is null)
             return 1;
         if (ReferenceEquals(this, other))
@@ -91,7 +92,7 @@ public interface IStr : IEquatable<IStr>, IComparable<IStr> {
         return 0;
     }
 
-    bool IEquatable<IStr>.Equals(IStr? other) {
+    bool IEquatable<OldIStr>.Equals(OldIStr? other) {
         if (other is null)
             return false;
         if (Length != other.Length)

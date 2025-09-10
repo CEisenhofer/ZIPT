@@ -1,7 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Text;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 

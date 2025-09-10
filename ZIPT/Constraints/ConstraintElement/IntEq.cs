@@ -3,23 +3,33 @@ using System.Numerics;
 using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
 // Poly = 0
 public class IntEq : IntConstraint {
 
-    public IntPoly Poly { get; set; }
+    public PDD<BigInteger> Poly { get; set; }
 
-    public IntEq(IntPoly poly) => Poly = poly;
-
-    public IntEq(IntPoly lhs, IntPoly rhs) {
-        Poly = lhs.Clone();
-        Poly.Sub(rhs);
+    public IntEq(IntEq eq) {
+        Poly = eq.Poly;
     }
 
-    public override IntEq Clone() => new(Poly.Clone());
+    public IntEq(PDD<BigInteger> poly) {
+        Poly = poly;
+        if (!Poly.IsNormal)
+            Poly = Poly.Negate();
+    }
+
+    public IntEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        Poly = lhs;
+        Poly = Poly.Sub(rhs);
+        if (!Poly.IsNormal)
+            Poly = Poly.Negate();
+    }
+
+    public override IntEq Clone() => new(this);
 
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);
@@ -48,12 +58,9 @@ public class IntEq : IntConstraint {
     }
 
     public override string ToString() {
-        Poly.GetPosNeg(out var pos, out var neg);
+        var (pos, neg) = Poly.GetPosNeg();
         return $"{pos} = {neg}";
     }
-
-    public override void Apply(Subst subst) => 
-        Poly = Poly.Apply(subst);
 
     public override void Apply(Interpretation itp) => 
         Poly = Poly.Apply(itp);
@@ -63,7 +70,7 @@ public class IntEq : IntConstraint {
     public SimplifyResult Simplify(NielsenNode node) {
         simplifyCnt++;
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out BigInt val))
+        if (Poly.IsConst(out BigInteger val))
             return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Contains(0))
@@ -71,7 +78,7 @@ public class IntEq : IntConstraint {
         if (bounds.IsUnit)
             return SimplifyResult.Satisfied;
         // Normalization by division
-        BigInt c = Poly.ConstPart;
+        BigInteger c = Poly.ConstPart;
         BigInteger gcd = Poly.NonConst.First().occ.Abs();
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
@@ -123,7 +130,7 @@ public class IntEq : IntConstraint {
                 continue;
             }
             int i0 = i++;
-            var lb = IntPoly.GetBounds(node, Poly.Where((_, j) => i0 != j));
+            var lb = PDD<BigInteger>.GetBounds(node, Poly.Where((_, j) => i0 != j));
             if (lb.IsFull)
                 continue;
             if (!n.occ.IsNeg)
@@ -152,7 +159,7 @@ public class IntEq : IntConstraint {
 
 
     public bool GetLess(Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>> largerVars) {
-        Poly.GetPosNeg(out IntPoly pos, out IntPoly neg);
+        var (pos, neg) = Poly.GetPosNeg();
         bool swp = false;
         if (neg.Count == 1) {
             (pos, neg) = (neg, pos);
@@ -192,5 +199,5 @@ public class IntEq : IntConstraint {
         Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
-        new IntNonEq(Poly.Clone(), Dependencies.Clone());
+        new IntNonEq(Poly);
 }

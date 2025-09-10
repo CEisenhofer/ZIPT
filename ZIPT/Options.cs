@@ -42,6 +42,4 @@ public static class Options {
 
     public static int TimeOut { get; set; } = 0;
 
-    // Use an explicit representation of the string
-    public static bool ExplicitStrings { get; }
 }

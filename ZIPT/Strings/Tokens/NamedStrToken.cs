@@ -1,12 +1,13 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using ZIPT.Constraints;
-using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
 
-namespace ZIPT.Tokens;
+namespace ZIPT.Strings.Tokens;
 
 public abstract class NamedStrToken : StrToken {
-    public sealed override bool Ground => false;
+
+    public uint StrVarId { get; }
 
     public abstract string OriginalName { get; }
     public string Name => Aux ? $"{OriginalName}${ChildIdx}" : OriginalName;
@@ -31,30 +32,17 @@ public abstract class NamedStrToken : StrToken {
         Parent = null;
     }
 
+    [Pure]
     public abstract NamedStrToken GetExtension1();
+    [Pure]
     public abstract NamedStrToken GetExtension2();
 
+    [Pure]
     public IntVar GetPowerExtension() => 
         PowerExtension ??= new IntVar();
 
     public sealed override bool IsNullable(NielsenNode node) => 
         LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
-
-    public sealed override List<(IStr str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir) {
-        // P(x) := y with x = yz, |y| < |x|
-        // TODO
-        NamedStrToken y = GetExtension1();
-        NamedStrToken z = GetExtension2();
-        IntPoly yl = new(LenVar.MkLenPoly([y]));
-        IntPoly xl = new(LenVar.MkLenPoly([this]));
-        yl.Plus(1);
-        if (dir)
-            return [([y], [IntLe.MkLe(yl, xl)], new SubstVar(this, [y, z]))];
-        return [([y], [IntLe.MkLe(yl, xl)], new SubstVar(this, [z, y]))];
-    }
-
-    public sealed override IStr Apply(Subst subst) => subst.ResolveVar(this);
-    public sealed override IStr Apply(Interpretation itp) => itp.ResolveVar(this);
 
     protected sealed override int CompareToInternal(StrToken other) {
         Debug.Assert(other is NamedStrToken);
@@ -68,7 +56,7 @@ public abstract class NamedStrToken : StrToken {
     public bool Equals(NamedStrToken other) =>
         ChildIdx.Equals(other.ChildIdx) && Name.Equals(other.Name, StringComparison.Ordinal);
 
-    public override int GetHashCode() => 509077363 * HashCode.Combine(GetType(), Name, ChildCnt);
+    public override int GetHashCode() => HashCode.Combine(GetType(), Name, ChildCnt);
 
     public override string ToString(NielsenGraph? graph) => Name;
 }

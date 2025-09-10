@@ -107,21 +107,21 @@ public readonly struct Interval {
         );
     }
 
-    public BoolExpr ToZ3Constraint(NonTermInt v, NielsenGraph graph) {
+    public BoolExpr ToZ3Constraint(NamedInt v, NielsenGraph graph) {
         if (IsFull)
             return graph.Ctx.MkTrue();
         IntExpr ve = v.ToExpr(graph);
         if (IsUnit) {
             Debug.Assert(!Min.IsInf);
-            return graph.Ctx.MkEq(ve, ((BigInt)Min).ToExpr(graph));
+            return graph.Ctx.MkEq(ve, ((BigInteger)Min).ToExpr(graph));
         }
         if (Min.IsNegInf)
-            return graph.Ctx.MkLe(ve, ((BigInt)Max).ToExpr(graph));
+            return graph.Ctx.MkLe(ve, ((BigInteger)Max).ToExpr(graph));
         if (Max.IsPosInf)
-            return graph.Ctx.MkGe(ve, ((BigInt)Min).ToExpr(graph));
+            return graph.Ctx.MkGe(ve, ((BigInteger)Min).ToExpr(graph));
         return graph.Ctx.MkAnd(
-            graph.Ctx.MkLe(ve, ((BigInt)Max).ToExpr(graph)),
-            graph.Ctx.MkGe(ve, ((BigInt)Min).ToExpr(graph))
+            graph.Ctx.MkLe(ve, ((BigInteger)Max).ToExpr(graph)),
+            graph.Ctx.MkGe(ve, ((BigInteger)Min).ToExpr(graph))
         );
     }
 

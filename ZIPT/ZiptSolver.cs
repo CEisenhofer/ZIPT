@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using Microsoft.Z3;
-using ZIPT.Tokens;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT;
 

@@ -1,17 +1,19 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.IntUtils;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
-namespace ZIPT.Tokens.AuxTokens;
+namespace ZIPT.Strings.Tokens.AuxTokens;
 
 public sealed class StrAtToken : NamedStrToken {
 
-    public IStr S { get; }
-    public IntPoly I { get; }
+    public Str S { get; }
+    public PDD<BigInteger> I { get; }
 
     public override string OriginalName => $"strAt({S},{I})";
 
-    public StrAtToken(IStr s, IntPoly i) {
+    public StrAtToken(Str s, PDD<BigInteger> i) {
         S = s;
         I = i;
     }

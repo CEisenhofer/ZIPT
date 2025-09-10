@@ -1,6 +1,7 @@
 ﻿using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
@@ -27,18 +28,18 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V2);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        var sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
+        var sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
-        IStr s = [V2];
+        Str s = [V2];
         subst = new SubstVar(V1, s);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
@@ -46,10 +47,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V1, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
@@ -57,10 +58,10 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         subst = new SubstVar(V2, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new IntPoly(1), new IntPoly(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 #else
@@ -68,19 +69,19 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V2 (progress)
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
-        IStr s = [V2];
+        Str s = [V2];
         node.MkChild(node, [new SubstVar(V1, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), true);
 
         s = Forwards ? [V2, V1] : [V1, V2];
         node.MkChild(node,
             [new SubstVar(V1, s)],
-            [IntLe.MkLt(new IntPoly(), new IntPoly(new LenVar(V1)))], // 0 < |V1|
+            [IntLe.MkLt(new PDD(), new PDD(new LenVar(V1)))], // 0 < |V1|
             Array.Empty<DisEq>(), false);
 
         s = Forwards ? [V1, V2] : [V2, V1];
         node.MkChild(node,
             [new SubstVar(V2, s)],
-            [IntLe.MkLt(new IntPoly(), new IntPoly(new LenVar(V2)))], // 0 < |V2|
+            [IntLe.MkLt(new PDD(), new PDD(new LenVar(V2)))], // 0 < |V2|
             Array.Empty<DisEq>(), false);
 #endif
     }

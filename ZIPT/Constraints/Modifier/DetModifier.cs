@@ -9,7 +9,7 @@ public class DetModifier : ModifierBase {
     //List<Subst> Substitutions { get; } = [];
     Subst? Substitution { get; set; }
     public HashSet<Constraint> SideConstraints { get; } = [];
-    public bool Trivial => Substitution is null && SideConstraints.IsEmpty();
+    public bool Trivial => Substitution is null && SideConstraints.Empty;
 
     public void Add(Constraint cnstr) =>
         SideConstraints.Add(cnstr);
@@ -25,7 +25,7 @@ public class DetModifier : ModifierBase {
     }
 
     public override void Apply(NielsenNode node) {
-        Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null);
+        Debug.Assert(SideConstraints.NonEmpty || Substitution is not null);
         node.MkChild(node, 
             CollectionExtension.EmptyOrUnit(Substitution),
             SideConstraints,

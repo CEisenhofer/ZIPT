@@ -152,10 +152,10 @@ public readonly struct BigIntInf : IComparable<BigIntInf> {
         return v.val;
     }
 
-    public static explicit operator BigInt(BigIntInf v) {
+    public static explicit operator BigInteger(BigIntInf v) {
         if (v.IsInf)
             throw new InvalidCastException("Cannot cast infinity to int");
-        return new BigInt(v.val);
+        return new BigInteger(v.val);
     }
 
     public override bool Equals(object? obj) =>

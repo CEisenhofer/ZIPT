@@ -1,8 +1,9 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
+using ZIPT.Strings;
 
-namespace ZIPT.Tokens;
+namespace ZIPT.Strings.Tokens;
 
 public sealed class SymCharToken : UnitToken {
 
@@ -12,9 +13,6 @@ public sealed class SymCharToken : UnitToken {
     public static void ResetCounter() => nextId = 0;
 
     public SymCharToken() => VarId = nextId++;
-
-    public override IStr Apply(Subst subst) => subst.ResolveVar(this);
-    public override IStr Apply(Interpretation itp) => [itp.ResolveVar(this)];
 
     public override Expr ToExpr(NielsenGraph graph) {
         Expr? e = graph.Env.GetCachedStrExpr(this, graph);

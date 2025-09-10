@@ -1,7 +1,8 @@
 ﻿using System.Diagnostics;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
@@ -32,21 +33,21 @@ public class EqSplitModifier : DirectedNielsenModifier {
         Debug.Assert(LhsIdx < Eq.LHS.Length || RhsIdx < Eq.RHS.Length);
 
         // Eq.LHS[0..LhsIdx] [Padding] = Eq.RHS[0..RhsIdx] && Eq.LHS[LhsIdx..] = [Padding] Eq.RHS[RhsIdx..] (progress)
-        IStr lhs1 = new IStr(Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
-        IStr rhs1 = new IStr(Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
-        IStr lhs2 = new IStr(!Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
-        IStr rhs2 = new IStr(!Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
+        Str lhs1 = new Str(Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
+        Str rhs1 = new Str(Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
+        Str lhs2 = new Str(!Forwards ? LhsIdx : Eq.LHS.Length - LhsIdx);
+        Str rhs2 = new Str(!Forwards ? RhsIdx : Eq.RHS.Length - RhsIdx);
         for (int i = 0; i < LhsIdx; i++) {
-            lhs1.Add(Eq.LHS.Peek(Forwards, i), !Forwards);
+            lhs1.Add(Eq.LHS[Forwards, i], !Forwards);
         }
         for (int i = LhsIdx; i < Eq.LHS.Length; i++) {
-            lhs2.Add(Eq.LHS.Peek(Forwards, i), !Forwards);
+            lhs2.Add(Eq.LHS[Forwards, i], !Forwards);
         }
         for (int i = 0; i < RhsIdx; i++) {
-            rhs1.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
+            rhs1.Add(Eq.RHS[Forwards, i], !Forwards);
         }
         for (int i = RhsIdx; i < Eq.RHS.Length; i++) {
-            rhs2.Add(Eq.RHS.Peek(Forwards, i), !Forwards);
+            rhs2.Add(Eq.RHS[Forwards, i], !Forwards);
         }
 
         SymCharToken[] ch;

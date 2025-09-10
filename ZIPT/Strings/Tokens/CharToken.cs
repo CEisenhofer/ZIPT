@@ -1,8 +1,9 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
+using ZIPT.Strings;
 
-namespace ZIPT.Tokens;
+namespace ZIPT.Strings.Tokens;
 
 public sealed class CharToken : UnitToken {
 
@@ -10,9 +11,6 @@ public sealed class CharToken : UnitToken {
 
     public CharToken(char value) =>
         Value = value;
-
-    public override IStr Apply(Subst subst) => [this];
-    public override IStr Apply(Interpretation itp) => [this];
 
     public override Expr ToExpr(NielsenGraph graph) {
         Expr? e = graph.Env.GetCachedStrExpr(this, graph);

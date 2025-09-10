@@ -1,12 +1,16 @@
-﻿using System.Diagnostics;
-using Microsoft.Z3;
+﻿using Microsoft.Z3;
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Xml.Linq;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.IntUtils;
-using ZIPT.MiscUtils;
-using ZIPT.Tokens;
-using ZIPT.Tokens.AuxTokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
+using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.AuxTokens;
 
 namespace ZIPT;
 
@@ -51,16 +55,36 @@ public class Environment : IDisposable {
     public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
     public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
 
-    public readonly Dictionary<(NonTermInt v, int modifications), IntExpr> IntTokenToExpr = [];
-    public readonly Dictionary<IntExpr, NonTermInt> ExprToIntToken = [];
+    public readonly Dictionary<(NamedInt v, int modifications), IntExpr> IntTokenToExpr = [];
+    public readonly Dictionary<IntExpr, NamedInt> ExprToIntToken = [];
 
-    public List<StrToken> BaseSlices { get; } = [];
-    public List<SharedStr> RefSlices { get; } = [];
-    public Trie StringCache { get; } = new();
+    public GroundChunk EmptyChunk { get; }
+    public Str Empty { get; }
+    public Dictionary<(GroundChunk, StrVarToken, GroundChunk), VarChunk> VarChunkCache { get; } = [];
+    public Dictionary<PowerToken, PowerChunk> PowerChunkCache { get; } = [];
+    public Trie TrieRoot { get; } = new();
+    readonly Dictionary<string, StrVarToken> strVarCache = [];
+
+    public readonly PDD<BigInteger>.PDDManager IntPDDManager = new();
+    public readonly PDD<BigRational>.PDDManager RatPDDManager = new();
+
+    public PDD<BigInteger> ZeroInt => IntPDDManager.Zero;
+    public PDD<BigInteger> OneInt => IntPDDManager.One;
+    public PDD<BigRational> ZeroRat => RatPDDManager.Zero;
+    public PDD<BigRational> OneRat => RatPDDManager.One;
+
+    public class Trie {
+        public Dictionary<CharToken, Trie> CharChild { get; } = [];
+        public GroundChunk? Chunk { get; set; }
+    }
 
     public Environment(Context ctx) {
         Ctx = ctx;
-        StringSort = ctx.MkUninterpretedSort("IStr");
+        
+        EmptyChunk = GetOrCreateGroundChunk([]);
+        Empty = new Str([]);
+
+        StringSort = ctx.MkUninterpretedSort("Str");
         Epsilon = ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
         ConcatFct = ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
         PowerFct = ctx.MkUserPropagatorFuncDecl("power", [StringSort, ctx.IntSort], StringSort);
@@ -79,54 +103,162 @@ public class Environment : IDisposable {
         if (disposed)
             return;
         disposed = true;
+        strVarCache.Clear();
+        constRatPDDCache.Clear();
+        varIntPDDCache.Clear();
+        VarChunkCache.Clear();
+        PowerChunkCache.Clear();
         StrTokenToExpr.Clear();
         ExprToIntToken.Clear();
-        StrVarToken.DisposeAll();
-        BaseSlices.Clear();
-        RefSlices.Clear();
     }
 
-    uint MkStrSliceTokenRef(StrToken token) {
-        Debug.Assert(token.Id < BaseSlices.Count);
-        return token.Id * 2;
+    public StrVarToken GetOrCreateStrVar(string var) {
+        if (strVarCache.TryGetValue(var, out StrVarToken? v))
+            return v;
+        Debug.Assert(!var.Contains('$'));
+        Debug.Assert(!var.Contains('#'));
+        v = new StrVarToken(var);
+        strVarCache.Add(var, v);
+        return v;
     }
 
-    public IStr MkString(IReadOnlyList<StrToken> tokens) {
-        if (Options.ExplicitStrings)
-            return MkExplicitStr(tokens);
-        return MkSharedStr(tokens);
-    }
-
-    // Not every string is cached, but the ones created this way are
-    public SharedStr MkSharedStr(IReadOnlyList<StrToken> tokens) {
-        uint id = StringCache.Get(tokens);
-        if (id != uint.MaxValue) {
-            Debug.Assert(id < RefSlices.Count);
-            return RefSlices[(int)id];
+    public string GetFreshName(string name, int start = 1) {
+        for (; start < int.MaxValue; start++) {
+            if (!strVarCache.ContainsKey($"{name}#{start}"))
+                return $"{name}#{start}";
         }
-        uint[] refIndexes = new uint[tokens.Count];
-        Dictionary<NamedStrToken, uint> vars = [];
-        for (int i = 0; i < tokens.Count; i++) {
-            refIndexes[i] = MkStrSliceTokenRef(tokens[i]);
-            if (tokens[i] is NamedStrToken n)
-                vars.Inc(n);
-        }
-        SharedStr slice = new(this, (uint)RefSlices.Count, refIndexes, (uint)refIndexes.Length, vars);
-        RefSlices.Add(slice);
-        StringCache.Add(tokens, slice.Id);
-        return slice;
+        Debug.Assert(false);
+        return "";
     }
 
-    public IStr MkEmptySharedStr() =>
-        MkSharedStr(Array.Empty<StrToken>());
+    public string GetNextFreshName(string name) {
+        int idx = name.LastIndexOf('#');
+        if (idx == -1)
+            return GetFreshName(name);
+        return int.TryParse(name[(idx + 1)..], out int num)
+            ? GetFreshName(name[..idx], num + 1)
+            : GetFreshName(name);
+    }
 
-    public IStr MkEmptyStr() =>
-        MkString(Array.Empty<StrToken>());
+    public GroundChunk GetOrCreateGroundChunk(ReadOnlySpan<CharToken> t) {
+        var chars = new CharToken[t.Length];
+        Trie trie = TrieRoot;
+        for (int i = 0; i < t.Length; i++) {
+            chars[i] = t[i];
+            if (!trie.CharChild.TryGetValue(t[i], out var child))
+                trie.CharChild[t[i]] = child = new Trie();
+            trie = child;
+        }
+        return new GroundChunk(chars);
+    }
 
-    public ExplStr MkExplicitStr(IReadOnlyList<StrToken> tokens) => new(tokens);
+    public GroundChunk GetOrCreateGroundChunk(IEnumerable<CharToken> t, int cnt) {
+        var chars = new CharToken[cnt];
+        int i = 0;
+        Trie trie = TrieRoot;
+        foreach (var c in t) {
+            chars[i++] = c;
+            if (!trie.CharChild.TryGetValue(c, out var child))
+                trie.CharChild[c] = child = new Trie();
+            trie = child;
+        }
+        return new GroundChunk(chars);
+    }
 
-    public int GetModCnt(StrToken t, NielsenGraph graph) =>
-        t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod) ? 0 : mod;
+    public VarChunk GetVarChunk(GroundChunk prefix, StrVarToken v, GroundChunk postfix) {
+        if (VarChunkCache.TryGetValue((prefix, v, postfix), out var chunk))
+            return chunk;
+        return new VarChunk(v, prefix, postfix, this);
+    }
+
+    public PowerChunk GetPowerChunk(PowerToken p) {
+        if (PowerChunkCache.TryGetValue(p, out var chunk))
+            return chunk;
+        return new PowerChunk(p, this);
+    }
+
+    public Str MkString(List<StrToken> tokens) =>
+        MkString(CollectionsMarshal.AsSpan(tokens));
+
+    public Str MkString(ReadOnlySpan<StrToken> tokens) {
+
+        GroundChunk GetGroundChunk(ReadOnlySpan<StrToken> t) {
+            var chars = new CharToken[t.Length];
+            for (int i = 0; i < t.Length; i++) {
+                chars[i] = t[i] switch {
+                    CharToken c => c,
+                    StrVarToken => throw new NotSupportedException("Cannot create GroundChunk with StrVarToken"),
+                    _ => throw new NotSupportedException("Unknown token type: " + t[i].GetType())
+                };
+            }
+            return new GroundChunk(chars);
+        }
+
+        int chunkCnt = 0;
+        for (int i = 0; i < tokens.Length; i++) {
+            if (tokens[i] is StrVarToken)
+                chunkCnt++;
+        }
+        chunkCnt = Math.Max(chunkCnt, 1);
+        Chunk[] chunks = new Chunk[chunkCnt];
+
+        int from = 0;
+
+        GroundChunk? prefix = null;
+        StrVarToken? currentVar = null;
+
+        Trie charTrie = TrieRoot;
+        int chunkId = 0;
+        // TODO: Compute occ counts already here
+
+        for (int i = 0; i < tokens.Length; i++) {
+            StrToken t = tokens[i];
+
+            if (t is CharToken c) {
+                if (!charTrie.CharChild.TryGetValue(c, out var trie))
+                    charTrie.CharChild[c] = trie = new Trie();
+                charTrie = trie;
+                continue;
+            }
+            if (t is not StrVarToken v)
+                throw new NotSupportedException("Unknown type " + t.GetType());
+
+            if (currentVar is not null) {
+                // we have found another variable
+                Debug.Assert(currentVar is not null);
+                Debug.Assert(prefix is not null);
+                charTrie.Chunk ??= GetGroundChunk(tokens[from..i]);
+                var postfix = charTrie.Chunk;
+                if (!VarChunkCache.TryGetValue((prefix, currentVar, postfix), out var chunk))
+                    chunk = new VarChunk(currentVar, prefix, postfix, this);
+                chunks[chunkId++] = chunk;
+                prefix = null;
+                currentVar = null;
+                charTrie = TrieRoot;
+                from = i;
+            }
+            // we haven't yet found another variable
+            charTrie.Chunk ??= GetGroundChunk(tokens[from..i]);
+            prefix = charTrie.Chunk;
+            from = i + 1;
+            currentVar = v;
+        }
+        if (currentVar is null) {
+            // it is completely ground
+            Debug.Assert(prefix is not null);
+            chunks[chunkId++] = prefix;
+            Debug.Assert(chunkId == 1);
+        }
+        else {
+            Debug.Assert(prefix is not null);
+            charTrie.Chunk ??= GetGroundChunk(tokens[from..]);
+            var postfix = charTrie.Chunk;
+            if (!VarChunkCache.TryGetValue((prefix, currentVar, postfix), out var chunk))
+                chunk = new VarChunk(currentVar, prefix, postfix, this);
+            chunks[chunkId] = chunk;
+        }
+        return new Str(chunks);
+    }
 
     public Expr? GetCachedStrExpr(StrToken t, NielsenGraph graph) => 
         GetCachedStrExpr(t, t is NamedStrToken n && graph.CurrentModificationCnt.TryGetValue(n, out int mod) ? mod : 0);
@@ -134,7 +266,7 @@ public class Environment : IDisposable {
     public Expr? GetCachedStrExpr(StrToken t, int mod) => 
         StrTokenToExpr.GetValueOrDefault((t, mod));
 
-    public IntExpr? GetCachedIntExpr(NonTermInt t, NielsenGraph graph) => 
+    public IntExpr? GetCachedIntExpr(NamedInt t, NielsenGraph graph) => 
         IntTokenToExpr.GetValueOrDefault((t, t is StrDepIntVar n && graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod) ? mod : 0));
 
     public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
@@ -148,7 +280,7 @@ public class Environment : IDisposable {
         ExprToStrToken.Add(e, t);
     }
 
-    public void SetCachedExpr(NonTermInt t, IntExpr e, NielsenGraph graph) {
+    public void SetCachedExpr(NamedInt t, IntExpr e, NielsenGraph graph) {
         if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
             mod = 0;
         IntTokenToExpr.Add((t, mod), e);
@@ -218,7 +350,7 @@ public class Environment : IDisposable {
                     TranslateStr(e.Arg(1), graph) ?? e.Arg(1),
                     TranslateStr(e.Arg(2), graph) ?? e.Arg(2));
             case Z3_decl_kind.Z3_OP_UNINTERPRETED when e is SeqExpr:
-                return StrVarToken.GetOrCreate(f.Name.ToString()).ToExpr(graph);
+                return GetOrCreateStrVar(f.Name.ToString()).ToExpr(graph);
             case Z3_decl_kind.Z3_OP_EQ when e.Arg(0) is SeqExpr:
                 return Ctx.MkEq(
                     TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
@@ -304,7 +436,7 @@ public class Environment : IDisposable {
             return null;
         var ss = MkString(s);
         var sc = MkString(c);
-        return new StrPrefixOf(sc, ss, false, IStr.CollectSymbols(ss, sc));
+        return new StrPrefixOf(sc, ss, false);
     }
 
     public StrSuffixOf? ParseSuffix(Expr contained, Expr str) {
@@ -316,7 +448,7 @@ public class Environment : IDisposable {
             return null;
         var ss = MkString(s);
         var sc = MkString(c);
-        return new StrSuffixOf(sc, ss, false, IStr.CollectSymbols(ss, sc));
+        return new StrSuffixOf(sc, ss, false);
     }
 
     public StrContains? ParseContains(Expr str, Expr contained) {
@@ -328,7 +460,7 @@ public class Environment : IDisposable {
             return null;
         var ss = MkString(s);
         var sc = MkString(c);
-        return new StrContains(ss, sc, false, IStr.CollectSymbols(ss, sc));
+        return new StrContains(ss, sc, false);
     }
 
     public List<StrToken>? TryParseStr(Expr expr) {
@@ -350,7 +482,7 @@ public class Environment : IDisposable {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                IntPoly? p = TryParseInt((IntExpr)expr.Arg(1));
+                PDD? p = TryParseInt((IntExpr)expr.Arg(1));
                 if (p is null)
                     return null;
                 return [new PowerToken(MkString(@base), p)];
@@ -359,7 +491,7 @@ public class Environment : IDisposable {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                IntPoly? at = TryParseInt((IntExpr)expr.Arg(1));
+                PDD? at = TryParseInt((IntExpr)expr.Arg(1));
                 if (at is null)
                     return null;
                 return [new StrAtToken(MkString(@base), at)];
@@ -368,10 +500,10 @@ public class Environment : IDisposable {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                IntPoly? from = TryParseInt((IntExpr)expr.Arg(1));
+                PDD? from = TryParseInt((IntExpr)expr.Arg(1));
                 if (from is null)
                     return null;
-                IntPoly? len = TryParseInt((IntExpr)expr.Arg(2));
+                PDD? len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
                 return [new SubStrToken(MkString(@base), from, len)];
@@ -384,7 +516,7 @@ public class Environment : IDisposable {
             if (expr.IsString)
                 return expr.String.Select(o => (StrToken)new CharToken(o)).ToList();
             if (expr.IsConst)
-                return [StrVarToken.GetOrCreate(f.Name.ToString())];
+                return [GetOrCreateStrVar(f.Name.ToString())];
             if (expr.IsConcat) {
                 List<StrToken> r = [];
                 foreach (var arg in expr.Args) {
@@ -399,7 +531,7 @@ public class Environment : IDisposable {
                 var s = TryParseStr(expr.Args[0]);
                 if (s is null)
                     return null;
-                IntPoly? p = TryParseInt((IntExpr)expr.Args[1]);
+                PDD? p = TryParseInt((IntExpr)expr.Args[1]);
                 if (p is null)
                     return null;
                 return [new StrAtToken(MkString(s), p)];
@@ -408,10 +540,10 @@ public class Environment : IDisposable {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                IntPoly? from = TryParseInt((IntExpr)expr.Arg(1));
+                PDD? from = TryParseInt((IntExpr)expr.Arg(1));
                 if (from is null)
                     return null;
-                IntPoly? len = TryParseInt((IntExpr)expr.Arg(2));
+                PDD? len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
                 return [new SubStrToken(MkString(@base), from, len)];
@@ -420,11 +552,11 @@ public class Environment : IDisposable {
         throw new NotSupportedException(f.Name.ToString());
     }
 
-    public IntPoly? TryParseInt(IntExpr expr) {
+    public PDD? TryParseInt(IntExpr expr) {
         if (expr.Sort is not IntSort)
             return null;
         if (expr is IntNum num)
-            return new IntPoly(num.BigInteger);
+            return new PDD(num.BigInteger);
         if (expr.FuncDecl.Equals(LenFct) || expr.IsLength) {
             var str = TryParseStr(expr.Arg(0));
             return str is null ? null : LenVar.MkLenPoly(MkString(str));
@@ -438,22 +570,22 @@ public class Environment : IDisposable {
             var contained = TryParseStr(expr.Arg(1));
             if (contained is null)
                 return null;
-            IntPoly? start = TryParseInt((IntExpr)expr.Arg(2));
-            return start is null ? null : new IntPoly(new IndexOfVar(MkString(str), MkString(contained), start));
+            PDD? start = TryParseInt((IntExpr)expr.Arg(2));
+            return start is null ? null : new PDD(new IndexOfVar(MkString(str), MkString(contained), start));
         }
         if (ExprToIntToken.TryGetValue(expr, out var v))
-            return new IntPoly(v);
+            return new PDD(v);
         if (expr.IsAdd) {
-            var polys = new IntPoly[expr.NumArgs];
+            var polys = new PDD[expr.NumArgs];
             for (uint i = 0; i < expr.NumArgs; i++) {
-                IntPoly? p = TryParseInt((IntExpr)expr.Arg(i));
+                PDD? p = TryParseInt((IntExpr)expr.Arg(i));
                 if (p is null)
                     return null;
                 polys[i] = p;
             }
             if (polys.Length == 0)
-                return new IntPoly();
-            IntPoly poly = polys[0];
+                return new PDD();
+            PDD<BigInteger> poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
                 poly.Plus(polys[i]);
             }
@@ -462,34 +594,34 @@ public class Environment : IDisposable {
         if (expr.IsSub) {
             // What if we have more than two arguments?
             Debug.Assert(expr.NumArgs <= 2);
-            var polys = new IntPoly[expr.NumArgs];
+            var polys = new PDD[expr.NumArgs];
             for (uint i = 0; i < expr.NumArgs; i++) {
-                IntPoly? p = TryParseInt((IntExpr)expr.Arg(i));
+                PDD? p = TryParseInt((IntExpr)expr.Arg(i));
                 if (p is null)
                     return null;
                 polys[i] = p;
             }
             if (polys.Length == 0)
-                return new IntPoly();
-            IntPoly poly = polys[0];
+                return new PDD();
+            PDD<BigInteger> poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
                 poly.Sub(polys[i]);
             }
             return poly;
         }
         if (expr.IsMul) {
-            var polys = new IntPoly[expr.NumArgs];
+            var polys = new PDD[expr.NumArgs];
             for (uint i = 0; i < expr.NumArgs; i++) {
-                IntPoly? p = TryParseInt((IntExpr)expr.Arg(i));
+                PDD? p = TryParseInt((IntExpr)expr.Arg(i));
                 if (p is null)
                     return null;
                 polys[i] = p;
             }
             if (polys.Length == 0)
-                return new IntPoly(1);
-            IntPoly poly = polys[0];
+                return new PDD(1);
+            PDD<BigInteger> poly = polys[0];
             for (int i = 1; i < polys.Length; i++) {
-                poly = IntPoly.Mul(poly, polys[i]);
+                poly = PDD.Mul(poly, polys[i]);
             }
             return poly;
         }

@@ -1,6 +1,10 @@
 ﻿using System.Collections;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using ZIPT.IntUtils;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.MiscUtils;
 
@@ -22,6 +26,9 @@ public static class CollectionExtension {
 
     public static bool IsNonEmpty<T>(this IReadOnlyCollection<T> list) =>
         list.Count != 0;
+
+    public static bool IsWord(this IList<StrToken> list) =>
+        list.All(o => o is CharToken);
 
     public static NList<T> ToNList<T>(this IEnumerable<T> list) where T : IComparable<T> => new(list);
     public static NList<T> ToNList<T>(this NList<T> list) where T : IComparable<T> => new(list);
@@ -50,6 +57,48 @@ public static class CollectionExtension {
             }
         }
         return true;
+    }
+
+    public static void Add<K>(this Dictionary<K, PDD> dict, K key, PDD<BigInteger> val) where K : notnull {
+        if (val.Empty) 
+            return;
+        if (dict.TryGetValue(key, out var prev))
+            dict[key] = val.Plus(prev);
+        else
+            dict.Add(key, val);
+    }
+
+    public static ImmutableDictionary<K, uint> Add<K>(this ImmutableDictionary<K, uint> dict, K key, uint val) where K : notnull {
+        if (val == 0) 
+            return dict;
+        if (dict.ContainsKey(key))
+            return dict.Add(key, val);
+        return dict.SetItem(key, val);
+    }
+
+    public static ImmutableDictionary<K, uint> Sub<K>(this ImmutableDictionary<K, uint> dict, K key, uint val) where K : notnull {
+        if (val == 0) 
+            return dict;
+        Debug.Assert(dict.ContainsKey(key));
+        Debug.Assert(dict[key] >= val);
+        uint prev = dict[key];
+        if (prev == val)
+            return dict.Remove(key);
+        return dict.SetItem(key, prev - val);
+    }
+
+    public static ImmutableDictionary<K, uint> Add<K>(this ImmutableDictionary<K, uint> dict1, ImmutableDictionary<K, uint> dict2) where K : notnull {
+        foreach (var kv in dict2) {
+            dict1 = dict1.Add(kv.Key, kv.Value);
+        }
+        return dict1;
+    }
+
+    public static ImmutableDictionary<K, uint> Sub<K>(this ImmutableDictionary<K, uint> dict1, ImmutableDictionary<K, uint> dict2) where K : notnull {
+        foreach (var kv in dict2) {
+            dict1 = dict1.Sub(kv.Key, kv.Value);
+        }
+        return dict1;
     }
 
     public static void Dec<T>(this Dictionary<T, uint> dict, T val) where T : notnull {
@@ -99,7 +148,7 @@ public static class CollectionExtension {
             }
             yield return result;
 
-            while (!cartesianEnumerator.IsEmpty() && !cartesianEnumerator[^1].MoveNext()) {
+            while (!cartesianEnumerator.Empty && !cartesianEnumerator[^1].MoveNext()) {
                 cartesianEnumerator.Pop().Dispose();
             }
             if (cartesianEnumerator.Count == 0)

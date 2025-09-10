@@ -1,31 +1,32 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
 
-public class IntVar : NonTermInt {
+public class IntVar : NamedInt {
     
-    static int nextId;
-    public int Id { get; }
+    static uint nextId;
+    public uint IntVarId { get; }
     public override BigIntInf MinLen => BigIntInf.NegInf;
 
-    public IntVar(int id) => 
-        Id = id;
+    public IntVar(uint intVarId) => 
+        IntVarId = intVarId;
 
     public IntVar() : this(nextId++) { }
 
     public override bool Equals(object? obj) => obj is IntVar var && Equals(var);
-    public bool Equals(IntVar other) => Id == other.Id;
+    public bool Equals(IntVar other) => IntVarId == other.IntVarId;
 
-    public override int GetHashCode() => Id.GetHashCode() * 919174721;
+    public override int GetHashCode() => IntVarId.GetHashCode() * 919174721;
 
-    public override IntPoly Apply(Subst subst) => new(new StrictMonomial(this));
-    public override IntPoly Apply(Interpretation subst) => subst.ResolveVar(this);
+    public override PDD<BigInteger> Apply(Subst subst) => new(new StrictMonomial(this));
+    public override PDD<BigInteger> Apply(Interpretation subst) => subst.ResolveVar(this);
 
-    public override int CompareToInternal(NonTermInt other) => 
-        Id.CompareTo(((IntVar)other).Id);
+    public override int CompareToInternal(NamedInt other) => 
+        IntVarId.CompareTo(((IntVar)other).IntVarId);
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(this);
 
@@ -37,5 +38,5 @@ public class IntVar : NonTermInt {
         return e;
     }
 
-    public override string ToString() => $"#n{Id}";
+    public override string ToString() => $"#n{IntVarId}";
 }

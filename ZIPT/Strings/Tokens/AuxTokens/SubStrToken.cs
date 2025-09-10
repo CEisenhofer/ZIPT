@@ -1,18 +1,22 @@
-﻿using Microsoft.Z3;
+﻿using System.Diagnostics.Contracts;
+using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.IntUtils;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
-namespace ZIPT.Tokens.AuxTokens;
+namespace ZIPT.Strings.Tokens.AuxTokens;
 
 public sealed class SubStrToken : NamedStrToken {
 
-    public IStr S { get; }
-    public IntPoly From { get; }
-    public IntPoly Len { get; }
+    public Str S { get; }
+    public PDD<BigInteger> From { get; }
+    public PDD<BigInteger> Len { get; }
 
     public override string OriginalName => $"subStr({S},{From},{Len})";
 
-    public SubStrToken(IStr s, IntPoly from, IntPoly len) {
+    public SubStrToken(Str s, PDD<BigInteger> from, PDD<BigInteger> len) {
         S = s;
         From = from;
         Len = len;

@@ -3,34 +3,35 @@ using System.Diagnostics;
 using System.Numerics;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
 // Poly <= 0
 public class IntLe : IntConstraint {
 
-    public IntPoly Poly { get; set; }
+    public PDD<BigInteger> Poly { get; set; }
 
-    public IntLe(IntPoly poly) => Poly = poly;
+    public IntLe(PDD<BigInteger> poly) => Poly = poly;
 
     // rhs does not need to be cloned
-    public IntLe(IntPoly lhs, IntPoly rhs) {
+    public IntLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
         lhs.Sub(rhs);
         Poly = lhs;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLt(IntPoly lhs, IntPoly rhs) {
-        var ret = new IntLe(lhs.Clone(), rhs);
-        ret.Poly.Plus(1);
+    public static IntLe MkLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        var ret = new IntLe(lhs, rhs);
+        ret.Poly = ret.Poly.Add(lhs.One);
         return ret;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLe(IntPoly lhs, IntPoly rhs) => new(lhs, rhs);
+    public static IntLe MkLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) => new(lhs, rhs);
 
-    public override IntLe Clone() => new(Poly.Clone());
+    public override IntLe Clone() => new(Poly);
 
     public override bool Equals(object? obj) =>
         obj is IntLe le && Equals(le);
@@ -42,16 +43,15 @@ public class IntLe : IntConstraint {
         Poly.GetHashCode();
 
     public override string ToString() {
-        Poly.GetPosNeg(out var pos, out var neg);
+        var (pos, neg) = Poly.GetPosNeg();
         return $"{pos} \u2264 {neg}";
     }
 
-    public override void Apply(Subst subst) => Poly = Poly.Apply(subst);
     public override void Apply(Interpretation itp) => Poly = Poly.Apply(itp);
 
     public SimplifyResult Simplify(NielsenNode node) {
         Poly = Poly.Simplify(node);
-        if (Poly.IsConst(out BigInt val))
+        if (Poly.IsConst(out BigInteger val))
             return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Max.IsPos)
@@ -71,9 +71,9 @@ public class IntLe : IntConstraint {
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
-        var newPoly = new IntPoly();
+        var newPoly = Poly.Zero;
         foreach (var p in Poly.NonConst) {
-            Debug.Assert(p.t.IsEmpty() || p.occ.DivRem(gcd).m.IsZero);
+            Debug.Assert(p.t.Empty || p.occ.DivRem(gcd).m.IsZero);
             newPoly.Add(p.t, p.occ.Div(gcd));
         }
         var c = Poly.ConstPart;
@@ -104,7 +104,7 @@ public class IntLe : IntConstraint {
         bool restart = false;
         int i = 0;
         foreach (var n in Poly) {
-            if (n.t.IsEmpty()) {
+            if (n.t.Empty) {
                 // Ignored - constant offset
                 i++;
                 continue;
@@ -121,7 +121,7 @@ public class IntLe : IntConstraint {
                 continue;
             }
             int i0 = i++;
-            var lb = IntPoly.GetBounds(node, Poly.Where((_, j) => i0 != j));
+            var lb = PDD<BigInteger>.GetBounds(node, Poly.Where((_, j) => i0 != j));
             bool isHigh = n.occ.IsPos;
             if (isHigh)
                 lb = lb.Negate();
@@ -147,7 +147,7 @@ public class IntLe : IntConstraint {
         Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>
-        MkLt(new IntPoly(), Poly);
+        MkLt(Poly.Zero, Poly);
 
     public override int CompareToInternal(IntConstraint other) =>
         Poly.CompareTo(((IntLe)other).Poly);

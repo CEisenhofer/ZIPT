@@ -6,10 +6,10 @@ namespace ZIPT.Constraints.Modifier;
 
 public class NumCmpModifier : ModifierBase {
 
-    public IntPoly N1 { get; }
-    public IntPoly N2 { get; }
+    public PDD<BigInteger> N1 { get; }
+    public PDD<BigInteger> N2 { get; }
 
-    public NumCmpModifier(IntPoly n1, IntPoly n2) {
+    public NumCmpModifier(PDD<BigInteger> n1, PDD<BigInteger> n2) {
         N1 = n1;
         N2 = n2;
     }

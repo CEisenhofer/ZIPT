@@ -1,17 +1,18 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints;
+using ZIPT.Strings;
 
 namespace ZIPT.IntUtils;
 
 public class IndexOfVar : IntVar {
 
-    public IStr S { get; }
-    public IStr Contained { get; }
-    public IntPoly Start { get; }
+    public Str S { get; }
+    public Str Contained { get; }
+    public PDD<BigInteger> Start { get; }
 
     public override BigIntInf MinLen => -1;
 
-    public IndexOfVar(IStr s, IStr contained, IntPoly start) {
+    public IndexOfVar(Str s, Str contained, PDD<BigInteger> start) {
         S = s;
         Contained = contained;
         Start = start;

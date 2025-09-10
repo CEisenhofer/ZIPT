@@ -1,15 +1,16 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
 
-public abstract class NonTermInt : IComparable<NonTermInt> {
+public abstract class NamedInt : IComparable<NamedInt> {
     public abstract BigIntInf MinLen { get; }
-    public abstract IntPoly Apply(Subst subst);
-    public abstract IntPoly Apply(Interpretation subst);
-    public abstract int CompareToInternal(NonTermInt other);
-    public int CompareTo(NonTermInt? other) {
+    public abstract PDD<BigInteger> Apply(Subst subst);
+    public abstract PDD<BigInteger> Apply(Interpretation subst);
+    public abstract int CompareToInternal(NamedInt other);
+    public int CompareTo(NamedInt? other) {
         if (other is null)
             return 1;
         if (ReferenceEquals(other, this))

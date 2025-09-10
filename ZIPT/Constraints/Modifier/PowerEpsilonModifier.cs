@@ -1,5 +1,5 @@
 ﻿using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Tokens;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 

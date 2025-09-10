@@ -5,9 +5,9 @@ namespace ZIPT.Constraints.Modifier;
 
 public abstract class NumUnwindingModifier : ModifierBase {
 
-    public IntPoly Num { get; }
+    public PDD<BigInteger> Num { get; }
 
-    public NumUnwindingModifier(IntPoly num) => 
+    public NumUnwindingModifier(PDD<BigInteger> num) => 
         Num = num;
 
     public override void Apply(NielsenNode node) {
@@ -21,7 +21,7 @@ public abstract class NumUnwindingModifier : ModifierBase {
 
         node.MkChild(node,
             Array.Empty<Subst>(),
-            [IntLe.MkLe(new IntPoly(1), Num)],
+            [IntLe.MkLe(new PDD(1), Num)],
             Array.Empty<DisEq>(),
             false); // 1 <= Num
     }
@@ -33,9 +33,9 @@ public abstract class NumUnwindingModifier : ModifierBase {
 }
 
 class ConstNumUnwindingModifier : NumUnwindingModifier {
-    public ConstNumUnwindingModifier(IntPoly num) : base(num) { }
+    public ConstNumUnwindingModifier(PDD<BigInteger> num) : base(num) { }
 }
 
 class VarNumUnwindingModifier : NumUnwindingModifier {
-    public VarNumUnwindingModifier(IntPoly num) : base(num) { }
+    public VarNumUnwindingModifier(PDD<BigInteger> num) : base(num) { }
 }

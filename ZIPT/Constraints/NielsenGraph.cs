@@ -5,7 +5,8 @@ using System.Text;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.Modifier;
 using ZIPT.MiscUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
@@ -86,14 +87,14 @@ public class NielsenGraph {
 
         Debug.Assert(SubSolver is not null);
 
-        SubSolver.Add(CurrentRoot.IntEq.Select(o => o.ToExpr(this)));
-        SubSolver.Add(CurrentRoot.IntLe.Select(o => o.ToExpr(this)));
+        SubSolver.Add(CurrentRoot.ConstraintsIntEq.Select(o => o.ToExpr(this)));
+        SubSolver.Add(CurrentRoot.ConstraintsIntLe.Select(o => o.ToExpr(this)));
         SubSolver.Add(CurrentRoot.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
 
         DepthBound = Options.ItDeepDepthStart;
         while (true) {
-            Debug.Assert(CurrentPath.IsEmpty());
-            Debug.Assert(CurrentModificationCnt.IsEmpty());
+            Debug.Assert(CurrentPath.Empty);
+            Debug.Assert(CurrentModificationCnt.Empty);
             var res = CurrentRoot.Check(0, forbidden, usedForbidden);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
@@ -125,8 +126,8 @@ public class NielsenGraph {
     }
 
     public NielsenNode? FindExisting(NielsenNode node) {
-        if (!subsumptionCandidates.TryGetValue(node.StrEq, out var list)) {
-            subsumptionCandidates.Add(node.StrEq, [node]);
+        if (!subsumptionCandidates.TryGetValue(node.ConstraintsStrEq, out var list)) {
+            subsumptionCandidates.Add(node.ConstraintsStrEq, [node]);
             return null;
         }
         foreach (var l in list) {
@@ -137,7 +138,7 @@ public class NielsenGraph {
         return null;
     }
 
-    public IStr? TryParseStr(Expr e) => Env.TryParseStr(e);
+    public Str? TryParseStr(Expr e) => Env.TryParseStr(e);
 
     public string ToDot() {
         List<NielsenNode> subsumed = [];

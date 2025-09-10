@@ -1,17 +1,32 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
-    public IStr LHS { get; protected set; }
-    public IStr RHS { get; protected set; }
 
-    protected StrEqBase(IStr lhs, IStr rhs) {
-        LHS = lhs;
-        RHS = rhs;
+    protected Str lhs;
+    protected Str rhs;
+
+    public Str LHS
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => lhs;
+    }
+
+    public Str RHS
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => rhs;
+    }
+
+    protected StrEqBase(Str lhs, Str rhs) {
+        this.lhs = lhs;
+        this.rhs = rhs;
         SortStr();
     }
 
@@ -19,52 +34,43 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public bool Equals(StrEqBase? other) => CompareTo(other) == 0;
     public override int GetHashCode() => HashCode.Combine(LHS, RHS);
 
-    protected void SortStr() {
-        IStr s1 = LHS, s2 = RHS;
-        uint i1 = 0, i2 = 0;
-        SortStr(ref s1, ref i1, ref s2, ref i2, true);
-        LHS = s1;
-        RHS = s2;
-    }
+    protected void SortStr() => 
+        SortStr(ref lhs, ref rhs, true);
 
-    protected static void SortStr(ref IStr s1, ref uint i1, ref IStr s2, ref uint i2, bool dir) {
-        if (s1.IsEmpty())
+    protected static void SortStr(ref Str s1, ref Str s2, bool dir) {
+        if (s1.IsEmpty)
             return;
-        if (s2.IsEmpty()) {
+        if (s2.IsEmpty) {
             (s1, s2) = (s2, s1);
-            (i1, i2) = (i2, i1);
 			return;
         }
-        Debug.Assert(s1.Length > 0);
-        Debug.Assert(s2.Length > 0);
+        Debug.Assert(s1.SLength > 0);
+        Debug.Assert(s2.SLength > 0);
 
-        if (StrToken.StrTokenOrder[s1.Peek(dir).GetType()] > StrToken.StrTokenOrder[s2.Peek(dir).GetType()]) {
-            (s1, s2) = (s2, s1);
-            (i1, i2) = (i2, i1);
-		}
-        Debug.Assert(StrToken.StrTokenOrder[s1.Peek(dir).GetType()] <= StrToken.StrTokenOrder[s2.Peek(dir).GetType()]);
+        if (StrToken.StrTokenOrder[s1[dir].GetType()] > StrToken.StrTokenOrder[s2[dir].GetType()]) (s1, s2) = (s2, s1);
+        Debug.Assert(StrToken.StrTokenOrder[s1[dir].GetType()] <= StrToken.StrTokenOrder[s2[dir].GetType()]);
     }
 
     // TODO: u'(u''u')^n u'' for u''u' count as n + 1 for u''u'
     // Given p^m and s=u_1 ... u_n
     // Counts the number of p in prefix of s (just shallow; does not count powers of powers)
-    protected static (IntPoly num, int idx) CommPower(IStr @base, IStr s, bool dir) {
-        IntPoly sum = new IntPoly();
+    protected static (PDD<BigInteger> num, int idx) CommPower(Str @base, Str s, bool dir) {
+        PDD<BigInteger> sum = new PDD();
         int pos = 0;
-        IntPoly lastStableSum = sum;
+        PDD<BigInteger> lastStableSum = sum;
         int lastStablePos = 0;
         int i = 0;
 
-        for (; i < s.Length; i++) {
-            var t = s.Peek(dir, i);
+        for (; i < s.SLength; i++) {
+            var t = s[dir, i];
             if (pos == 0) {
                 lastStablePos = i;
                 lastStableSum = sum.Clone();
             }
-            if (t.Equals(@base.Peek(dir, pos))) {
+            if (t.Equals(@base[dir, pos])) {
                 pos++;
-                if (pos >= @base.Length) {
-                    Debug.Assert(pos == @base.Length);
+                if (pos >= @base.SLength) {
+                    Debug.Assert(pos == @base.SLength);
                     pos = 0;
                     sum.Plus(1);
                 }
@@ -73,7 +79,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             if (t is PowerToken p2 &&
                 (pos == 0
                     ? p2.Base.Equals(@base)
-                    : p2.Base.RotationEquals(@base, dir ? pos : (@base.Length - pos)))) {
+                    : p2.Base.RotationEquals(@base, dir ? pos : (@base.SLength - pos)))) {
                 // We might not keep this if it is shifted and we do not find a pos == 0 afterwards
                 sum.Plus(p2.Power);
                 continue;
@@ -87,20 +93,20 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return (lastStableSum, lastStablePos);
     }
 
-    protected static bool SimplifySame(IStr s1, ref uint i1, IStr s2, ref uint i2, bool dir) {
-        if (!s1.Peek(dir).Equals(s2.Peek(dir)))
+    protected bool SimplifySame(Environment env, bool dir) {
+        if (!lhs[dir].Equals(rhs[dir]))
             return false;
-        Log.WriteLine("Simplify Eq: " + s1.Peek(dir) + "; " + s2.Peek(dir));
-        i1++;
-        i2++;
+        Log.WriteLine("Simplify Eq: " + lhs[dir] + "; " + rhs[dir]);
+        lhs = lhs.Drop(dir, env);
+        rhs = rhs.Drop(dir, env);
         return true;
     }
 
-    protected static bool IsPrefixConsistent(NielsenNode node, IStr s1, uint i1, IStr s2, uint i2, bool dir) {
-        uint min = Math.Min(s1.Length - i1, s2.Length - i2);
+    protected static bool IsPrefixConsistent(NielsenNode node, Str s1, Str s2, bool dir) {
+        uint min = Math.Min(s1.SLength, s2.SLength);
         for (int i = 0; i < min; i++) {
-            StrToken t1 = s1.Peek(dir, i);
-            StrToken t2 = s2.Peek(dir, i);
+            StrToken t1 = s1[dir, i];
+            StrToken t2 = s2[dir, i];
             if (t1 is not UnitToken u1 || t2 is not UnitToken u2)
                 // It might still be inconsistent, but it is harder to detect
                 return true;
@@ -110,50 +116,47 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return true;
     }
 
-    public static bool SimplifyPower(NielsenNode node, IStr s1, ref uint i1, IStr s2, ref uint i2, bool dir) {
-        if (s1.Peek(dir) is not PowerToken p1)
+    public static bool SimplifyPower(NielsenNode node, ref Str s1, ref Str s2, bool frwd) {
+        if (s1[frwd] is not PowerToken p1)
             return false;
-        IStr? s;
+        Str? s;
         if ((s = SimplifyPowerSingle(node, p1)) is not null) {
-            s1.Drop(dir);
-            i1++;
-            s1.AddRange(s, dir);
-
+            s1 = s1.Drop(frwd, node.Env);
+            s1.AddRange(s, frwd);
             return true;
         }
-        if (SimplifyPowerElim(node, p1, s1, s2, dir))
+        if (SimplifyPowerElim(node, p1, ref s1, ref s2, frwd))
             return true;
         // Reason why we do not do unwinding in presence of a variable:
         // xb... = a^n... with n >= 1
         // implies x /ax but this can result in some int constraint bound propagate n >= 2
         // and result in a cycle as this makes a^n unwindable again
         // Instead we have to split on x / a^n x and x / a^m with 0 <= m < n
-        if (s2.Peek(dir) is not NamedStrToken && SimplifyPowerUnwind(node, p1, s1, dir))
+        if (s2[frwd] is not NamedStrToken && SimplifyPowerUnwind(node, p1, ref s1, frwd))
             return true;
-        if (s2.Peek(dir) is PowerToken p2) {
+        if (s2[frwd] is PowerToken p2) {
             if ((s = SimplifyPowerSingle(node, p2)) is not null) {
-                s2.Drop(dir);
-                i2++;
-                s2.AddRange(s, dir);
+                s2 = s2.Drop(frwd);
+                s2.AddRange(s, frwd);
                 return true;
             }
-            if (SimplifyPowerElim(node, p2, s2, s1, dir))
+            if (SimplifyPowerElim(node, p2, ref s2, ref s1, frwd))
                 return true;
-            if (s1.Peek(dir) is not NamedStrToken && SimplifyPowerUnwind(node, p2, s2, dir))
+            if (s1[frwd] is not NamedStrToken && SimplifyPowerUnwind(node, p2, s2, frwd))
                 return true;
         }
         return false;
     }
 
-    static bool SimplifyPowerElim(NielsenNode node, PowerToken p, IStr s1, IStr s2, bool dir) {
+    static bool SimplifyPowerElim(NielsenNode node, PowerToken p, ref Str s1, ref Str s2, bool dir) {
         var r = CommPower(p.Base, s2, dir);
         if (r.idx <= 0)
             return false;
         if (node.IsLe(r.num, p.Power) || node.IsLt(r.num, p.Power)) {
             // r.num < p.Power
-            s1.Drop(dir);
+            s1 = s1.Drop(dir, node.Env);
             for (var i = 0; i < r.idx; i++)
-                s2.Drop(dir);
+                s2 = s2.Drop(dir, node.Env);
             var sub = p.Power.Clone();
             sub.Sub(r.num);
             s1.Add(new PowerToken(p.Base, sub), dir);
@@ -162,9 +165,9 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         }
         if (node.IsLe(p.Power, r.num) || node.IsLt(p.Power, r.num)) {
             // p.Power <= r.num
-            s1.Drop(dir);
+            s1 = s1.Drop(dir, node.Env);
             for (var i = 0; i < r.idx; i++)
-                s2.Drop(dir);
+                s2 = s2.Drop(dir, node.Env);
             var sub = r.num.Clone();
             sub.Sub(p.Power);
             s2.Add(new PowerToken(p.Base, sub), dir);
@@ -174,12 +177,13 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return false;
     }
 
-    static bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, IStr s, bool dir) {
-        if (!node.IsLt(new IntPoly(), p.Power))
+    static bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, ref Str s, bool dir) {
+        if (!node.IsLt(new PDD(), p.Power))
             return false;
 
-        Log.WriteLine("Simplify: >0-unwinding power " + s.Peek(dir));
-        s.Drop(dir);
+        Log.WriteLine("Simplify: >0-unwinding power " + s[dir]);
+        s.Unwind(dir, node);
+        s = s.Drop(dir, node.Env);
         var sub = p.Power.Clone();
         sub.Sub(1);
         s.Add(new PowerToken(p.Base, sub), dir);
@@ -198,7 +202,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // u^i => u...u [l times, where l is the lower bound of i] - maybe not a good idea, but not sure [option?]
     // The direction is there to decide in which direction to unwind
     // u^n => uu^{n - 1} vs u^{n - 1}u
-    protected static IStr? SimplifyPowerSingle(NielsenNode node, PowerToken p) {
+    protected static Str? SimplifyPowerSingle(NielsenNode node, PowerToken p) {
         // This can be locally violated e.g., if some integer constraint simplified to 1 <= 0 so IsLt(1, 0) evaluates to true
         // Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
         if (p.Power.IsConst(out var dl) && dl.IsNeg)
@@ -207,17 +211,17 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
         if (p.Base is [PowerToken p2])
             // (u^m)^n => u^{mn}
-            return [new PowerToken(p2.Base, IntPoly.Mul(p.Power, p2.Power))];
+            return [new PowerToken(p2.Base, PDD.Mul(p.Power, p2.Power))];
 
         // ""^n => ""
-        if (p.Base.IsEmpty()) {
+        if (p.Base.IsEmpty) {
             Log.WriteLine("Simplify: Resolve empty-power " + p);
-            return [];
+            return node.Env.Empty;
         }
         // u^0 => ""
         if (node.IsPowerElim(p.Power)) {
             Log.WriteLine("Simplify: Drop 0-power " + p);
-            return [];
+            return node.Env.Empty;
         }
         // u^1 => u
         if (node.IsOne(p.Power)) {
@@ -234,7 +238,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             if (bounds.IsUnit) {
                 Debug.Assert(bounds.Min > 1);
                 Log.WriteLine("Simplify: Resolve " + bounds.Min + "-power " + p);
-                IStr r = [];
+                Str r = [];
                 for (BigIntInf i = 0; i < bounds.Min; i++) {
                     r.AddLastRange(p.Base);
                 }
@@ -245,15 +249,15 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         // simplify((u^m v)^n) => (simplify(u^m) v)^n
         // Actually all, but not sure we need to apply it to all sub powers
         // (practical problem: We can only remove first/last element)
-        List<IStr?> partialList = [];
+        List<Str?> partialList = [];
         bool has = false;
-        for (int i = 0; i < p.Base.Length; i++) {
-            IStr? r = p.Base[i] is PowerToken p3 ? SimplifyPowerSingle(node, p3) : null;
+        for (int i = 0; i < p.Base.SLength; i++) {
+            Str? r = p.Base[i] is PowerToken p3 ? SimplifyPowerSingle(node, p3) : null;
             has |= r is not null;
             partialList.Add(r);
         }
         if (has) {
-            IStr r = [];
+            Str r = [];
             for (int i = 0; i < partialList.Count; i++) {
                 if (partialList[i] is { } t2)
                     r.AddLastRange(t2);
@@ -271,12 +275,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         if (node.IsLt(new Poly(), p.Power)) {
             // Rotate it in the minimal order
             int idx = GetMinimalOrder(p.Base);
-            IStr r;
+            Str r;
             if (idx != 0) {
                 Poly newPower = p.Power.Clone();
                 newPower.Sub(1);
-                IStr oldBase = p.Base;
-                IStr newBase = p.Base.Rotate(idx);
+                Str oldBase = p.Base;
+                Str newBase = p.Base.Rotate(idx);
                 p = new PowerToken(newBase, newPower);
                 r = [];
                 if (dir) {
@@ -327,18 +331,18 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // v' u^n u v'' => v' u^{n + 1} v''
     // v' u' (u'u'')^n u'' v' => v' (u'u'')^{n+1} v'
     // till fixed point
-    public static IStr? LcpCompressionFull(IStr s) {
-        if (s.Length < 2)
+    public static Str? LcpCompressionFull(Str s) {
+        if (s.SLength < 2)
             return null;
 #if DEBUG
-        IStr orig = s.Clone();
+        Str orig = s.Clone();
 #endif
         bool changed = false;
         while (MergeSingle(s) is { } v) {
             s = v;
             changed = true;
         }
-        IStr? r = LcpCompression(s);
+        Str? r = LcpCompression(s);
 
 #if DEBUG
         Log.WriteLine($"lcp-full ({lcpCnt}): {orig} => {s}");
@@ -351,14 +355,14 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
     // Everything from *Full but compressing non-power sequences into powers 
     // [Distinction, as introducing powers on top-level might not be beneficial]
-    public static IStr? LcpCompression(IStr s) {
-        if (s.Length < 2)
+    public static Str? LcpCompression(Str s) {
+        if (s.SLength < 2)
             return null;
 
         // Apply each at least once and then until the first one fails
         lcpCnt++;
 #if DEBUG
-        IStr orig = s.Clone();
+        Str orig = s.Clone();
 #endif
 
         bool globalChanged = false;
@@ -366,7 +370,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         bool changed2 = true;
 
         while (changed1 || changed2) {
-            IStr? v = MergePowersRight(s);
+            Str? v = MergePowersRight(s);
             if (v is not null) {
                 s = v;
                 changed1 = true;
@@ -394,14 +398,14 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // v'u...uv'' => v' u^n v'' (first only and preferring minimal compression: baaaab => b a^4 b rather than b (aa)^2 b)
     // u is ground
     // Implementation: Sliding window
-    static IStr? MergeSingle(IStr s) {
-        if (s.Length < 2)
+    static Str? MergeSingle(Str s) {
+        if (s.SLength < 2)
             return null;
-        int to = s.Length / 2;
+        int to = s.SLength / 2;
         for (int i = 1; i <= to; i++) {
-            for (int j = 0; j + 2 * i <= s.Length; j++) {
+            for (int j = 0; j + 2 * i <= s.SLength; j++) {
                 int rep = 1;
-                for (; j + (rep + 1) * i <= s.Length; rep++) {
+                for (; j + (rep + 1) * i <= s.SLength; rep++) {
                     bool failed = false;
                     for (int k = 0; k < i; k++) {
                         if (s[j + k] is NamedStrToken) {
@@ -419,19 +423,19 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
                         break;
                 }
                 if (rep > 1) {
-                    IStr r = new(s.Length - rep * i + 1);
+                    Str r = new(s.SLength - rep * i + 1);
                     for (int k = 0; k < j; k++) {
                         r.AddLast(s[k]);
                     }
-                    IStr b = new IStr(rep);
+                    Str b = new Str(rep);
                     for (int k = 0; k < i; k++) {
                         b.AddLast(s[j + k]);
                     }
-                    r.AddLast(new PowerToken(b, new IntPoly(rep)));
-                    for (int k = j + rep * i; k < s.Length; k++) {
+                    r.AddLast(new PowerToken(b, new PDD(rep)));
+                    for (int k = j + rep * i; k < s.SLength; k++) {
                         r.AddLast(s[k]);
                     }
-                    Debug.Assert(r.Length == s.Length - rep * i + 1);
+                    Debug.Assert(r.SLength == s.SLength - rep * i + 1);
                     return r;
                 }
             }
@@ -441,20 +445,20 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
     // v' u^m u^n v'' => v' u^{m + n} v''
     // v' u^n u v'' => v' u^{n + 1} v''
-    static IStr? MergePowersRight(IStr s) {
-        IStr p = new(s.Length);
-        IntPoly sum = new();
-        IStr b = [];
+    static Str? MergePowersRight(Str s) {
+        Str p = new(s.SLength);
+        PDD<BigInteger> sum = new();
+        Str b = [];
         Debug.Assert(sum.IsZero);
 
         // v' u^n u v'' => v' u^{n + 1} v''
         // Count how often this works
         int LookAhead(int pos) {
-            int max = (s.Length - pos) / b.Length;
+            int max = (s.SLength - pos) / b.SLength;
             int cnt = 0;
             for (; cnt < max; cnt++) {
-                for (int j = 0; j < b.Length; j++) {
-                    if (!b[j].Equals(s[pos + b.Length * cnt + j]))
+                for (int j = 0; j < b.SLength; j++) {
+                    if (!b[j].Equals(s[pos + b.SLength * cnt + j]))
                         return cnt;
                 }
             }
@@ -462,26 +466,26 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         }
 
         bool compressed = false;
-        for (int i = 0; i < s.Length; i++) {
+        for (int i = 0; i < s.SLength; i++) {
             if (s[i] is not PowerToken pow) {
                 if (!sum.IsZero) {
-                    Debug.Assert(b.IsNonEmpty());
+                    Debug.Assert(b.IsNonEmpty);
                     p.AddLast(new PowerToken(b, sum));
                 }
                 b = [];
-                sum = new IntPoly();
+                sum = new PDD();
                 p.AddLast(s[i]);
                 continue;
             }
             if (!pow.Base.Equals(b)) {
                 if (!sum.IsZero) {
-                    Debug.Assert(b.IsNonEmpty());
+                    Debug.Assert(b.IsNonEmpty);
                     p.AddLast(new PowerToken(b, sum));
                 }
                 b = pow.Base;
                 sum = pow.Power.Clone();
                 int cnt = LookAhead(i + 1);
-                i += b.Length * cnt;
+                i += b.SLength * cnt;
                 sum.Plus(cnt);
                 compressed |= cnt > 0;
                 continue;
@@ -490,7 +494,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             sum.Plus(pow.Power);
         }
         if (!sum.IsZero) {
-            Debug.Assert(b.IsNonEmpty());
+            Debug.Assert(b.IsNonEmpty);
             p.AddLast(new PowerToken(b, sum));
         }
         return compressed ? p : null;
@@ -499,49 +503,49 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // v' u'' (u'u'')^n v' => v' (u''u')^{n+1} u'' v'
     // We traverse the sequence backwards.
     // If we encounter (u'u'')^n we traverse u'u'' backwards and check how long it works after the power
-    static IStr? MergePowersLeft(IStr s) {
+    static Str? MergePowersLeft(Str s) {
 
         // Find maximal u'' index
         // Return r: 0 <= r <= b.Count
-        int LookAhead(IStr b, int pos) {
-            int max = Math.Min(s.Length, pos + b.Length);
+        int LookAhead(Str b, int pos) {
+            int max = Math.Min(s.SLength, pos + b.SLength);
             for (int i = pos; i < max; i++) {
-                if (!s.Peek(false, i).Equals(b.Peek(false, i - pos)))
+                if (!s[false, i].Equals(b[false, i - pos]))
                     return pos - i;
             }
             return max - pos;
         }
 
         bool progress = false;
-        IStr r = new(s.Length);
-        for (int i = 0; i < s.Length; i++) {
-            var c = s.Peek(false, i);
+        Str r = new(s.SLength);
+        for (int i = 0; i < s.SLength; i++) {
+            var c = s[false, i];
             if (c is not PowerToken pow) {
                 r.AddFirst(c);
                 continue;
             }
             int cnt = 0;
             int idx;
-            while ((idx = LookAhead(pow.Base, i + 1 + cnt * pow.Base.Length)) == pow.Base.Length) {
+            while ((idx = LookAhead(pow.Base, i + 1 + cnt * pow.Base.SLength)) == pow.Base.SLength) {
                 // This only happens in case u' = ""
                 cnt++;
             }
             if (cnt > 0) {
-                IntPoly p = pow.Power.Clone();
+                PDD<BigInteger> p = pow.Power.Clone();
                 p.Plus(cnt);
                 r.AddFirst(new PowerToken(pow.Base, p));
-                i += cnt * pow.Base.Length;
+                i += cnt * pow.Base.SLength;
                 progress = true;
             }
             else if (idx > 0) {
                 i += idx;
-                IStr b = new(pow.Base.Length);
+                Str b = new(pow.Base.SLength);
                 for (int j = 0; j < idx; j++) {
-                    b.AddFirst(pow.Base.Peek(true, pow.Base.Length - j - 1));
-                    r.AddFirst(pow.Base.Peek(false, j));
+                    b.AddFirst(pow.Base[true, pow.Base.SLength - j - 1]);
+                    r.AddFirst(pow.Base[false, j]);
                 }
-                for (int j = 0; j < pow.Base.Length - idx; j++) {
-                    b.AddLast(pow.Base.Peek(true, j));
+                for (int j = 0; j < pow.Base.SLength - idx; j++) {
+                    b.AddLast(pow.Base[true, j]);
                 }
                 r.AddFirst(new PowerToken(b, pow.Power));
                 progress = true;
@@ -550,12 +554,6 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
                 r.AddFirst(pow);
         }
         return progress ? r : null;
-    }
-
-    public override void Apply(Subst subst) {
-        LHS = LHS.Apply(subst);
-        RHS = RHS.Apply(subst);
-        // Dependencies.Apply(subst);
     }
 
     public override void Apply(Interpretation itp) {

@@ -1,20 +1,15 @@
 ﻿using System.Diagnostics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
-using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Tokens.AuxTokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens.AuxTokens;
 
-namespace ZIPT.Tokens;
+namespace ZIPT.Strings.Tokens;
 
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
-    public uint Id { get; }
-    public abstract bool Ground { get; }
     public abstract bool IsNullable(NielsenNode node);
 
-    public abstract IStr Apply(Subst subst);
-    public abstract IStr Apply(Interpretation itp);
-    public abstract List<(IStr str, List<IntConstraint> sideConstraints, Subst? varDecomp)> GetPrefixes(bool dir);
     public abstract Expr ToExpr(NielsenGraph graph);
 
     public override bool Equals(object? other) =>

@@ -1,11 +1,13 @@
 ﻿using System.Diagnostics;
+using System.Numerics;
 using System.Text;
 using Microsoft.Z3;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
@@ -39,12 +41,14 @@ public class NielsenNode {
     public bool IsActive => evalIdx == Graph.RunIdx;
     uint evalIdx;
 
-    public NList<StrEq> StrEq { get; init; } = [];
-    public NList<IntEq> IntEq { get; init; } = [];
-    public NList<IntLe> IntLe { get; init; } = [];
+    public NList<StrEq> ConstraintsStrEq { get; init; } = [];
+    public NList<IntEq> ConstraintsIntEq { get; init; } = [];
+    public NList<IntLe> ConstraintsIntLe { get; init; } = [];
 
     // e.g., o \notin { a, b, p }
     public Dictionary<SymCharToken, HashSet<UnitToken>> DisEqs { get; init; } = [];
+
+    public Environment Env => Graph.Env;
 
     // A node is marked as progress if either
     // 1) it is root
@@ -54,19 +58,19 @@ public class NielsenNode {
     public bool IsProgressNode { get; }
 
     // x \in [i, j] with i, j const
-    public Dictionary<NonTermInt, Interval> IntBounds { get; init; } = [];
+    public Dictionary<NamedInt, Interval> IntBounds { get; init; } = [];
 
     // Bounds for e.g., |x| might change when substituting x - we associate x with relevant integer variables depending on it
-    public Dictionary<NamedStrToken, HashSet<NonTermInt>> VarBoundWatcher { get; init; } = [];
+    public Dictionary<NamedStrToken, HashSet<NamedInt>> VarBoundWatcher { get; init; } = [];
 
     // x... = uy... and u ground
     // If multiple x... = vy... then we keep one of them (preferably the shorter one)
     // We just cache it, as both simplify and splitting need this (no need to clone)
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, IStr>> forwardVarDep = []; // x... = uy... => (x, y) -> u 
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, IStr>> backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> forwardVarDep = []; // x... = uy... => (x, y) -> u 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
 
     public IEnumerable<Constraint> AllConstraints =>
-        StrEq.OfType<Constraint>().Concat(IntEq).Concat(IntLe);
+        ConstraintsStrEq.OfType<Constraint>().Concat(ConstraintsIntEq).Concat(ConstraintsIntLe);
 
     public void ResetCounter() => 
         evalIdx = 0;
@@ -134,21 +138,21 @@ public class NielsenNode {
             IntBounds.Remove(watched);
             var n = watched.Apply(subst);
             if (bound.HasLow)
-                AddConstraint(ConstraintElement.IntLe.MkLe(new IntPoly((BigInt)bound.Min), n.Clone()));
+                AddConstraint(ConstraintElement.IntLe.MkLe(new PDD((BigInteger)bound.Min), n));
             else if (bound.HasHigh)
-                AddConstraint(ConstraintElement.IntLe.MkLe(new IntPoly(watched), n.Clone()));
+                AddConstraint(ConstraintElement.IntLe.MkLe(new PDD(watched), n));
         }
         VarBoundWatcher.Remove(v.Var);
     }
 
-    public bool IsIntFixed(NonTermInt v, out BigIntInf val) {
+    public bool IsIntFixed(NamedInt v, out BigIntInf val) {
         val = default;
         if (!IntBounds.TryGetValue(v, out var bounds)) 
             return false;
         val = bounds.Min;
         return bounds.IsUnit;
     }
-    public bool IsBoundLower(NonTermInt v, out BigIntInf val) {
+    public bool IsBoundLower(NamedInt v, out BigIntInf val) {
         val = default;
         if (!IntBounds.TryGetValue(v, out var bounds)) 
             return false;
@@ -156,7 +160,7 @@ public class NielsenNode {
         return bounds.Min.IsNegInf;
     }
 
-    public bool IsBoundUpper(NonTermInt v, out BigIntInf val) {
+    public bool IsBoundUpper(NamedInt v, out BigIntInf val) {
         val = default;
         if (!IntBounds.TryGetValue(v, out var bounds)) 
             return false;
@@ -164,7 +168,7 @@ public class NielsenNode {
         return bounds.Max.IsPosInf;
     }
 
-    void WatchVarBound(NonTermInt v) {
+    void WatchVarBound(NamedInt v) {
         NonTermSet nonTermSet = new();
         v.CollectSymbols(nonTermSet, []);
         foreach (var var in nonTermSet.StrVars) {
@@ -174,7 +178,7 @@ public class NielsenNode {
         }
     }
 
-    public SimplifyResult AddLowerIntBound(NonTermInt v, BigIntInf val) {
+    public SimplifyResult AddLowerIntBound(NamedInt v, BigIntInf val) {
         Debug.Assert(val != BigIntInf.PosInf);
         val = BigIntInf.Max(val, v.MinLen);
         Interval i;
@@ -198,7 +202,7 @@ public class NielsenNode {
         return SimplifyResult.Restart;
     }
 
-    public SimplifyResult AddHigherIntBound(NonTermInt v, BigIntInf val) {
+    public SimplifyResult AddHigherIntBound(NamedInt v, BigIntInf val) {
         Debug.Assert(val != BigIntInf.NegInf);
         if (val < v.MinLen)
             return SimplifyResult.Conflict;
@@ -228,36 +232,36 @@ public class NielsenNode {
 
     // lhs == rhs
     // No need to copy anything!
-    public bool IsEq(IntPoly lhs, IntPoly rhs) {
-        IntEq eq = new(lhs.Clone(), rhs);
+    public bool IsEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        IntEq eq = new(lhs, rhs);
         return eq.Simplify(this) switch {
             SimplifyResult.Satisfied => true,
             SimplifyResult.Conflict => false,
-            _ => IntEq.Contains(eq),
+            _ => ConstraintsIntEq.Contains(eq),
         };
     }
 
     // p == 0 || p <= 0 [for implementation syntactic reasons, p == 0 can be true and p <= 0 can be false]
     // No need to copy anything!
-    public bool IsPowerElim(IntPoly p) => IsZero(p) || IsNonPos(p);
+    public bool IsPowerElim(PDD<BigInteger> p) => IsZero(p) || IsNonPos(p);
 
     // p == 0
     // No need to copy anything!
-    public bool IsZero(IntPoly p) => IsEq(p, new IntPoly());
+    public bool IsZero(PDD<BigInteger> p) => IsEq(p, Env.ZeroInt);
 
     // p == 1
     // No need to copy anything!
-    public bool IsOne(IntPoly p) => IsEq(p, new IntPoly(1));
+    public bool IsOne(PDD<BigInteger> p) => IsEq(p, Env.OneInt);
 
     // lhs <= rhs
     // lhs - rhs <= 0
     // No need to copy anything!
-    public bool IsLe(IntPoly lhs, IntPoly rhs) {
-        IntLe le = ConstraintElement.IntLe.MkLe(lhs.Clone(), rhs);
+    public bool IsLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        IntLe le = IntLe.MkLe(lhs, rhs);
         return le.Simplify(this) switch {
             SimplifyResult.Satisfied => true,
             SimplifyResult.Conflict => false,
-            _ => IntLe.Contains(le),
+            _ => ConstraintsIntLe.Contains(le),
         };
     }
 
@@ -266,39 +270,39 @@ public class NielsenNode {
     // lhs - rhs < 0
     // lhs - rhs + 1 <= 0
     // No need to copy anything!
-    public bool IsLt(IntPoly lhs, IntPoly rhs) {
-        IntLe le = ConstraintElement.IntLe.MkLt(lhs.Clone(), rhs);
+    public bool IsLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+        IntLe le = IntLe.MkLt(lhs, rhs);
         return le.Simplify(this) switch {
             SimplifyResult.Satisfied => true,
             SimplifyResult.Conflict => false,
-            _ => IntLe.Contains(le),
+            _ => ConstraintsIntLe.Contains(le),
         };
     }
 
     // p < 0
     // No need to copy anything!
-    public bool IsNeg(IntPoly p) => IsLt(p, new IntPoly());
+    public bool IsNeg(PDD<BigInteger> p) => IsLt(p, new PDD());
 
     // p <= 0
     // No need to copy anything!
-    public bool IsNonPos(IntPoly p) => IsLe(p, new IntPoly());
+    public bool IsNonPos(PDD<BigInteger> p) => IsLe(p, new PDD());
 
     // p > 0
     // No need to copy anything!
-    public bool IsPos(IntPoly p) => IsLt(new IntPoly(), p);
+    public bool IsPos(PDD<BigInteger> p) => IsLt(new PDD(), p);
 
     // p >= 0
     // No need to copy anything!
-    public bool IsNonNeg(IntPoly p) => IsLe(new IntPoly(), p);
+    public bool IsNonNeg(PDD<BigInteger> p) => IsLe(new PDD(), p);
 
     // Just express one variable in each equation and substitute it everywhere
-    Dictionary<NonTermInt, RatPoly> ResolveIntEqs() {
+    Dictionary<NamedInt, RatPoly> ResolveIntEqs() {
         List<RatPoly> expressed = [];
-        Dictionary<NonTermInt, int> eliminated = [];
+        Dictionary<NamedInt, int> eliminated = [];
 
-        foreach (var eq in IntEq) {
-            HashSet<NonTermInt> nonLinear = [];
-            Dictionary<NonTermInt, BigInt> linear = [];
+        foreach (var eq in ConstraintsIntEq) {
+            HashSet<NamedInt> nonLinear = [];
+            Dictionary<NamedInt, BigInteger> linear = [];
             foreach (var v in eq.Poly) {
                 if (v.t.Count == 1) {
                     var n = v.t.First();
@@ -319,9 +323,9 @@ public class NielsenNode {
                 }
             }
 
-            if (linear.IsEmpty())
+            if (linear.Count == 0)
                 continue;
-            (NonTermInt bestVar, BigInt bestCoeff) = linear.First();
+            (NamedInt bestVar, BigInteger bestCoeff) = linear.First();
             bestCoeff = bestCoeff.Abs();
             foreach (var l in linear) {
                 var cr = l.Value.Abs();
@@ -334,8 +338,8 @@ public class NielsenNode {
             Debug.Assert(!eliminated.ContainsKey(bestVar));
 
             var def = eq.Poly.ToRatPoly();
-            def.Sub(new BigRat(bestCoeff), new StrictMonomial(bestVar));
-            def = def.Div(new BigRat(bestCoeff));
+            def.Sub(new BigRational(bestCoeff), new StrictMonomial(bestVar));
+            def = def.Div(new BigRational(bestCoeff));
             for (int j = 0; j < expressed.Count; j++) {
                 var e = expressed[j];
                 expressed[j] = e.Apply(bestVar, def);
@@ -343,7 +347,7 @@ public class NielsenNode {
             eliminated.Add(bestVar, expressed.Count);
             expressed.Add(def);
         }
-        Dictionary<NonTermInt, RatPoly> result = [];
+        Dictionary<NamedInt, RatPoly> result = [];
         foreach (var (v, i) in eliminated) {
             result.Add(v, expressed[i]);
         }
@@ -364,14 +368,14 @@ public class NielsenNode {
 
     public void Extend() {
         // get minimal split
-        Debug.Assert(StrEq.Count > 0);
+        Debug.Assert(ConstraintsStrEq.Count > 0);
         Debug.Assert(!IsExtended);
         Debug.Assert(Outgoing.Count == 0);
         ModifierBase? bestModifier = null;
 
-        Dictionary<NonTermInt, RatPoly> intSubst = ResolveIntEqs();
+        Dictionary<NamedInt, RatPoly> intSubst = ResolveIntEqs();
 
-        foreach (var cnstr in StrEq) {
+        foreach (var cnstr in ConstraintsStrEq) {
             ModifierBase currentModifier = cnstr.Extend(this, intSubst);
             if (bestModifier is null || currentModifier.CompareTo(bestModifier) < 0)
                 bestModifier = currentModifier;
@@ -429,7 +433,7 @@ public class NielsenNode {
                 //if (edge is not null && existing is not null) {
                 //    edge.Tgt = existing; // Take the existing node
                 //    // Hard to delete the existing node so let's keep it pending...
-                //    Debug.Assert(node.Outgoing.IsEmpty());
+                //    Debug.Assert(node.Outgoing.Empty);
                 //    node.evalIdx = 0;
                 //    Debug.Assert(edge.Src.IsExtended);
                 //}
@@ -449,7 +453,7 @@ public class NielsenNode {
 
             edge = node.Outgoing[0];
 
-            if (edge.SideConstraints.IsNonEmpty())
+            if (edge.SideConstraints.Count > 0)
                 edge.AssertToZ3(node.Graph.Ctx.MkAnd(outSideCnstr.SideConstraints.Where(o => o is not ConstraintElement.StrEq).Select(o => o.ToExpr(node.Graph))));
 
             edge.IncModCount(node.Graph);
@@ -459,7 +463,7 @@ public class NielsenNode {
     }
 
     public void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
-        foreach (var cnstr in StrEq) {
+        foreach (var cnstr in ConstraintsStrEq) {
             cnstr.CollectSymbols(nonTermSet, alphabet);
         }
     }
@@ -526,13 +530,13 @@ public class NielsenNode {
         //         lowerBounds.Add(lv.Var, (uint)(BigInteger)bound.Value.Min);
         // }
 
-        foreach (var eq in StrEq) {
+        foreach (var eq in ConstraintsStrEq) {
             if (eq.Satisfied)
                 continue;
             eq.GetNielsenDep(Graph.Env, forwardVarDep, true);
             eq.GetNielsenDep(Graph.Env, backwardVarDep, false);
         }
-        foreach (var eq in StrEq) {
+        foreach (var eq in ConstraintsStrEq) {
             if (eq.Satisfied)
                 continue;
             eq.SimplifyUnitNielsen(outSideCnstr, forwardVarDep, largerVars, lowerBounds, true);
@@ -546,9 +550,9 @@ public class NielsenNode {
     }
 
     void Normalize() {
-        StrEq.Sort();
-        IntEq.Sort();
-        IntLe.Sort();
+        ConstraintsStrEq.Sort();
+        ConstraintsIntEq.Sort();
+        ConstraintsIntLe.Sort();
     }
 
     public void RemoveConstraint(Constraint cnstr) {
@@ -569,18 +573,18 @@ public class NielsenNode {
 
     public void RemoveStrEq(StrEq toRemove) {
         // The set can contain the same element multiple times after simplification (unfortunately)
-        Log.Verify(StrEq.Remove(toRemove));
-        while (StrEq.Remove(toRemove)) {}
+        Log.Verify(ConstraintsStrEq.Remove(toRemove));
+        while (ConstraintsStrEq.Remove(toRemove)) {}
     }
 
     public void RemoveIntEq(IntEq toRemove) {
-        Log.Verify(IntEq.Remove(toRemove));
-        while (IntEq.Remove(toRemove)) {}
+        Log.Verify(ConstraintsIntEq.Remove(toRemove));
+        while (ConstraintsIntEq.Remove(toRemove)) {}
     }
 
     public void RemoveIntLe(IntLe toRemove) {
-        Log.Verify(IntLe.Remove(toRemove));
-        while (IntLe.Remove(toRemove)) {}
+        Log.Verify(ConstraintsIntLe.Remove(toRemove));
+        while (ConstraintsIntLe.Remove(toRemove)) {}
     }
 
     public void RemoveDisEq(DisEq disEq0) {
@@ -590,14 +594,14 @@ public class NielsenNode {
             return;
         }
         Log.Verify(list.Remove(disEq.U));
-        if (list.IsEmpty())
+        if (list.Count == 0)
             DisEqs.Remove(disEq.O);
         if (!disEq.IsInverse(out disEq))
             return;
         Log.Verify(DisEqs.TryGetValue(disEq.O, out list));
         Debug.Assert(list is not null);
         Log.Verify(list.Remove(disEq.U));
-        if (list.IsEmpty())
+        if (list.Count == 0)
             DisEqs.Remove(disEq.O);
     }
 
@@ -607,10 +611,10 @@ public class NielsenNode {
         IReadOnlyCollection<DisEq> disEqs, bool progress) {
 
         var child = new NielsenNode(parent, subst, sideConds, disEqs, progress) {
-            StrEq = StrEq.Select(o => o.Clone()).ToNList(),
-            IntEq = IntEq.Select(o => o.Clone()).ToNList(),
-            IntLe = IntLe.Select(o => o.Clone()).ToNList(),
-            IntBounds = new Dictionary<NonTermInt, Interval>(IntBounds),
+            ConstraintsStrEq = ConstraintsStrEq.Select(o => o.Clone()).ToNList(),
+            ConstraintsIntEq = ConstraintsIntEq.Select(o => o.Clone()).ToNList(),
+            ConstraintsIntLe = ConstraintsIntLe.Select(o => o.Clone()).ToNList(),
+            IntBounds = new Dictionary<NamedInt, Interval>(IntBounds),
             VarBoundWatcher = VarBoundWatcher.ToDictionary(o => o.Key, o => o.Value.ToHashSet()),
             DisEqs = DisEqs.ToDictionary(o => o.Key, o => o.Value.ToHashSet()),
         };
@@ -630,10 +634,10 @@ public class NielsenNode {
 
     public NielsenNode Clone() {
         return new NielsenNode(Graph) {
-            StrEq = StrEq.Select(o => o.Clone()).ToNList(),
-            IntEq = IntEq.Select(o => o.Clone()).ToNList(),
-            IntLe = IntLe.Select(o => o.Clone()).ToNList(),
-            IntBounds = new Dictionary<NonTermInt, Interval>(IntBounds),
+            ConstraintsStrEq = ConstraintsStrEq.Select(o => o.Clone()).ToNList(),
+            ConstraintsIntEq = ConstraintsIntEq.Select(o => o.Clone()).ToNList(),
+            ConstraintsIntLe = ConstraintsIntLe.Select(o => o.Clone()).ToNList(),
+            IntBounds = new Dictionary<NamedInt, Interval>(IntBounds),
             VarBoundWatcher = VarBoundWatcher.ToDictionary(o => o.Key, o => o.Value.ToHashSet()),
             DisEqs = DisEqs.ToDictionary(o => o.Key, o => o.Value.ToHashSet()),
         };
@@ -648,7 +652,7 @@ public class NielsenNode {
     public bool EqualContent(NielsenNode other) {
         if (ReferenceEquals(this, other))
             return true;
-        if (StrEq.Count != other.StrEq.Count || IntBounds.Count != other.IntBounds.Count || DisEqs.Count != other.DisEqs.Count)
+        if (ConstraintsStrEq.Count != other.ConstraintsStrEq.Count || IntBounds.Count != other.IntBounds.Count || DisEqs.Count != other.DisEqs.Count)
             return false;
         foreach (var cnstrPair in AllConstraints.Zip(other.AllConstraints)) {
             if (!cnstrPair.First.Equals(cnstrPair.Second))
@@ -683,18 +687,18 @@ public class NielsenNode {
 
     public bool AddConstraint(Constraint cnstr) {
         return cnstr switch {
-            StrEq sEq => StrEq.Add(sEq),
-            IntEq iEq => IntEq.Add(iEq),
-            IntLe iLe => IntLe.Add(iLe),
+            StrEq sEq => ConstraintsStrEq.Add(sEq),
+            IntEq iEq => ConstraintsIntEq.Add(iEq),
+            IntLe iLe => ConstraintsIntLe.Add(iLe),
             _ => throw new NotSupportedException(),
         };
     }
 
     void GcConstraints() {
         // For performance, we can drop everything to regain memory
-        StrEq.Clear();
-        IntEq.Clear();
-        IntLe.Clear();
+        ConstraintsStrEq.Clear();
+        ConstraintsIntEq.Clear();
+        ConstraintsIntLe.Clear();
         IntBounds.Clear();
         VarBoundWatcher.Clear();
         DisEqs.Clear();
@@ -718,7 +722,7 @@ public class NielsenNode {
 
     // Checks if stronger is more constrained than this
     public bool Subsumes(NielsenNode stronger) {
-        Debug.Assert(stronger.StrEq.Equals(StrEq));
+        Debug.Assert(stronger.ConstraintsStrEq.Equals(ConstraintsStrEq));
         return EqualContent(stronger);
         //if (!BoundsSubsumes(stronger))
         //    return false;
@@ -821,7 +825,7 @@ public class NielsenNode {
                 }
 
                 if (z3Res == Status.UNSATISFIABLE) {
-                    Debug.Assert(Outgoing.IsEmpty());
+                    Debug.Assert(Outgoing.Count == 0);
                     CurrentReason = BacktrackReasons.SMT;
                     IsExtended = true;
                     Debug.Assert(IsCurrentlyConflict);
@@ -829,7 +833,7 @@ public class NielsenNode {
                 }
             }
 
-            if (StrEq.Count == 0) {
+            if (ConstraintsStrEq.Count == 0) {
                 // We might have already checked this if it was a progress node
                 // We need a Z3 result so let's ask if we haven't already
                 if (z3Res == Status.UNKNOWN) {
@@ -903,26 +907,26 @@ public class NielsenNode {
         // All children are inconsistent
         Debug.Assert(!IsGeneralConflict || generalConflict);
         IsGeneralConflict = generalConflict; // if all children failed generally, this node also fails generally
-        if (Outgoing.IsNonEmpty())
+        if (Outgoing.Count > 0)
             CurrentReason = BacktrackReasons.ChildrenFailed;
         return SolveResult.UNSAT;
     }
 
     public override string ToString() {
         StringBuilder sb = new();
-        if (StrEq.Count > 0) {
+        if (ConstraintsStrEq.Count > 0) {
             sb.AppendLine("Cnstr:");
             foreach (var cnstr in AllConstraints) {
                 sb.Append('\t').AppendLine(cnstr.ToString());
             }
         }
-        if (IntBounds.IsNonEmpty()) {
+        if (IntBounds.Count > 0) {
             sb.AppendLine("Bounds:");
             foreach (var (v, i) in IntBounds) {
                 sb.Append('\t').Append(i.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ").AppendLine(i.Max.ToString());
             }
         }
-        if (DisEqs.IsNonEmpty()) {
+        if (DisEqs.Count > 0) {
             sb.AppendLine("DisEqs:");
             foreach (var (v, deq) in DisEqs) {
                 sb.Append('\t').Append(v).Append(" \u2209 { ").Append(string.Join(", ", deq)).AppendLine(" }");
@@ -942,7 +946,7 @@ public class NielsenNode {
                 sb.Append(DotEscapeStr(cnstr.ToString())).Append("\\n");
             }
         }
-        if (IntBounds.IsNonEmpty()) {
+        if (IntBounds.Count > 0) {
             sb.Append("Bounds:\\n");
             foreach (var (v, i) in IntBounds) {
                 sb.Append(i.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.Max).Append("\\n");

@@ -13,6 +13,11 @@ public static class Log {
     [Conditional("DEBUG")]
     public static void WriteLine(object message) => WriteLine(message.ToString() ?? "null");
 
+    [Conditional("DEBUG")]
+    public static void Caller(string name) {
+        Debug.Assert(new StackFrame(1, true).GetMethod()?.Name == name);
+    }
+
 #if DEBUG
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Verify(bool cond) {

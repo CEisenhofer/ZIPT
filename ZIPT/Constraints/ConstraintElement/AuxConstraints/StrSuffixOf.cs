@@ -1,23 +1,24 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 
 public class StrSuffixOf : StrConstraint {
 
     public bool Negated { get; }
-    public IStr S { get; }
-    public IStr Contained { get; }
+    public Str S { get; }
+    public Str Contained { get; }
 
-    public StrSuffixOf(IStr s, IStr contained, bool negated, NonTermSet dependencies) : base() {
+    public StrSuffixOf(Str s, Str contained, bool negated) {
         Negated = negated;
         S = s;
         Contained = contained;
     }
 
-    public override Constraint Clone() => new(S.Clone(), Contained.Clone(), Negated, Dependencies.Clone());
+    public override Constraint Clone() => new(S.Clone(), Contained.Clone(), Negated);
 
     public override bool Equals(object? obj) =>
         obj is StrSuffixOf suffixOf && Equals(suffixOf);
@@ -30,11 +31,6 @@ public class StrSuffixOf : StrConstraint {
 
     public override string ToString() => $"{(Negated ? "!" : "")}SuffixOf({Contained}, {S})";
 
-    public override void Apply(Subst subst) {
-        S.Apply(subst);
-        Contained.Apply(subst);
-    }
-
     public override void Apply(Interpretation itp) {
         S.Apply(itp);
         Contained.Apply(itp);
@@ -43,9 +39,9 @@ public class StrSuffixOf : StrConstraint {
     // Just very rudimentary implementation - it will get eliminated anyway...
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
         ref BacktrackReasons reason) {
-        if (S.Length < Contained.Length)
+        if (S.SLength < Contained.SLength)
             return SimplifyResult.Proceed;
-        int i = Contained.Length;
+        int i = (int)Contained.SLength;
         for (; i > 0 && S[i - 1] is CharToken c1 && Contained[i - 1] is CharToken c2; i--) {
             if (c1.Equals(c2)) 
                 continue;
@@ -70,12 +66,12 @@ public class StrSuffixOf : StrConstraint {
     }
 
     public override StrSuffixOf Negate() =>
-        new(S.Clone(), Contained.Clone(), !Negated, Dependencies.Clone());
+        new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NonTermInt, RatPoly> intSubst) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, RatPoly> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

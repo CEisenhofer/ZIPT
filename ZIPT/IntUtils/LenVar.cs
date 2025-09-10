@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
 
@@ -13,25 +14,25 @@ public sealed class LenVar : StrDepIntVar {
 
     public override int GetHashCode() => Var.GetHashCode() * 416749777;
 
-    public override IntPoly Apply(Subst subst) => 
+    public override PDD<BigInteger> Apply(Subst subst) => 
         MkLenPoly(subst.ResolveVar(Var));
-    public override IntPoly Apply(Interpretation subst) =>
+    public override PDD<BigInteger> Apply(Interpretation subst) =>
         MkLenPoly(subst.ResolveVar(Var));
 
-    public static IntPoly MkLenPoly(IStr s) {
-        IntPoly poly = new();
+    public static PDD<BigInteger> MkLenPoly(IReadOnlyList<StrToken> s) {
+        PDD<BigInteger> poly = new();
         foreach (var t in s) {
             switch (t) {
                 case UnitToken:
                     poly.Plus(1);
                     break;
                 case NamedStrToken v:
-                    poly.Plus(new IntPoly(new LenVar(v)));
+                    poly.Plus(new PDD(new LenVar(v)));
                     break;
                 case PowerToken pt:
                 {
                     var subPoly = MkLenPoly(pt.Base);
-                    poly.Plus(IntPoly.Mul(subPoly, pt.Power));
+                    poly.Plus(PDD.Mul(subPoly, pt.Power));
                     break;
                 }
                 default:
@@ -41,7 +42,7 @@ public sealed class LenVar : StrDepIntVar {
         return poly;
     }
 
-    public override int CompareToInternal(NonTermInt other) =>
+    public override int CompareToInternal(NamedInt other) =>
         Var.CompareTo(((LenVar)other).Var);
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(Var);

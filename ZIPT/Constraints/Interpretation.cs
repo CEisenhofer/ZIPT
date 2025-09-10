@@ -1,27 +1,29 @@
 ﻿using System.Diagnostics;
 using ZIPT.MiscUtils;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
 public class Interpretation {
 
-    public Dictionary<IntVar, BigInt> IntVal { get; } = [];
-    public Dictionary<NamedStrToken, IStr> Substitution { get; } = [];
+    public Environment Env { get; }
+    public Dictionary<IntVar, BigInteger> IntVal { get; } = [];
+    public Dictionary<NamedStrToken, Str> Substitution { get; } = [];
     public Dictionary<SymCharToken, UnitToken> CharSubstitution { get; } = [];
 
-    public IStr ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
+    public Str ResolveVar(NamedStrToken v) => Substitution.TryGetValue(v, out var s) ? s : [v];
     public UnitToken ResolveVar(SymCharToken v) => CharSubstitution.GetValueOrDefault(v, v);
-    public IntPoly ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new IntPoly(i) : new IntPoly(v);
+    public PDD<BigInteger> ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) ? new PDD(i) : new PDD(v);
 
-    public void Add(SubstVar subst) => 
-        Substitution[subst.Var] = subst.IStr.Apply(this);
+    public Interpretation(Environment env) => 
+        Env = env;
 
     public void Add(SubstSChar subst) => 
         CharSubstitution[subst.Sym] = subst.C is SymCharToken c ? ResolveVar(c) : subst.C;
 
-    public void Add(IntVar v, BigInt l) {
+    public void Add(IntVar v, BigInteger l) {
         Debug.Assert(!IntVal.ContainsKey(v));
         IntVal[v] = l;
     }
@@ -32,10 +34,7 @@ public class Interpretation {
         foreach (var v in Substitution.Values) {
             v.CollectSymbols(nonTermSet, []);
         }
-        Interpretation clean = new();
-        foreach (var v in nonTermSet.StrVars) {
-            clean.Add(new SubstVar(v));
-        }
+        Interpretation clean = new(Env);
         foreach (var c in nonTermSet.SymChars) {
             clean.Add(new SubstSChar(c, ch));
         }

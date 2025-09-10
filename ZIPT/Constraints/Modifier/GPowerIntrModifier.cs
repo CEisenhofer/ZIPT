@@ -1,17 +1,17 @@
 ﻿using System.Diagnostics;
-using ZIPT.MiscUtils;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
-using ZIPT.Tokens;
+using ZIPT.Strings;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
 public class GPowerIntrModifier : DirectedNielsenModifier {
 
-    public List<(NamedStrToken x, IStr val)> Cases { get; }
+    public List<(NamedStrToken x, List<StrToken> val)> Cases { get; }
 
-    public GPowerIntrModifier(List<(NamedStrToken x, IStr val)> cases, bool forward) : base(forward) {
-        Debug.Assert(cases.IsNonEmpty());
+    public GPowerIntrModifier(List<(NamedStrToken x, List<StrToken> val)> cases, bool forward) : base(forward) {
+        Debug.Assert(cases.Count > 0);
         Cases = cases;
     }
 
@@ -19,18 +19,18 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
-            var powerConstant = new IntPoly(v.GetPowerExtension());
+            var powerConstant = new PDD(v.GetPowerExtension());
 
             // TODO: If b = u^n => b = u
-            IStr b = StrEqBase.LcpCompressionFull(@base) ?? @base;
-            if (b.Length == 1 && b.Peek(true) is PowerToken pt)
+            Str b = StrEqBase.LcpCompressionFull(@base) ?? @base;
+            if (b.Length == 1 && b[true] is PowerToken pt)
                 b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
             var prefixes = b.GetPrefixes(Forwards);
             var power = new PowerToken(b, powerConstant);
 
             foreach (var p in prefixes) {
-                IStr s = new IStr(power);
+                Str s = new Str(power);
                 s.AddRange(p.str, !Forwards);
                 var subst = new SubstVar(v, s);
                 Debug.Assert(p.varDecomp is null);
@@ -38,7 +38,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
                 for (int i = 0; i < p.sideConstraints.Count; i++) {
                     cnstr[i] = p.sideConstraints[i];
                 }
-                cnstr[^1] = IntLe.MkLe(new IntPoly(), new IntPoly(powerConstant));
+                cnstr[^1] = IntLe.MkLe(new PDD(), new PDD(powerConstant));
                 node.MkChild(node, [subst], cnstr, Array.Empty<DisEq>(), true);
             }
         }
