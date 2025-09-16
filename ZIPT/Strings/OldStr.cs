@@ -10,23 +10,24 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Strings;
 
-public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
+#if false
+public class OStr : IEquatable<OStr>, IComparable<OStr>, IReadOnlyList<StrToken> {
 
     public readonly IdSet VarOccurrences;
     Dictionary<StrVarToken, PDD>? varCountsCache;
     Dictionary<CharToken, PDD>? charCountsCache;
-    public IReadOnlyList<Chunk> Chunks { get; }
-    public uint SLength { get; }
-    public int Count => (int)SLength;
-    public bool IsEmpty => SLength == 0;
+    public IReadOnlyList<OChunk> Chunks { get; }
+    public uint Length { get; }
+    public int Count => (int)Length;
+    public bool IsEmpty => Length == 0;
     public bool IsNonEmpty => !IsEmpty;
 
     readonly int hashCode;
 
-    public Str(IReadOnlyList<Chunk> chunks, uint len) {
-        Debug.Assert(len == chunks.Sum(o => o.SLength));
+    public OStr(IReadOnlyList<OChunk> chunks, uint len) {
+        Debug.Assert(len == chunks.Sum(o => o.Length));
         Chunks = chunks;
-        SLength = len;
+        Length = len;
         VarOccurrences = new IdSet();
         foreach (var chunk in chunks) {
             chunk.OrIn(ref VarOccurrences);
@@ -34,7 +35,7 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
         hashCode = ComputeHashCode();
     }
 
-    public Str(IReadOnlyList<Chunk> chunks) : this(chunks, (uint)chunks.Sum(c => c.SLength)) { }
+    public OStr(IReadOnlyList<OChunk> chunks) : this(chunks, (uint)chunks.Sum(c => c.Length)) { }
 
     public StrToken this[int idx] {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,33 +55,33 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
     public bool Contains(NamedStrToken v) => 
         VarOccurrences.Contains(v.StrVarId);
 
-    public Str Apply(Interpretation itp) {
-        List<Chunk> newChunks = [];
+    public OStr Apply(Interpretation itp) {
+        List<OChunk> newChunks = [];
         foreach (var chunk in Chunks) {
             newChunks.AddRange(chunk.Apply(itp));
         }
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
     StrToken PeekFrwd(int idx) {
-        Debug.Assert(idx >= 0 && idx < SLength);
+        Debug.Assert(idx >= 0 && idx < Length);
         foreach (var chunk in Chunks) {
-            if (idx < chunk.SLength)
+            if (idx < chunk.Length)
                 return chunk[idx];
-            idx -= chunk.SLength;
+            idx -= chunk.Length;
         }
-        throw new IndexOutOfRangeException($"Index {idx} is out of bounds for string of length {SLength}");
+        throw new IndexOutOfRangeException($"Index {idx} is out of bounds for string of length {Length}");
     }
 
     StrToken PeekBkwd(int idx) {
-        Debug.Assert(idx >= 0 && idx < SLength);
+        Debug.Assert(idx >= 0 && idx < Length);
         for (int i = Chunks.Count; i > 0; i--) {
             var chunk = Chunks[i - 1];
-            if (idx < chunk.SLength)
-                return chunk[chunk.SLength - idx - 1];
-            idx -= chunk.SLength;
+            if (idx < chunk.Length)
+                return chunk[chunk.Length - idx - 1];
+            idx -= chunk.Length;
         }
-        throw new IndexOutOfRangeException($"Index {idx} is out of bounds for string of length {SLength}");
+        throw new IndexOutOfRangeException($"Index {idx} is out of bounds for string of length {Length}");
     }
 
     public bool IsNullable(NielsenNode node) => this.All(token => token.IsNullable(node));
@@ -127,12 +128,12 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Str Drop(bool frwd, Environment env) =>
+    public OStr Drop(bool frwd, Environment env) =>
         frwd ? DropForward(env) : DropBackwards(env);
 
 #if false
-    public Str DropForward(Environment env, uint frwd, uint bkwd) {
-        Debug.Assert(frwd + bkwd < SLength);
+    public OStr DropForward(Environment env, uint frwd, uint bkwd) {
+        Debug.Assert(frwd + bkwd < Length);
         if (frwd == 0 && bkwd == 0)
             return this;
         var varCounts = VarCounts;
@@ -141,121 +142,121 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
         int toChunk = 0;
         for (int i = 0; i < Chunks.Count; i++) {
             var chunk = Chunks[i];
-            if (frwd < chunk.SLength) {
+            if (frwd < chunk.Length) {
                 fromChunk = i;
                 break;
             }
-            frwd = (uint)(frwd - chunk.SLength);
+            frwd = (uint)(frwd - chunk.Length);
             chunk.DropAll();
         }
         for (int i = Chunks.Count; i > 0; i--) {
             var chunk = Chunks[i - 1];
-            if (bkwd < chunk.SLength) {
+            if (bkwd < chunk.Length) {
                 toChunk = i;
                 break;
             }
-            bkwd = (uint)(bkwd - chunk.SLength);
+            bkwd = (uint)(bkwd - chunk.Length);
         }
         if (fromChunk == toChunk)
-            return new Str([Chunks[fromChunk].Extract(fromChunk, Chunks[fromChunk].SLength - fromChunk, env)]);
+            return new OStr([Chunks[fromChunk].Extract(fromChunk, Chunks[fromChunk].Length - fromChunk, env)]);
         Debug.Assert(fromChunk < toChunk);
         Chunk[] chunks = new Chunk[toChunk - fromChunk + 1];
         int diff = toChunk - fromChunk - 1;
         Debug.Assert(diff >= 0);
-        chunks[0] = Chunks[fromChunk].Extract((int)frwd, Chunks[fromChunk].SLength, env);
+        chunks[0] = Chunks[fromChunk].Extract((int)frwd, Chunks[fromChunk].Length, env);
         for (int i = 0; i < diff; i++) {
             chunks[i + 1] = Chunks[fromChunk + 1];
         }
-        chunks[diff + 1] = Chunks[toChunk].Extract(0, Chunks[toChunk].SLength - (int)frwd, env);
-        return new Str(chunks, );
+        chunks[diff + 1] = Chunks[toChunk].Extract(0, Chunks[toChunk].Length - (int)frwd, env);
+        return new OStr(chunks, );
     }
 #endif
 
-    public Str DropForward(Environment env) {
+    public OStr DropForward(Environment env) {
         Debug.Assert(Chunks.Count > 0);
         var newFirst = Chunks[0].DropFirst(env);
-        Chunk[] chunks;
-        if (newFirst.IsEmpty) {
-            chunks = new Chunk[Chunks.Count - 1];
+        OChunk[] chunks;
+        if (newFirst.IsEmpty()) {
+            chunks = new OChunk[Chunks.Count - 1];
             for (int i = 1; i < Chunks.Count; i++) {
                 chunks[i - 1] = Chunks[i];
             }
         }
         else {
-            chunks = new Chunk[Chunks.Count];
+            chunks = new OChunk[Chunks.Count];
             chunks[0] = newFirst;
             for (int i = 1; i < Chunks.Count; i++) {
                 chunks[i] = Chunks[i];
             }
         }
-        return new Str(chunks, SLength - 1);
+        return new OStr(chunks, Length - 1);
     }
 
-    public Str DropBackwards(Environment env) {
+    public OStr DropBackwards(Environment env) {
         Debug.Assert(Chunks.Count > 0);
         var newLast = Chunks[^1].DropLast(env);
-        Chunk[] chunks;
-        if (newLast.IsEmpty) {
-            chunks = new Chunk[Chunks.Count - 1];
+        OChunk[] chunks;
+        if (newLast.IsEmpty()) {
+            chunks = new OChunk[Chunks.Count - 1];
             for (int i = 0; i < Chunks.Count - 1; i++) {
                 chunks[i] = Chunks[i];
             }
         }
         else {
-            chunks = new Chunk[Chunks.Count];
+            chunks = new OChunk[Chunks.Count];
             for (int i = 0; i < Chunks.Count - 1; i++) {
                 chunks[i] = Chunks[i];
             }
             chunks[^1] = newLast;
         }
-        return new Str(chunks, SLength - 1);
+        return new OStr(chunks, Length - 1);
     }
 
-    public Str SubstX(StrVarToken x, Environment env) {
+    public OStr SubstX(StrVarToken x, Environment env) {
         if (!VarOccurrences.Contains(x.StrVarId))
             return this;
-        List<Chunk> newChunks = new(Chunks.Count);
+        List<OChunk> newChunks = new(Chunks.Count);
         foreach (var chunk in Chunks) {
             chunk.SubstX(x, env);
-            if (chunk.IsEmpty)
+            if (chunk.IsEmpty())
                 continue;
             newChunks.Add(chunk);
         }
-        return new Str(newChunks.ToArray());
+        return new OStr(newChunks.ToArray());
     }
 
-    public Str SubstAX(bool frwd, StrVarToken x, CharToken a, Environment env) =>
+    public OStr SubstAX(bool frwd, StrVarToken x, CharToken a, Environment env) =>
         frwd ? SubstAX(x, a, env) : SubstXA(x, a, env);
 
-    public Str SubstXA(StrVarToken x, CharToken a, Environment env) {
+    public OStr SubstXA(StrVarToken x, CharToken a, Environment env) {
         if (!VarOccurrences.Contains(x.StrVarId))
             return this;
-        var newChunks = new Chunk[Chunks.Count];
+        var newChunks = new OChunk[Chunks.Count];
         for (int i = 0; i < Chunks.Count; i++) {
-            Chunk c = Chunks[i].SubstXA(x, a, env);
+            OChunk c = Chunks[i].SubstXA(x, a, env);
             newChunks[i] = c;
         }
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
-    public Str SubstAX(StrVarToken x, CharToken a, Environment env) {
+    public OStr SubstAX(StrVarToken x, CharToken a, Environment env) {
         if (!VarOccurrences.Contains(x.StrVarId))
             return this;
-        var newChunks = new Chunk[Chunks.Count];
+        var newChunks = new OChunk[Chunks.Count];
         for (int i = 0; i < Chunks.Count; i++) {
-            Chunk c = Chunks[i].SubstAX(x, a, env);
+            OChunk c = Chunks[i].SubstAX(x, a, env);
             newChunks[i] = c;
         }
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
-    public Str SubstYX(bool frwd, StrVarToken x, StrVarToken y, Environment env) =>
+    public OStr SubstYX(bool frwd, StrVarToken x, StrVarToken y, Environment env) =>
             frwd ? SubstYX(x, y, env) : SubstXY(x, y, env);
 
-    public Str SubstXY(StrVarToken x, StrVarToken y, Environment env) {
+    public OStr SubstXY(StrVarToken x, StrVarToken y, Environment env) {
         if (!VarOccurrences.Contains(x.StrVarId))
             return this;
-        var newChunks = new List<Chunk>(Chunks.Count + 2);
+        var newChunks = new List<OChunk>(Chunks.Count + 2);
         for (int i = 0; i < Chunks.Count; i++) {
             var c = Chunks[i].SubstXY(x, y, env);
             Debug.Assert(c.Length <= 2);
@@ -263,13 +264,13 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
                 newChunks.Add(chunk);
             }
         }
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
-    public Str SubstYX(StrVarToken x, StrVarToken y, Environment env) {
+    public OStr SubstYX(StrVarToken x, StrVarToken y, Environment env) {
         if (!VarOccurrences.Contains(x.StrVarId))
             return this;
-        var newChunks = new List<Chunk>(Chunks.Count + 2);
+        var newChunks = new List<OChunk>(Chunks.Count + 2);
         for (int i = 0; i < Chunks.Count; i++) {
             var c = Chunks[i].SubstYX(x, y, env);
             Debug.Assert(c.Length <= 2);
@@ -277,17 +278,17 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
                 newChunks.Add(chunk);
             }
         }
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
 
-    public Str Unwind(bool dir, NielsenNode node) =>
+    public OStr Unwind(bool dir, NielsenNode node) =>
         dir ? UnwindFrwd(node) : UnwindBkwd(node);
 
-    public Str UnwindFrwd(NielsenNode node) {
+    public OStr UnwindFrwd(NielsenNode node) {
         Debug.Assert(Chunks.Count > 0);
         var cases = Chunks[0].UnwindFrwd(node);
-        Chunk[] newChunks = new Chunk[Chunks.Count + cases.Length - 1];
+        OChunk[] newChunks = new OChunk[Chunks.Count + cases.Length - 1];
         int j = 0;
         for (; j < newChunks.Length; j++) {
             newChunks[j] = cases[j];
@@ -296,13 +297,13 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
             newChunks[j++] = Chunks[i];
         }
         Debug.Assert(j == Chunks.Count);
-        return new Str(newChunks, SLength);
+        return new OStr(newChunks, Length);
     }
 
-    public Str UnwindBkwd(NielsenNode node) {
+    public OStr UnwindBkwd(NielsenNode node) {
         Debug.Assert(Chunks.Count > 0);
         var cases = Chunks[^1].UnwindBkwd(node);
-        Chunk[] newChunks = new Chunk[Chunks.Count + cases.Length - 1];
+        OChunk[] newChunks = new OChunk[Chunks.Count + cases.Length - 1];
         int j = 0;
         for (int i = 0; i < Chunks.Count - 1; i++) {
             newChunks[j++] = Chunks[i];
@@ -311,7 +312,7 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
             newChunks[j] = cases[i++];
         }
         Debug.Assert(j == Chunks.Count);
-        return new Str(newChunks);
+        return new OStr(newChunks);
     }
 
     public IEnumerator<StrToken> GetEnumerator() {
@@ -323,14 +324,14 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
     }
 
     public override bool Equals(object? obj) =>
-        obj is Str other && Equals(other);
+        obj is OStr other && Equals(other);
 
-    public bool Equals(Str? other) {
+    public bool Equals(OStr? other) {
         if (other is null)
             return false;
         if (ReferenceEquals(this, other))
             return true;
-        if (SLength != other.SLength)
+        if (Length != other.Length)
             return false;
         if (hashCode != other.hashCode)
             return false;
@@ -349,13 +350,13 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
 
     public override int GetHashCode() => hashCode;
 
-    public int CompareTo(Str? other) {
+    public int CompareTo(OStr? other) {
         if (other is null)
             return 1;
         if (ReferenceEquals(this, other))
             return 0;
-        if (SLength != other.SLength)
-            return SLength.CompareTo(other.SLength);
+        if (Length != other.Length)
+            return Length.CompareTo(other.Length);
         using var e1 = GetEnumerator();
         using var e2 = other.GetEnumerator();
         while (e1.MoveNext() && e2.MoveNext()) {
@@ -370,7 +371,7 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
     // public MSet<StrToken, BigInteger> ToSet() => new(this);
 
     public Expr ToExpr(NielsenGraph graph) {
-        if (IsEmpty)
+        if (IsEmpty())
             return graph.Env.Epsilon;
         Expr last = Chunks[^1].ToExpr(graph);
         for (int i = Chunks.Count - 1; i > 0; i--) {
@@ -384,3 +385,4 @@ public class Str : IEquatable<Str>, IComparable<Str>, IReadOnlyList<StrToken> {
     IEnumerator IEnumerable.GetEnumerator() =>
         GetEnumerator();
 }
+#endif

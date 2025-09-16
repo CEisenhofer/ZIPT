@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZIPT.IntUtils;
 using ZIPT.Strings;
@@ -59,13 +60,15 @@ public static class CollectionExtension {
         return true;
     }
 
-    public static void Add<K>(this Dictionary<K, PDD> dict, K key, PDD<BigInteger> val) where K : notnull {
-        if (val.Empty) 
+    public static void Add<K, T>(this Dictionary<K, PDD<T>> dict, K key, PDD<T> val) 
+        where K : notnull where T : struct, INumberBase<T>, IComparable<T> {
+
+        if (val.IsZero) 
             return;
         if (dict.TryGetValue(key, out var prev))
-            dict[key] = val.Plus(prev);
+            dict[key] = val.Add(prev);
         else
-            dict.Add(key, val);
+            ((IDictionary<K, PDD<T>>)dict).Add(key, val);
     }
 
     public static ImmutableDictionary<K, uint> Add<K>(this ImmutableDictionary<K, uint> dict, K key, uint val) where K : notnull {
@@ -85,20 +88,6 @@ public static class CollectionExtension {
         if (prev == val)
             return dict.Remove(key);
         return dict.SetItem(key, prev - val);
-    }
-
-    public static ImmutableDictionary<K, uint> Add<K>(this ImmutableDictionary<K, uint> dict1, ImmutableDictionary<K, uint> dict2) where K : notnull {
-        foreach (var kv in dict2) {
-            dict1 = dict1.Add(kv.Key, kv.Value);
-        }
-        return dict1;
-    }
-
-    public static ImmutableDictionary<K, uint> Sub<K>(this ImmutableDictionary<K, uint> dict1, ImmutableDictionary<K, uint> dict2) where K : notnull {
-        foreach (var kv in dict2) {
-            dict1 = dict1.Sub(kv.Key, kv.Value);
-        }
-        return dict1;
     }
 
     public static void Dec<T>(this Dictionary<T, uint> dict, T val) where T : notnull {
@@ -148,7 +137,7 @@ public static class CollectionExtension {
             }
             yield return result;
 
-            while (!cartesianEnumerator.Empty && !cartesianEnumerator[^1].MoveNext()) {
+            while (!cartesianEnumerator.IsEmpty() && !cartesianEnumerator[^1].MoveNext()) {
                 cartesianEnumerator.Pop().Dispose();
             }
             if (cartesianEnumerator.Count == 0)
@@ -186,5 +175,6 @@ public static class CollectionExtension {
         }
     }
 
+    public static T[] EmptyOrUnit<T>(T? elem) where T : struct => elem is null ? Array.Empty<T>() : [elem.Value];
     public static T[] EmptyOrUnit<T>(T? elem) => elem is null ? Array.Empty<T>() : [elem];
 }

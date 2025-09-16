@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Numerics;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
 
@@ -20,12 +21,12 @@ public class NumCmpModifier : ModifierBase {
 
         node.MkChild(node, 
             Array.Empty<Subst>(),
-            [IntLe.MkLt(N1.Clone(), N2)],
-            Array.Empty<DisEq>(), true); // N1 < N2
+            [IntLe.MkLt(N1, N2)],
+            true); // N1 < N2
         node.MkChild(node,
             Array.Empty<Subst>(),
-            [IntLe.MkLe(N2.Clone(), N1)],
-            Array.Empty<DisEq>(), true); // N2 <= N1
+            [IntLe.MkLe(N2, N1)],
+            true); // N2 <= N1
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

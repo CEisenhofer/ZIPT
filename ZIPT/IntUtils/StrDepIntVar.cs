@@ -1,4 +1,5 @@
-﻿using ZIPT.Constraints;
+﻿using System.Numerics;
+using ZIPT.Constraints;
 using ZIPT.Strings;
 using ZIPT.Strings.Tokens;
 
@@ -8,7 +9,7 @@ namespace ZIPT.IntUtils;
 public abstract class StrDepIntVar : NamedInt {
 
     public NamedStrToken Var { get; }
-    public sealed override BigIntInf MinLen => 0;
+    public sealed override InfNum<BigInteger> MinLen => InfNum<BigInteger>.Zero;
 
     protected StrDepIntVar(NamedStrToken v) =>
         Var = v;

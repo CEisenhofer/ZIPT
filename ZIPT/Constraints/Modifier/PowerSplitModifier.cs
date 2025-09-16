@@ -1,8 +1,11 @@
 ﻿using System.Diagnostics;
-using ZIPT.MiscUtils;
+using System.Numerics;
+using System.Xml.Linq;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
@@ -21,37 +24,41 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         // V / Base^Power V
 
         IntVar newPow = new();
-        var power = new PowerToken(Power.Base.Clone(), new PDD(newPow));
-        var prefixes = Power.Base.GetPrefixes(Forwards);
+        var power = new PowerToken(Power.Base, node.Env.IntPDDManager.MkPDD(newPow));
+        var prefixes = StrManager.GetPrefixes(node, Power.Base, Forwards);
         Str s;
         foreach (var p in prefixes) {
-            s = new Str(power);
-            s.AddRange(p.str, Forwards);
+            if (Forwards)
+                s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Str);
+            else
+                s = node.Env.StrManager.Concat(p.Str, node.Env.MkString(power));
 #if DEBUG
-            var cmp = StrEqBase.LcpCompression(s);
+            var cmp = StrEqBase.LcpCompression(s, node.Env);
             if (cmp is not null)
                 Console.WriteLine("Could have compressed: " + s + " => " + cmp);
 #endif
             //s = StrEqBase.LcpCompression(s) ?? s;
             List<Constraint> cond = [
-                IntLe.MkLe(new PDD(0), new PDD(newPow)),
-                IntLe.MkLt(new PDD(newPow), Power.Power),
+                IntLe.MkLe(node.Env.ZeroInt, node.Env.IntPDDManager.MkPDD(newPow)),
+                IntLe.MkLt(node.Env.IntPDDManager.MkPDD(newPow), Power.Power),
             ];
-            cond.AddRange(p.sideConstraints);
-            if (p.varDecomp is null)
+            cond.AddRange(p.SideConstraints);
+            if (p.VarDecomp is null)
                 node.MkChild(node, 
-                    [new SubstVar(StrVarToken, s)],
-                    cond, Array.Empty<DisEq>(), true);
+                    [new Subst(StrVarToken, s)],
+                    cond, true);
             else {
                 Debug.Assert(false);
                 node.MkChild(node,
-                    [new SubstVar(StrVarToken, s.Apply(p.varDecomp)), p.varDecomp],
-                    cond, Array.Empty<DisEq>(), false);
+                    [new Subst(StrVarToken, node.Env.StrManager.Subst(s, p.VarDecomp.Value)), p.VarDecomp.Value],
+                    cond, false);
             }
         }
-        s = new Str(StrVarToken);
-        s.Add(new PowerToken(Power.Base.Clone(), Power.Power.Clone()), Forwards);
-        node.MkChild(node, [new SubstVar(StrVarToken, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), false);
+        if (Forwards)
+            s = node.Env.MkString(StrVarToken, new PowerToken(Power.Base, Power.Power));
+        else
+            s = node.Env.MkString(new PowerToken(Power.Base, Power.Power), StrVarToken);
+        node.MkChild(node, [new Subst(StrVarToken, s)], Array.Empty<Constraint>(), false);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

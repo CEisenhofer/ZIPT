@@ -28,30 +28,41 @@ public class IntNonEq : IntConstraint {
             Poly = Poly.Negate();
     }
 
-    public override Constraint Clone() => 
-        new IntNonEq(this);
+    public override IntNonEq Apply(Subst subst, NielsenNode node) {
+        var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
+        var n = Poly.Substitute(oldLen, newLen);
+        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n);
+    }
+
+    public override IntNonEq Apply(Interpretation itp) {
+        var n = Poly;
+        foreach (var kv in itp.IntVal) {
+            n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
+        }
+        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n);
+    }
 
     public override bool Equals(object? obj) =>
         obj is IntNonEq neq && Equals(neq);
 
     public bool Equals(IntNonEq other) {
-        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+        if (Poly is { IsZero: false, DominatorSign: < 0 })
             Poly = Poly.Negate();
-        if (!other.Poly.IsZero && other.Poly.First().occ.IsNeg)
+        if (other.Poly is { IsZero: false, DominatorSign: < 0 })
             other.Poly = other.Poly.Negate();
         return Poly.Equals(other.Poly);
     }
 
     public override int CompareToInternal(IntConstraint other) {
-        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+        if (Poly is { IsZero: false, DominatorSign: < 0 })
             Poly = Poly.Negate();
-        if (!((IntNonEq)other).Poly.IsZero && ((IntNonEq)other).Poly.First().occ.IsNeg)
+        if (((IntNonEq)other).Poly is { IsZero: false, DominatorSign: < 0 })
             ((IntNonEq)other).Poly = ((IntNonEq)other).Poly.Negate();
         return Poly.CompareTo(((IntNonEq)other).Poly);
     }
 
     public override int GetHashCode() {
-        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+        if (Poly is { IsZero: false, DominatorSign: < 0 })
             Poly = Poly.Negate();
         return Poly.GetHashCode();
     }
@@ -61,9 +72,6 @@ public class IntNonEq : IntConstraint {
         return $"{pos} != {neg}";
     }
 
-    public override void Apply(Interpretation itp) => 
-        Poly = Poly.Apply(itp);
-
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
         var bounds = Poly.GetBounds(node);
         if (!bounds.Contains(0))
@@ -72,7 +80,6 @@ public class IntNonEq : IntConstraint {
             reason = BacktrackReasons.Arithmetic;
             return SimplifyResult.Conflict;
         }
-        Poly = Poly.Simplify(node);
         if (Poly.IsConst(out BigInteger val)) {
             if (!val.IsZero)
                 return SimplifyResult.Satisfied;

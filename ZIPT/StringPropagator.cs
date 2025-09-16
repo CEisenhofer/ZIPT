@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Numerics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
@@ -6,6 +7,7 @@ using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT;
@@ -31,7 +33,8 @@ public abstract class StringPropagator : UserPropagator {
         Diseq = DisEqCB;
     }
 
-    StrVarToken GetFreshAuxStr() => StrVarToken.GetOrCreate("x");
+    StrVarToken GetFreshAuxStr() => 
+        Env.GetOrCreateStrVar("x");
 
     public override void Push() {
         if (Graph.OuterPropagator.Cancel)
@@ -318,7 +321,7 @@ public abstract class StringPropagator : UserPropagator {
                 Stack<Expr> args = [];
                 args.Push(arg0);
                 IntExpr sum = Ctx.MkInt(0);
-                while (args.NonEmpty) {
+                while (args.IsNonEmpty()) {
                     var arg = args.Pop();
                     if (Env.IsConcat(arg.FuncDecl)) {
                         args.Push(arg.Arg(0));
@@ -422,19 +425,6 @@ public abstract class StringPropagator : UserPropagator {
         // }
     }
 
-    protected virtual void AddCharDiseqInternal(DisEq disEq) {}
-
-    void AddCharDiseq(UnitToken u1, UnitToken u2) {
-        if (u1 is not SymCharToken o) {
-            if (u2 is not SymCharToken)
-                return;
-            (u1, u2) = (u2, u1);
-            o = (SymCharToken)u1;
-        }
-
-        AddCharDiseqInternal(new DisEq(o, u2));
-    }
-
     public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
 
     static int eqCount;
@@ -523,9 +513,9 @@ public abstract class StringPropagator : UserPropagator {
             foreach (var v in vars) {
                 // TODO: So far I ignore occurrences in power (though; I do not know if we really want them in there anyway)
                 uint cnt1 = (uint)s1.Count(o => o is NonTermToken v2 && v2.Equals(v));
-                modRaw.Plus(cnt1);
+                modRaw.Add(cnt1);
                 uint cnt2 = (uint)s2.Count(o => o is NonTermToken v2 && v2.Equals(v));
-                modRaw.Plus(cnt2);
+                modRaw.Add(cnt2);
             }
 
             foreach (uint m in modRaw) {
@@ -537,7 +527,7 @@ public abstract class StringPropagator : UserPropagator {
                         while (n % i == 0) {
                             n /= (uint)i;
                         }
-                        mod.Plus((uint)i);
+                        mod.Add((uint)i);
                     }
                 }
             }*/
@@ -551,7 +541,7 @@ public abstract class StringPropagator : UserPropagator {
                         while (n % i == 0) {
                             n /= i;
                         }
-                        mod.Plus(i);
+                        mod.Add(i);
                     }
                 }
             }
@@ -600,36 +590,32 @@ public abstract class StringPropagator : UserPropagator {
                 );
                 var s = Env.TryParseStr(e1);
                 Debug.Assert(s is not null);
-                AddNotEpsilonInternal(s);
+                AddNotEpsilonInternal(Env.MkString(s));
                 return;
             }
 
             if (
-                Env.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is UnitToken c1 &&
-                Env.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is UnitToken c2) {
-                if (c1 is CharToken ch1 && c2 is CharToken ch2) {
-                    if (!ch1.Equals(ch2))
-                        return;
-                    Debug.Assert(false); // Why would Z3 report this?!
-                    Propagate([], Ctx.MkDistinct(e1, e2));
+                Env.ExprToStrToken.TryGetValue(e1, out var t1) && t1 is CharToken c1 &&
+                Env.ExprToStrToken.TryGetValue(e2, out var t2) && t2 is CharToken c2) {
+                if (!c1.Equals(c2))
                     return;
-                }
-                AddCharDiseq(c1, c2);
+                Debug.Assert(false); // Why would Z3 report this?!
+                Propagate([], Ctx.MkDistinct(e1, e2));
                 return;
             }
 
             StrVarToken x1 = GetFreshAuxStr();
             Expr x1e = x1.ToExpr(Graph);
-            SymCharToken o1 = new();
+            StrVarToken o1 = GetFreshAuxStr();
             StrVarToken y1 = GetFreshAuxStr();
 
             StrVarToken x2 = GetFreshAuxStr();
             Expr x2e = x2.ToExpr(Graph);
-            SymCharToken o2 = new();
+            StrVarToken o2 = GetFreshAuxStr();
             StrVarToken y2 = GetFreshAuxStr();
 
-            Str u1 = [x1, o1, y1];
-            Str u2 = [x2, o2, y2];
+            Str u1 = Env.MkString(x1, o1, y1);
+            Str u2 = Env.MkString(x2, o2, y2);
 
             Propagate([],
                 Ctx.MkEq(
@@ -640,6 +626,8 @@ public abstract class StringPropagator : UserPropagator {
                             Ctx.MkEq(e1, u1.ToExpr(Graph)),
                             Ctx.MkEq(e2, u2.ToExpr(Graph)),
                             Ctx.MkEq(Env.MkLen(x1e), Env.MkLen(x2e)),
+                            Ctx.MkEq(Env.MkLen(o1.ToExpr(Graph)), Ctx.MkInt(1)),
+                            Ctx.MkEq(Env.MkLen(o2.ToExpr(Graph)), Ctx.MkInt(1)),
                             Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Graph), o2.ToExpr(Graph)))
                         )
                     )
@@ -715,16 +703,6 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     }
 
-    protected override void AddCharDiseqInternal(DisEq disEq) {
-        if (!Root.AddDisEq(disEq))
-            return;
-        if (!newInformation) {
-            newInformation = true;
-            undoStack.Add(() => newInformation = false);
-        }
-        undoStack.Add(() => Root.RemoveDisEq(disEq));
-    }
-
     public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
@@ -742,7 +720,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 undoStack.Add(() => newInformation = false);
             }
         }
-        var la = new IntEq(LenVar.MkLenPoly(s1), LenVar.MkLenPoly(s2));
+        var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env));
         if (!la.Poly.IsZero && Root.ConstraintsIntEq.Add(la)) { // u = v => |u| = |v|
             undoStack.Add(() =>
             {
@@ -765,7 +743,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     }
 
     protected override void AddNotEpsilonInternal(Str s) {
-        var c = IntLe.MkLt(new PDD(), LenVar.MkLenPoly(s));
+        var c = IntLe.MkLt(Env.ZeroInt, LenVar.MkLenPoly(s, Env));
         if (!Root.ConstraintsIntLe.Add(c)) 
             return;
         undoStack.Add(() =>
@@ -829,7 +807,6 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         if (!phase && term.NumArgs == 0) 
             // Path literals are better true
             NextSplit(term, 0, 1);
-
     }
 
     public bool GetModel(out Interpretation itp) {
@@ -850,13 +827,6 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             BoolExpr e = c.ToExpr(Graph);
             Solver.Assert(e);
         }
-        foreach (var diseq in currentRoot.DisEqs) {
-            // TODO: Optimize via distinct
-            Expr e = diseq.Key.ToExpr(Graph);
-            foreach (UnitToken d in diseq.Value) {
-                Solver.Assert(Ctx.MkDistinct(e, d.ToExpr(Graph)));
-            }
-        }
         // TODO: Do this also in other places
         foreach (var path in currentPath) {
             foreach (BoolExpr c in path.Asserted) {
@@ -869,7 +839,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         Debug.Assert(res == Status.SATISFIABLE);
         var model = Solver.Model;
 
-        itp = new Interpretation();
+        itp = new Interpretation(Env);
         foreach (var c in model.Consts) {
             if (c.Key.Apply() is not IntExpr i)
                 continue;
@@ -893,10 +863,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         bool modelCheck = true;
 
         if (Options.CheckModel) {
-            var allConstraints = currentRoot.AllConstraints.Select(o => o.Clone());
-            foreach (var cnstr in allConstraints) {
-                var orig = cnstr.Clone();
-                cnstr.Apply(itp);
+            foreach (var orig in currentRoot.AllConstraints) {
+                var cnstr = orig.Apply(itp);
                 BacktrackReasons reason = BacktrackReasons.Unevaluated;
                 if (cnstr.SimplifyAndPropagate(satNode, new NonTermSet(), new DetModifier(), ref reason, true) ==
                     SimplifyResult.Satisfied)
@@ -917,7 +885,6 @@ public class LemmaStringPropagator : StringPropagator {
 
     public override NielsenGraph Graph { get; }
 
-    public LemmaStringPropagator(Solver solver, Environment env, NielsenGraph graph) : base(solver, env) {
+    public LemmaStringPropagator(Solver solver, Environment env, NielsenGraph graph) : base(solver, env) => 
         Graph = graph;
-    }
 }

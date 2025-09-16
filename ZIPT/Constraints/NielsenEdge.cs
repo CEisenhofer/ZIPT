@@ -10,8 +10,7 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
     public NielsenNode Src { get; }
     public BoolExpr Assumption { get; }
     public IReadOnlyList<Subst> Subst { get; }
-    public IReadOnlyCollection<Constraint> SideConstraints { get; } = [];
-    public IReadOnlyCollection<DisEq> DisEqConstraint { get; } = [];
+    public IReadOnlyCollection<Constraint> SideConstraints { get; }
     public List<BoolExpr> Asserted { get; } = [];
     public List<NamedStrToken> BumpedModCount { get; }
     public NielsenNode Tgt { get; set; }
@@ -19,19 +18,17 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
     public string ModStr =>
         string.Join("\\n",
             Subst.Select(o => o.ToString()).
-                Concat(SideConstraints.Select(o => o.ToString())).
-                Concat(DisEqConstraint.Select(o => o.ToString())));
+                Concat(SideConstraints.Select(o => o.ToString())));
 
-    public NielsenEdge(NielsenNode src, BoolExpr assumption, IReadOnlyList<Subst> subst, IReadOnlyCollection<Constraint> sideConds, IReadOnlyCollection<DisEq> disEqs, NielsenNode tgt) {
+    public NielsenEdge(NielsenNode src, BoolExpr assumption, IReadOnlyList<Subst> subst, IReadOnlyCollection<Constraint> sideConds, NielsenNode tgt) {
         Src = src;
         Assumption = assumption;
         Subst = subst;
         SideConstraints = sideConds;
-        DisEqConstraint = disEqs;
         Tgt = tgt;
         BumpedModCount = [];
 
-        foreach (var s in subst.OfType<SubstVar>()) {
+        foreach (var s in subst) {
             if (s.IsEliminating) 
                 continue;
             Debug.Assert(!BumpedModCount.Contains(s.Var));
@@ -72,17 +69,6 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         }
     }
 
-    public NonTermSet GetNonTermModSet() {
-        NonTermSet ret = new();
-        foreach (var c in Subst) {
-            ret.Add(c);
-        }
-        foreach (var c in SideConstraints) {
-            ret.Add(c.Dependencies);
-        }
-        return ret;
-    }
-
     public override bool Equals(object? obj) =>
         obj is NielsenEdge edge && Equals(edge);
 
@@ -93,5 +79,5 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         HashCode.Combine(Src, Tgt);
 
     public override string ToString() => 
-        $"{Src} --{Subst};{string.Join(", ", SideConstraints)};{string.Join(", ", DisEqConstraint)}--> {Tgt}";
+        $"{Src} --[{string.Join(", ", Subst)};{string.Join(", ", SideConstraints)}]--> {Tgt}";
 }

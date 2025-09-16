@@ -1,11 +1,13 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.Modifier;
+using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
-using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
@@ -89,12 +91,13 @@ public class NielsenGraph {
 
         SubSolver.Add(CurrentRoot.ConstraintsIntEq.Select(o => o.ToExpr(this)));
         SubSolver.Add(CurrentRoot.ConstraintsIntLe.Select(o => o.ToExpr(this)));
-        SubSolver.Add(CurrentRoot.IntBounds.Select(o => o.Value.ToZ3Constraint(o.Key, this)));
+        SubSolver.Add(CurrentRoot.IntBounds.Select(o => 
+            Interval<BigInteger>.ToZ3Constraint(o.Value, o.Key, this)));
 
         DepthBound = Options.ItDeepDepthStart;
         while (true) {
-            Debug.Assert(CurrentPath.Empty);
-            Debug.Assert(CurrentModificationCnt.Empty);
+            Debug.Assert(CurrentPath.IsEmpty());
+            Debug.Assert(CurrentModificationCnt.IsEmpty());
             var res = CurrentRoot.Check(0, forbidden, usedForbidden);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
@@ -138,7 +141,10 @@ public class NielsenGraph {
         return null;
     }
 
-    public Str? TryParseStr(Expr e) => Env.TryParseStr(e);
+    public Str? TryParseStr(Expr e) {
+        var tokens = Env.TryParseStr(e);
+        return tokens is null ? null : Env.MkString(tokens);
+    }
 
     public string ToDot() {
         List<NielsenNode> subsumed = [];

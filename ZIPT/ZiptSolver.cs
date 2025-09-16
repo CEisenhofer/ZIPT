@@ -148,7 +148,6 @@ public static class ZiptSolver {
                 Console.WriteLine("Timeout: " + Options.TimeOut + "ms");
             if (Options.TimeOut != 0)
                 Global.SetParameter("timeout", ((ulong)Options.TimeOut).ToString());
-            SymCharToken.ResetCounter();
             var res = propagator.Solver.Check();
             // Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
 #if DEBUG

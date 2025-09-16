@@ -11,5 +11,4 @@ public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
-
 }

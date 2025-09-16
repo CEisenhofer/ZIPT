@@ -1,13 +1,15 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Z3;
+using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using System.Numerics;
-using Microsoft.Z3;
+using System.Xml.Linq;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
-// Poly = 0
+// Poly = R
 public class IntEq : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }
@@ -29,30 +31,46 @@ public class IntEq : IntConstraint {
             Poly = Poly.Negate();
     }
 
-    public override IntEq Clone() => new(this);
+    public override IntEq Apply(Subst subst, NielsenNode node) {
+        var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
+        var n = Poly.Substitute(oldLen, newLen);
+        return ReferenceEquals(Poly, n) ? this : new IntEq(n);
+    }
+
+    public override IntEq Apply(Interpretation itp) {
+        var n = Poly;
+        foreach (var kv in itp.IntVal) {
+            n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
+        }
+        foreach (var kv in itp.Substitution) {
+            var (lenVar, newLen) = new Subst(kv.Key, kv.Value).GetLenReplacement(itp.Env);
+            n = n.Substitute(lenVar, newLen);
+        }
+        return ReferenceEquals(Poly, n) ? this : new IntEq(n);
+    }
 
     public override bool Equals(object? obj) => 
         obj is IntEq eq && Equals(eq);
 
     public bool Equals(IntEq other) {
         // Poly == other.Poly || Poly == -other.Poly (this is the same => Normalize)
-        if (!Poly.IsZero && Poly.First().occ.IsNeg) 
+        if (Poly is { IsZero: false, DominatorSign: < 0 }) 
             Poly = Poly.Negate();
-        if (!other.Poly.IsZero && other.Poly.First().occ.IsNeg) 
+        if (other.Poly is { IsZero: false, DominatorSign: < 0 }) 
             other.Poly = other.Poly.Negate();
         return Poly.Equals(other.Poly);
     }
 
     public override int GetHashCode() {
-        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+        if (Poly is { IsZero: false, DominatorSign: < 0 })
             Poly = Poly.Negate();
         return Poly.GetHashCode();
     }
 
     public override int CompareToInternal(IntConstraint other) {
-        if (!Poly.IsZero && Poly.First().occ.IsNeg)
+        if (Poly is { IsZero: false, DominatorSign: < 0 })
             Poly = Poly.Negate();
-        if (!((IntEq)other).Poly.IsZero && ((IntEq)other).Poly.First().occ.IsNeg)
+        if (((IntEq)other).Poly is { IsZero: false, DominatorSign: < 0 })
             ((IntEq)other).Poly = ((IntEq)other).Poly.Negate();
         return Poly.CompareTo(((IntEq)other).Poly);
     }
@@ -62,14 +80,10 @@ public class IntEq : IntConstraint {
         return $"{pos} = {neg}";
     }
 
-    public override void Apply(Interpretation itp) => 
-        Poly = Poly.Apply(itp);
-
     static int simplifyCnt;
 
     public SimplifyResult Simplify(NielsenNode node) {
         simplifyCnt++;
-        Poly = Poly.Simplify(node);
         if (Poly.IsConst(out BigInteger val))
             return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
@@ -77,14 +91,15 @@ public class IntEq : IntConstraint {
             return SimplifyResult.Conflict;
         if (bounds.IsUnit)
             return SimplifyResult.Satisfied;
+#if false
         // Normalization by division
-        BigInteger c = Poly.ConstPart;
-        BigInteger gcd = Poly.NonConst.First().occ.Abs();
+        var (monomials, offset) = Poly.MonomialDecomposition();
+        BigInteger gcd = BigInteger.Abs(monomials.First().Coefficient);
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
-        foreach (var occ in Poly.NonConst.Skip(1)) {
-            gcd = occ.occ.GreatestCommonDivisor(gcd);
+        foreach (var occ in monomials.Skip(1)) {
+            gcd = BigInteger.GreatestCommonDivisor(gcd, occ.Coefficient);
             Debug.Assert(!gcd.IsZero);
             if (gcd.Equals(1))
                 break;
@@ -92,12 +107,13 @@ public class IntEq : IntConstraint {
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
-        if (!c.IsZero) {
-            var r = BigInteger.Remainder(c, gcd);
+        if (!offset.IsZero) {
+            var r = BigInteger.Remainder(offset, gcd);
             if (!r.IsZero)
                 return SimplifyResult.Conflict;
         }
         Poly = Poly.Div(gcd);
+#endif
         return SimplifyResult.Proceed;
     }
 
@@ -112,32 +128,38 @@ public class IntEq : IntConstraint {
         // Propagate bounds
         bool restart = false;
         int i = 0;
-        foreach (var n in Poly) {
-            if (n.t.IsEmpty()) {
+
+        var (monomials, _) = Poly.MonomialDecomposition();
+
+        foreach (var n in monomials) {
+            if (n.Variables.Count == 0) {
+                Debug.Assert(false);
                 // Ignored - constant offset
                 i++;
                 continue;
             }
-            if (n.t.Count != 1) {
+            if (n.Variables.Count != 1) {
                 // Not linear (x...y)
                 i++;
                 continue;
             }
-            var r = n.t.First();
-            if (!r.occ.Equals(1)) {
+            var r = n.Variables[0];
+            if (r.Pow != 1) {
                 // Some power (x^n with n != 1)
                 i++;
                 continue;
             }
             int i0 = i++;
-            var lb = PDD<BigInteger>.GetBounds(node, Poly.Where((_, j) => i0 != j));
+            if (n.Coefficient.IsOne || n.Coefficient == BigInteger.MinusOne)
+                continue;
+            var lb = PDD<BigInteger>.GetBounds(node, monomials.Where((_, j) => i0 != j));
             if (lb.IsFull)
                 continue;
-            if (!n.occ.IsNeg)
+            if (n.Coefficient.Sign >= 0)
                 lb = lb.Negate();
 
-            lb /= n.occ.Abs();
-            switch (node.AddLowerIntBound(r.t, lb.Min)) {
+            lb /= BigInteger.Abs(n.Coefficient);
+            switch (node.AddLowerIntBound(r.Var, lb.Min)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
@@ -145,7 +167,7 @@ public class IntEq : IntConstraint {
                     restart = true;
                     break;
             }
-            switch (node.AddHigherIntBound(r.t, lb.Max)) {
+            switch (node.AddHigherIntBound(r.Var, lb.Max)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
@@ -157,7 +179,7 @@ public class IntEq : IntConstraint {
         return restart ? SimplifyResult.Restart : SimplifyResult.Proceed;
     }
 
-
+#if false
     public bool GetLess(Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>> largerVars) {
         var (pos, neg) = Poly.GetPosNeg();
         bool swp = false;
@@ -191,6 +213,7 @@ public class IntEq : IntConstraint {
         }
         return true;
     }
+#endif
 
     public override BoolExpr ToExpr(NielsenGraph graph) => 
         graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0));

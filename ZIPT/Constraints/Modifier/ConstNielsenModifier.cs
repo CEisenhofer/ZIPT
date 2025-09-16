@@ -17,10 +17,13 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     public override void Apply(NielsenNode node) {
         // V / "" (progress)
         // V / T V (no progress)
-        var subst = new SubstVar(V);
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), Array.Empty<DisEq>(), true);
-        subst = new SubstVar(V, Forwards ? [T, V] : [V, T]);
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), Array.Empty<DisEq>(), false);
+        var subst = new Subst(V, node.Env.EmptyStr);
+        node.MkChild(node, [subst], Array.Empty<Constraint>(), true);
+        subst = new Subst(V, Forwards
+            ? node.Env.MkString(T, V)
+            : node.Env.MkString(V, T)
+        );
+        node.MkChild(node, [subst], Array.Empty<Constraint>(), false);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

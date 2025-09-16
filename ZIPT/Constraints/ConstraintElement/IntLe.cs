@@ -16,10 +16,8 @@ public class IntLe : IntConstraint {
     public IntLe(PDD<BigInteger> poly) => Poly = poly;
 
     // rhs does not need to be cloned
-    public IntLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        lhs.Sub(rhs);
-        Poly = lhs;
-    }
+    public IntLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) => 
+        Poly = lhs.Sub(rhs);
 
     // rhs does not need to be cloned
     public static IntLe MkLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
@@ -31,7 +29,19 @@ public class IntLe : IntConstraint {
     // rhs does not need to be cloned
     public static IntLe MkLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) => new(lhs, rhs);
 
-    public override IntLe Clone() => new(Poly);
+    public override IntLe Apply(Subst subst, NielsenNode node) {
+        var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
+        var n = Poly.Substitute(oldLen, newLen);
+        return ReferenceEquals(Poly, n) ? this : new IntLe(n);
+    }
+
+    public override IntLe Apply(Interpretation itp) {
+        var n = Poly;
+        foreach (var kv in itp.IntVal) {
+            n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
+        }
+        return ReferenceEquals(Poly, n) ? this : new IntLe(n);
+    }
 
     public override bool Equals(object? obj) =>
         obj is IntLe le && Equals(le);
@@ -47,10 +57,7 @@ public class IntLe : IntConstraint {
         return $"{pos} \u2264 {neg}";
     }
 
-    public override void Apply(Interpretation itp) => Poly = Poly.Apply(itp);
-
     public SimplifyResult Simplify(NielsenNode node) {
-        Poly = Poly.Simplify(node);
         if (Poly.IsConst(out BigInteger val))
             return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
@@ -58,12 +65,13 @@ public class IntLe : IntConstraint {
             return SimplifyResult.Satisfied;
         if (bounds.Min.IsPos)
             return SimplifyResult.Conflict;
-        BigInteger gcd = Poly.NonConst.First().occ.Abs();
+        var (monomials, offset) = Poly.MonomialDecomposition();
+        BigInteger gcd = BigInteger.Abs(monomials.First().Coefficient);
         Debug.Assert(gcd.Sign > 0);
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
-        foreach (var occ in Poly.NonConst.Skip(1)) {
-            gcd = occ.occ.GreatestCommonDivisor(gcd);
+        foreach (var occ in monomials.Skip(1)) {
+            gcd = BigInteger.GreatestCommonDivisor(gcd, occ.Coefficient);
             Debug.Assert(!gcd.IsZero);
             if (gcd.Equals(1))
                 break;
@@ -72,21 +80,20 @@ public class IntLe : IntConstraint {
         if (gcd.IsOne) 
             return SimplifyResult.Proceed;
         var newPoly = Poly.Zero;
-        foreach (var p in Poly.NonConst) {
-            Debug.Assert(p.t.Empty || p.occ.DivRem(gcd).m.IsZero);
-            newPoly.Add(p.t, p.occ.Div(gcd));
+        foreach (var p in monomials) {
+            Debug.Assert(p.Variables.Count == 0 || BigInteger.DivRem(p.Coefficient, gcd).Remainder.IsZero);
+            newPoly = newPoly.Add(
+                new PDD<BigInteger>.Monomial(
+                    BigInteger.Divide(p.Coefficient, gcd), p.Variables).ToPDD(node.Env.IntPDDManager)
+            );
         }
-        var c = Poly.ConstPart;
-        if (!c.IsZero) {
-            if (c.IsPos) {
-                var (r, m) = c.DivRem(gcd);
-                if (m.IsZero)
-                    newPoly.Add([], r);
-                else
-                    newPoly.Add([], r + 1);
+        if (!offset.IsZero) {
+            if (offset.Sign > 0) {
+                var (r, m) = BigInteger.DivRem(offset, gcd);
+                newPoly = newPoly.Add(m.IsZero ? r : r + 1) ;
             }
             else
-                newPoly.Add([], c.Div(gcd));
+                newPoly = newPoly.Add(BigInteger.Divide(offset, gcd));
         }
         Poly = newPoly;
         return SimplifyResult.Proceed;
@@ -103,32 +110,36 @@ public class IntLe : IntConstraint {
         // Propagate bounds
         bool restart = false;
         int i = 0;
-        foreach (var n in Poly) {
-            if (n.t.Empty) {
+
+        var (monomials, _) = Poly.MonomialDecomposition();
+
+        foreach (var n in monomials) {
+            if (n.Variables.Count == 0) {
+                Debug.Assert(false);
                 // Ignored - constant offset
                 i++;
                 continue;
             }
-            if (n.t.Count != 1) {
+            if (n.Variables.Count != 1) {
                 // Not linear (x...y)
                 i++;
                 continue;
             }
-            var r = n.t.First();
-            if (!r.occ.Equals(1)) {
+            var r = n.Variables[0];
+            if (r.Pow != 1) {
                 // Some power (x^n with n != 1)
                 i++;
                 continue;
             }
             int i0 = i++;
-            var lb = PDD<BigInteger>.GetBounds(node, Poly.Where((_, j) => i0 != j));
-            bool isHigh = n.occ.IsPos;
+            var lb = PDD<BigInteger>.GetBounds(node, monomials.Where((_, j) => i0 != j));
+            bool isHigh = n.Coefficient.Sign > 0;
             if (isHigh)
                 lb = lb.Negate();
-            lb /= n.occ.Abs();
+            lb /= BigInteger.Abs(n.Coefficient);
             switch (isHigh
-                        ? node.AddHigherIntBound(r.t, lb.Max)
-                        : node.AddLowerIntBound(r.t, lb.Min)) {
+                        ? node.AddHigherIntBound(r.Var, lb.Max)
+                        : node.AddLowerIntBound(r.Var, lb.Min)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;

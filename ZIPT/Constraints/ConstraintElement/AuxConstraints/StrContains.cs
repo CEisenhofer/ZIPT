@@ -1,7 +1,7 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
@@ -18,8 +18,6 @@ public class StrContains : StrConstraint {
         Contained = contained;
     }
 
-    public override StrContains Clone() => new(S, Contained, Negated);
-
     public override bool Equals(object? obj) =>
         obj is StrContains contains && Equals(contains);
 
@@ -31,18 +29,21 @@ public class StrContains : StrConstraint {
 
     public override string ToString() => $"{(Negated ? "!" : "")}Contains({S}, {Contained})";
 
-    public override void Apply(Interpretation itp) {
-        S.Apply(itp);
-        Contained.Apply(itp);
-    }
+    public override StrContains Apply(Subst subst, NielsenNode node) =>
+        new(node.Env.StrManager.Subst(S, subst),
+            node.Env.StrManager.Subst(Contained, subst), Negated);
+
+    public override StrContains Apply(Interpretation itp) =>
+        new(itp.Env.StrManager.Subst(S, itp),
+            itp.Env.StrManager.Subst(Contained, itp), Negated);
 
     // Just very rudimentary implementation - it will get eliminated anyway...
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
         ref BacktrackReasons reason) {
-        if (S.SLength < Contained.SLength)
+        if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
         int i = 0;
-        for (; i < Contained.SLength && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
+        for (; i < Contained.Length && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
             if (c1.Equals(c2)) 
                 continue;
             if (Negated)
@@ -50,7 +51,7 @@ public class StrContains : StrConstraint {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
-        for (; i < Contained.SLength; i++) {
+        for (; i < Contained.Length; i++) {
             if (!S[i].Equals(Contained[i]))
                 return SimplifyResult.Proceed;
         }
@@ -69,9 +70,9 @@ public class StrContains : StrConstraint {
         new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
-        S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
+        S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, RatPoly> intSubst) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

@@ -5,64 +5,67 @@ using ZIPT.Constraints;
 
 namespace ZIPT.IntUtils;
 
-public readonly struct Interval {
-    public readonly BigIntInf Min;
-    public readonly BigIntInf Max;
+public readonly struct Interval<T> where T : INumberBase<T>, IComparable<T> {
+    public readonly InfNum<T> Min;
+    public readonly InfNum<T> Max;
 
-    public static Interval Full => new(BigIntInf.NegInf, BigIntInf.PosInf);
+    public static Interval<T> Full => new(InfNum<T>.NegInfNum, InfNum<T>.PosInfNum);
 
-    public bool IsFull => Min == BigIntInf.NegInf && Max == BigIntInf.PosInf;
+    public bool IsFull => Min == InfNum<T>.NegInfNum && Max == InfNum<T>.PosInfNum;
     public bool IsUnit => Min == Max;
 
-    public bool HasLow => Min != BigIntInf.NegInf;
-    public bool HasHigh => Max != BigIntInf.PosInf;
+    public bool HasLow => Min != InfNum<T>.NegInfNum;
+    public bool HasHigh => Max != InfNum<T>.PosInfNum;
 
-    public Interval(BigIntInf minMax) {
+    public Interval(InfNum<T> minMax) {
         Min = minMax;
         Max = minMax;
     }
 
-    public Interval(BigIntInf min, BigIntInf max) {
+    public Interval(InfNum<T> min, InfNum<T> max) {
         Debug.Assert(min <= max);
         Min = min;
         Max = max;
     }
 
-    public bool Contains(BigIntInf v) => 
+    public bool Contains(T v) => 
+        Min <= v && v <= Max;
+
+    public bool Contains(InfNum<T> v) => 
         Min <= v && v <= Max;
 
     // Checks if Min <= i.Min && i.Max <= Max
-    public bool Contains(Interval i) =>
+    public bool Contains(Interval<T> i) =>
         Min <= i.Min && i.Max <= Max;
 
-    public static Interval operator +(Interval i, BigIntInf l) => new(i.Min + l, i.Max + l);
-    public static Interval operator +(BigIntInf l, Interval i) => i + l;
+    public static Interval<T> operator +(Interval<T> i, InfNum<T> l) => new(i.Min + l, i.Max + l);
+    public static Interval<T> operator +(InfNum<T> l, Interval<T> i) => i + l;
 
-    public static Interval operator +(Interval i1, Interval i2) {
-        BigIntInf min, max;
+    public static Interval<T> operator +(Interval<T> i1, Interval<T> i2) {
+        InfNum<T> min, max;
         if (i1.Min.IsInf && i2.Min.IsInf && i1.Min.IsPos != i2.Min.IsPos)
-            min = BigIntInf.NegInf;
+            min = InfNum<T>.NegInfNum;
         else
             min = i1.Min + i2.Min;
         if (i1.Max.IsInf && i2.Max.IsInf && i1.Max.IsPos != i2.Max.IsPos)
-            max = BigIntInf.PosInf;
+            max = InfNum<T>.PosInfNum;
         else
             max = i1.Max + i2.Max;
-        return new Interval(min, max);
+        return new Interval<T>(min, max);
     }
 
-    public static Interval operator *(Interval i, BigIntInf fac) =>
+    public static Interval<T> operator *(Interval<T> i, InfNum<T> fac) =>
         fac.IsPos
-            ? new Interval(i.Min * fac, i.Max * fac)
-            : new Interval(i.Max * fac, i.Min * fac);
+            ? new Interval<T>(i.Min * fac, i.Max * fac)
+            : new Interval<T>(i.Max * fac, i.Min * fac);
 
-    public static Interval operator *(BigIntInf fac, Interval i) => i * fac;
+    public static Interval<T> operator *(InfNum<T> fac, Interval<T> i) => i * fac;
 
     // Round towards zero
-    public static Interval operator /(Interval i, BigInteger d) {
-        Debug.Assert(!d.IsZero);
-        BigIntInf rl, rh;
-        if (d.Sign < 0) {
+    public static Interval<T> operator /(Interval<T> i, T d) {
+        Debug.Assert(!T.IsZero(d));
+        InfNum<T> rl, rh;
+        if (T.IsNegative(d)) {
             rh = i.Min.Div(d);
             rl = i.Max.Div(d);
         }
@@ -84,51 +87,57 @@ public readonly struct Interval {
         //    rl--;
         //if (!mh.IsZero)
         //    rh++;
-        return new Interval(rl, rh);
+        return new Interval<T>(rl, rh);
     }
 
-    public static bool operator ==(Interval i1, Interval i2) => i1.Equals(i2);
-    public static bool operator !=(Interval i1, Interval i2) => !i1.Equals(i2);
+    public static bool operator ==(Interval<T> i1, Interval<T> i2) => i1.Equals(i2);
+    public static bool operator !=(Interval<T> i1, Interval<T> i2) => !i1.Equals(i2);
 
-    public Interval Negate() => new(-Max, -Min);
+    public Interval<T> Negate() => new(-Max, -Min);
 
-    public Interval MergeAddition(Interval other) => 
+    public Interval<T> MergeAddition(Interval<T> other) => 
         new(Min + other.Min, Max + other.Max);
 
-    public Interval MergeMultiplication(Interval other) {
-        BigIntInf v1 = Min * other.Max;
-        BigIntInf v2 = other.Min * Max;
-        BigIntInf v3 = Max * other.Max;
-        BigIntInf v4 = Min * other.Min;
+    public Interval<T> MergeMultiplication(Interval<T> other) {
+        var v1 = Min * other.Max;
+        var v2 = other.Min * Max;
+        var v3 = Max * other.Max;
+        var v4 = Min * other.Min;
 
-        return new Interval(
-            BigIntInf.Min(BigIntInf.Min(v1, v2), BigIntInf.Min(v3, v4)),
-            BigIntInf.Max(BigIntInf.Max(v1, v2), BigIntInf.Max(v3, v4))
+        return new Interval<T>(
+            InfNum<T>.Min(InfNum<T>.Min(v1, v2), InfNum<T>.Min(v3, v4)),
+            InfNum<T>.Max(InfNum<T>.Max(v1, v2), InfNum<T>.Max(v3, v4))
         );
     }
 
-    public BoolExpr ToZ3Constraint(NamedInt v, NielsenGraph graph) {
-        if (IsFull)
+    public static IntExpr ToExpr(BigInteger i, NielsenGraph graph) {
+        if (i >= long.MinValue && i <= long.MaxValue)
+            return graph.Ctx.MkInt((long)i);
+        return graph.Ctx.MkInt(i.ToString());
+    }
+
+    public static BoolExpr ToZ3Constraint(Interval<BigInteger> interval, NamedInt v, NielsenGraph graph) {
+        if (interval.IsFull)
             return graph.Ctx.MkTrue();
         IntExpr ve = v.ToExpr(graph);
-        if (IsUnit) {
-            Debug.Assert(!Min.IsInf);
-            return graph.Ctx.MkEq(ve, ((BigInteger)Min).ToExpr(graph));
+        if (interval.IsUnit) {
+            Debug.Assert(!interval.Min.IsInf);
+            return graph.Ctx.MkEq(ve, ToExpr((BigInteger)interval.Min, graph));
         }
-        if (Min.IsNegInf)
-            return graph.Ctx.MkLe(ve, ((BigInteger)Max).ToExpr(graph));
-        if (Max.IsPosInf)
-            return graph.Ctx.MkGe(ve, ((BigInteger)Min).ToExpr(graph));
+        if (interval.Min.IsNegInf)
+            return graph.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, graph));
+        if (interval.Max.IsPosInf)
+            return graph.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, graph));
         return graph.Ctx.MkAnd(
-            graph.Ctx.MkLe(ve, ((BigInteger)Max).ToExpr(graph)),
-            graph.Ctx.MkGe(ve, ((BigInteger)Min).ToExpr(graph))
+            graph.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, graph)),
+            graph.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, graph))
         );
     }
 
     public override bool Equals(object? obj) =>
-        obj is Interval interval && Equals(interval);
+        obj is Interval<T> interval && Equals(interval);
 
-    public bool Equals(Interval other) =>
+    public bool Equals(Interval<T> other) =>
         Min == other.Min && Max == other.Max;
 
     public override int GetHashCode() =>

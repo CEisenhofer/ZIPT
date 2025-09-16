@@ -1,6 +1,9 @@
-﻿using Microsoft.Z3;
+﻿using System.Diagnostics.Contracts;
+using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
@@ -14,30 +17,43 @@ public sealed class LenVar : StrDepIntVar {
 
     public override int GetHashCode() => Var.GetHashCode() * 416749777;
 
-    public override PDD<BigInteger> Apply(Subst subst) => 
-        MkLenPoly(subst.ResolveVar(Var));
-    public override PDD<BigInteger> Apply(Interpretation subst) =>
-        MkLenPoly(subst.ResolveVar(Var));
-
-    public static PDD<BigInteger> MkLenPoly(IReadOnlyList<StrToken> s) {
-        PDD<BigInteger> poly = new();
-        foreach (var t in s) {
-            switch (t) {
-                case UnitToken:
-                    poly.Plus(1);
-                    break;
-                case NamedStrToken v:
-                    poly.Plus(new PDD(new LenVar(v)));
-                    break;
-                case PowerToken pt:
-                {
-                    var subPoly = MkLenPoly(pt.Base);
-                    poly.Plus(PDD.Mul(subPoly, pt.Power));
-                    break;
-                }
-                default:
-                    throw new NotSupportedException();
+    public static PDD<BigInteger> AddLenPoly(StrToken t, PDD<BigInteger> poly, Environment env) {
+        switch (t) {
+            case UnitToken:
+                poly = poly.Add(env.IntPDDManager.One);
+                break;
+            case NamedStrToken v:
+                poly = poly.Add(env.IntPDDManager.MkPDD(new LenVar(v)));
+                break;
+            case PowerToken pt: {
+                var subPoly = MkLenPoly(pt.Base, env);
+                poly = poly.Add(PDD<BigInteger>.Mul(subPoly, pt.Power));
+                break;
             }
+            default:
+                throw new NotSupportedException();
+        }
+        return poly;
+    }
+
+    [Pure]
+    public static PDD<BigInteger> MkLenPoly(NamedStrToken s, Environment env) => 
+        env.IntPDDManager.MkPDD(new LenVar(s));
+
+    [Pure]
+    public static PDD<BigInteger> MkLenPoly(IReadOnlyList<StrToken> s, Environment env) {
+        PDD<BigInteger> poly = env.IntPDDManager.Zero;
+        foreach (var t in s) {
+            poly = AddLenPoly(t, poly, env);
+        }
+        return poly;
+    }
+
+    [Pure]
+    public static PDD<BigInteger> MkLenPoly(Str s, Environment env) {
+        var poly = env.IntPDDManager.Zero;
+        foreach (var t in s.GetEnumerator()) {
+            poly = AddLenPoly(t, poly, env);
         }
         return poly;
     }

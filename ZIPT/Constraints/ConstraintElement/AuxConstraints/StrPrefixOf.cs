@@ -1,7 +1,7 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
-using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
@@ -9,16 +9,14 @@ namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 public class StrPrefixOf : StrConstraint {
 
     public bool Negated { get; }
-    public Str S { get; }
-    public Str Contained { get; }
+    public Str S { get; set; }
+    public Str Contained { get; set; }
 
     public StrPrefixOf(Str s, Str contained, bool negated) {
         Negated = negated;
         S = s;
         Contained = contained;
     }
-
-    public override StrPrefixOf Clone() => new(S, Contained, Negated);
 
     public override bool Equals(object? obj) =>
         obj is StrPrefixOf prefixOf && Equals(prefixOf);
@@ -31,17 +29,20 @@ public class StrPrefixOf : StrConstraint {
 
     public override string ToString() => $"{(Negated ? "!" : "")}PrefixOf({Contained}, {S})";
 
-    public override void Apply(Interpretation itp) {
-        S.Apply(itp);
-        Contained.Apply(itp);
-    }
+    public override StrPrefixOf Apply(Subst subst, NielsenNode node) =>
+        new(node.Env.StrManager.Subst(S, subst),
+            node.Env.StrManager.Subst(Contained, subst), Negated);
+
+    public override StrPrefixOf Apply(Interpretation itp) =>
+        new(itp.Env.StrManager.Subst(S, itp),
+            itp.Env.StrManager.Subst(Contained, itp), Negated);
 
     // Just very rudimentary implementation - it will get eliminated anyway...
     protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
-        if (S.SLength < Contained.SLength)
+        if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
         int i = 0;
-        for (; i < Contained.SLength && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
+        for (; i < Contained.Length && S[i] is CharToken c1 && Contained[i] is CharToken c2; i++) {
             if (c1.Equals(c2)) 
                 continue;
             if (Negated)
@@ -49,7 +50,7 @@ public class StrPrefixOf : StrConstraint {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
-        for (; i < Contained.SLength; i++) {
+        for (; i < Contained.Length; i++) {
             if (!S[i].Equals(Contained[i]))
                 return SimplifyResult.Proceed;
         }
@@ -68,9 +69,9 @@ public class StrPrefixOf : StrConstraint {
         new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
-        S.Contains(namedStrToken) || Contained.Contains(namedStrToken);
+        S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, RatPoly> intSubst) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

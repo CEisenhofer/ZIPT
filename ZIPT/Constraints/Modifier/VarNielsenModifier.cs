@@ -1,6 +1,8 @@
-﻿using ZIPT.Constraints.ConstraintElement;
+﻿using System.Numerics;
+using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
@@ -22,46 +24,46 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V2 && |V1| >= 1 && |V2| >= 1 (progress)
         // V1 / V1V2 && |V1| >= 1 && |V2| >= 1 (no progress)
         // V2 / V2V1 && |V1| >= 1 && |V2| >= 1 (no progress)
-        var subst = new SubstVar(V1);
+        var subst = new Subst(V1);
         var c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        subst = new SubstVar(V2);
+        subst = new Subst(V2);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        var sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
+        var sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
         Str s = [V2];
-        subst = new SubstVar(V1, s);
+        subst = new Subst(V1, s);
         c = node.MkChild(node, [subst], true);
         c.Apply(subst);
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
         s = Forwards ? [V2, V1] : [V1, V2];
-        subst = new SubstVar(V1, s);
+        subst = new Subst(V1, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 
         s = Forwards ? [V1, V2] : [V2, V1];
-        subst = new SubstVar(V2, s);
+        subst = new Subst(V2, s);
         c = node.MkChild(node, [subst], false);
         c.Apply(subst);
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V1)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V1)));
         c.AddConstraints(sc); // 1 <= |V1|
         c.Parent!.SideConstraints.Add(sc.Clone());
-        sc = IntLe.MkLe(new PDD(1), new PDD(new LenVar(V2)));
+        sc = IntLe.MkLe(new PDD<BigInteger>(1), new PDD<BigInteger>(new LenVar(V2)));
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 #else
@@ -69,20 +71,20 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V2 (progress)
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
-        Str s = [V2];
-        node.MkChild(node, [new SubstVar(V1, s)], Array.Empty<Constraint>(), Array.Empty<DisEq>(), true);
+        Str s = node.Env.MkString(V2);
+        node.MkChild(node, [new Subst(V1, s)], Array.Empty<Constraint>(), true);
 
-        s = Forwards ? [V2, V1] : [V1, V2];
+        s = Forwards ? node.Env.MkString(V2, V1) : node.Env.MkString(V1, V2);
         node.MkChild(node,
-            [new SubstVar(V1, s)],
-            [IntLe.MkLt(new PDD(), new PDD(new LenVar(V1)))], // 0 < |V1|
-            Array.Empty<DisEq>(), false);
+            [new Subst(V1, s)],
+            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V1, node.Env))], // 0 < |V1|
+            false);
 
-        s = Forwards ? [V1, V2] : [V2, V1];
+        s = Forwards ? node.Env.MkString(V1, V2) : node.Env.MkString(V2, V1);
         node.MkChild(node,
-            [new SubstVar(V2, s)],
-            [IntLe.MkLt(new PDD(), new PDD(new LenVar(V2)))], // 0 < |V2|
-            Array.Empty<DisEq>(), false);
+            [new Subst(V2, s)],
+            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V2, node.Env))], // 0 < |V2|
+            false);
 #endif
     }
 

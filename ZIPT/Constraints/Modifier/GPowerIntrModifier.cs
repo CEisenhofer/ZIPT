@@ -1,16 +1,16 @@
 ﻿using System.Diagnostics;
 using ZIPT.Constraints.ConstraintElement;
-using ZIPT.IntUtils;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
 public class GPowerIntrModifier : DirectedNielsenModifier {
 
-    public List<(NamedStrToken x, List<StrToken> val)> Cases { get; }
+    public List<(NamedStrToken x, Str val)> Cases { get; }
 
-    public GPowerIntrModifier(List<(NamedStrToken x, List<StrToken> val)> cases, bool forward) : base(forward) {
+    public GPowerIntrModifier(List<(NamedStrToken x, Str val)> cases, bool forward) : base(forward) {
         Debug.Assert(cases.Count > 0);
         Cases = cases;
     }
@@ -19,27 +19,26 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
-            var powerConstant = new PDD(v.GetPowerExtension());
+            var powerConstant = node.Env.IntPDDManager.MkPDD(v.GetPowerExtension());
 
             // TODO: If b = u^n => b = u
-            Str b = StrEqBase.LcpCompressionFull(@base) ?? @base;
+            Str b = StrEqBase.LcpCompressionFull(@base, node.Env) ?? @base;
             if (b.Length == 1 && b[true] is PowerToken pt)
                 b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
-            var prefixes = b.GetPrefixes(Forwards);
+            var prefixes = StrManager.GetPrefixes(node, b, Forwards);
             var power = new PowerToken(b, powerConstant);
 
             foreach (var p in prefixes) {
-                Str s = new Str(power);
-                s.AddRange(p.str, !Forwards);
-                var subst = new SubstVar(v, s);
-                Debug.Assert(p.varDecomp is null);
-                Constraint[] cnstr = new Constraint[p.sideConstraints.Count + 1];
-                for (int i = 0; i < p.sideConstraints.Count; i++) {
-                    cnstr[i] = p.sideConstraints[i];
+                Str s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Str, Forwards);
+                var subst = new Subst(v, s);
+                Debug.Assert(p.VarDecomp is null);
+                Constraint[] cnstr = new Constraint[p.SideConstraints.Count + 1];
+                for (int i = 0; i < p.SideConstraints.Count; i++) {
+                    cnstr[i] = p.SideConstraints[i];
                 }
-                cnstr[^1] = IntLe.MkLe(new PDD(), new PDD(powerConstant));
-                node.MkChild(node, [subst], cnstr, Array.Empty<DisEq>(), true);
+                cnstr[^1] = IntLe.MkLe(node.Env.ZeroInt, powerConstant);
+                node.MkChild(node, [subst], cnstr, true);
             }
         }
     }
@@ -61,6 +60,11 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
     }
 
     public override string ToString() =>
-        string.Join(" || ", Cases.Select(o => 
-            $"{o.x} / ({o.val})^{{{o.x.GetPowerExtension()}}} [prefix({o.val})]"));
+        string.Join(" || ", Cases.Select(o =>
+        {
+            var @base = o.val.ToString();
+            if (@base.Length == 1)
+                return $"{o.x} / {o.val}^{{{o.x.GetPowerExtension()}}} [prefix({o.val})]";
+            return $"{o.x} / ({o.val})^{{{o.x.GetPowerExtension()}}} [prefix({o.val})]";
+        }));
 }

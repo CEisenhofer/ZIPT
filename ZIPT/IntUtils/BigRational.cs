@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace ZIPT.IntUtils;
 
-public struct BigRational : INumberBase<BigRational> {
+public readonly struct BigRational : INumberBase<BigRational>, IComparable<BigRational> {
 
     readonly BigInteger num;
     readonly BigInteger denum;

@@ -15,7 +15,7 @@ public static class Log {
 
     [Conditional("DEBUG")]
     public static void Caller(string name) {
-        Debug.Assert(new StackFrame(1, true).GetMethod()?.Name == name);
+        Debug.Assert(new StackFrame(2, true).GetMethod()?.Name == name);
     }
 
 #if DEBUG

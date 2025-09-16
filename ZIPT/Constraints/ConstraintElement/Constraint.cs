@@ -1,6 +1,7 @@
-﻿using Microsoft.Z3;
+﻿using System.Diagnostics;
+using System.Diagnostics.Contracts;
+using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
-using ZIPT.Strings;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
@@ -8,17 +9,15 @@ namespace ZIPT.Constraints.ConstraintElement;
 public abstract class Constraint {
 
     public bool Satisfied { get; private set; }
-    
-    protected Constraint() {
-        Satisfied = false;
-    }
 
-    public abstract Constraint Clone();
     public abstract override bool Equals(object? obj);
     public abstract override int GetHashCode();
     public abstract override string ToString();
 
-    public abstract void Apply(Interpretation itp);
+    [Pure]
+    public abstract Constraint Apply(Subst subst, NielsenNode node);
+    [Pure]
+    public abstract Constraint Apply(Interpretation itp);
 
     public SimplifyResult SimplifyAndPropagate(NielsenNode node, NonTermSet modSet, DetModifier outSideCnstr, ref BacktrackReasons reason, bool force) {
         // if (!force && !NonTermSet.IsIntersecting(modSet, Dependencies)) {

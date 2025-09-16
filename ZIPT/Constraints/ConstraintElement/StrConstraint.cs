@@ -7,7 +7,7 @@ namespace ZIPT.Constraints.ConstraintElement;
 public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
 
     public abstract bool Contains(NamedStrToken namedStrToken);
-    public abstract ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, RatPoly> intSubst);
+    public abstract ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst);
     public abstract int CompareToInternal(StrConstraint other);
     public int CompareTo(StrConstraint? other) {
         if (other is null)

@@ -4,6 +4,7 @@ using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.IntUtils;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Strings.Tokens.AuxTokens;

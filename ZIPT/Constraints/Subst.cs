@@ -1,27 +1,45 @@
-﻿using System.ComponentModel;
-using Microsoft.Z3;
-using ZIPT.Strings;
+﻿using Microsoft.Z3;
+using System.Diagnostics.Contracts;
+using System.Numerics;
+using ZIPT.IntUtils;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
-public abstract class Subst {
+public struct Subst {
 
-    public abstract bool IsEliminating { get; }
+    public NamedStrToken Var { get; }
+    public Str Str { get; }
+    public bool IsEliminating => 
+        !Str.ContainsVar(Var);
 
-    public abstract Str ResolveVar(NamedStrToken v);
-    public abstract Str ResolveVar(SymCharToken v);
+    readonly LenVar lenVar;
+    PDD<BigInteger>? newLen;
 
-    public abstract void AddToInterpretation(Interpretation itp);
+    public Subst(NamedStrToken v, Str s) {
+        Var = v;
+        Str = s;
+        lenVar = new LenVar(Var);
+    }
 
-    public abstract Expr KeyExpr(NielsenGraph graph);
-    public abstract Expr ValueExpr(NielsenGraph graph);
-    public abstract IntExpr KeyLenExpr(NielsenGraph graph);
-    public abstract IntExpr ValueLenExpr(NielsenGraph graph);
-    public abstract void CollectValueSymbols(NonTermSet nonTermSet);
-    public abstract bool EqualKeys(Subst subst);
-    public abstract override string ToString();
+    [Pure]
+    public (LenVar lenVar, PDD<BigInteger> newLen) GetLenReplacement(Environment env) {
+        newLen ??= LenVar.MkLenPoly(Str, env);
+        return (lenVar, newLen);
+    }
 
-    public abstract override bool Equals(object? obj);
-    public abstract override int GetHashCode();
+    public void AddToInterpretation(Interpretation itp) => itp.Apply(this);
+    public IntExpr KeyLenExpr(NielsenGraph graph) => lenVar.ToExpr(graph);
+    public IntExpr ValueLenExpr(NielsenGraph graph) =>
+        GetLenReplacement(graph.Env).newLen.ToExpr(graph);
+    public void CollectValueSymbols(NonTermSet nonTermSet) => Str.CollectSymbols(nonTermSet, []);
+
+    public override string ToString() => $"{Var} / {(Str.Length == 0 ? "ε" : Str)}";
+
+    public override bool Equals(object? obj) =>
+        obj is Subst substitution && Equals(substitution);
+
+    public bool Equals(Subst subst) => Var.Equals(subst.Var) && Str.Equals(subst.Str);
+    public override int GetHashCode() => HashCode.Combine(Var, Str);
 }

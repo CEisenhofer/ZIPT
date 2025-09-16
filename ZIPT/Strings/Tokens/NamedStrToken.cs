@@ -1,13 +1,15 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Contracts;
+using System.Numerics;
 using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
 
 namespace ZIPT.Strings.Tokens;
 
 public abstract class NamedStrToken : StrToken {
 
-    public uint StrVarId { get; }
+    public uint StrVarId { get; } // TODO: Use for easier containment checks
 
     public abstract string OriginalName { get; }
     public string Name => Aux ? $"{OriginalName}${ChildIdx}" : OriginalName;
@@ -42,7 +44,20 @@ public abstract class NamedStrToken : StrToken {
         PowerExtension ??= new IntVar();
 
     public sealed override bool IsNullable(NielsenNode node) => 
-        LenVar.MkLenPoly([this]).GetBounds(node).Contains(0);
+        LenVar.MkLenPoly(this, node.Env).GetBounds(node).Contains(0);
+
+    public sealed override List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd) {
+        // P(x) := y with x = yz, |y| < |x|
+        // TODO
+        NamedStrToken y = GetExtension1();
+        NamedStrToken z = GetExtension2();
+        var yl = LenVar.MkLenPoly(y, node.Env);
+        var xl = LenVar.MkLenPoly(this, node.Env);
+        yl = yl.Add(BigInteger.One);
+        if (fwd)
+            return [new PrefixDecomposition(node.Env.MkString(y), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(y, z)))];
+        return [new PrefixDecomposition(node.Env.MkString(y), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(z, y)))];
+    }
 
     protected sealed override int CompareToInternal(StrToken other) {
         Debug.Assert(other is NamedStrToken);

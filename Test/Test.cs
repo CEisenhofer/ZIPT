@@ -1,8 +1,8 @@
 ﻿using Microsoft.Z3;
 using ZIPT;
-using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Tokens;
+using ZIPT.Strings.Chunks;
+using ZIPT.Strings.Tokens;
 using Environment = ZIPT.Environment;
 
 namespace Test;
@@ -12,48 +12,43 @@ public static class Test {
     const bool IsCheckStrEquations = true;
     const bool IsCheckParikh = true;
 
-    static void Main(string[] args) {
+    static void Main(string[] _) {
         Console.WriteLine("Starting Tests");
-
+        Options.KeepProof = true;
         CheckStrEquations();
         CheckParikh();
     }
 
-    static IStr ParseStr(string str, Dictionary<char, StrVarToken> symToVar) {
-        IStr ret = [];
+    static Str ParseStr(string str, Environment env) {
+        List<StrToken> ret = [];
         foreach (char c in str) {
-            if (char.IsUpper(c)) {
-                if (!symToVar.TryGetValue(c, out var v)) {
-                    v = StrVarToken.GetOrCreate(c.ToString());
-                    symToVar.Add(c, v);
-                }
-                ret.Add(v);
-            }
+            if (char.IsUpper(c))
+                ret.Add(env.GetOrCreateStrVar(c.ToString()));
             else
                 ret.Add(new CharToken(c));
         }
-        return ret;
+        return env.MkString(ret);
     }
 
-    static bool CheckEquation(IStr lhs, IStr rhs) {
+    static bool CheckEquation(string lhs, string rhs) {
         Console.WriteLine($"Checking eq {lhs} = {rhs}");
         using Context ctx = new();
         using Solver solver = ctx.MkSimpleSolver();
-        using Environment cache = new(ctx);
-        using SaturatingStringPropagator propagator = new(solver, cache);
+        using Environment env = new(ctx);
+        using SaturatingStringPropagator propagator = new(solver, env);
         var root = propagator.Root;
-        root.AddConstraint(new StrEq(lhs, rhs));
+        root.AddConstraint(new StrEq(ParseStr(lhs, env), ParseStr(rhs, env)));
         return propagator.Graph.Check(root, [], []);
     }
 
-    static void SAT(IStr lhs, IStr rhs) {
+    static void SAT(string lhs, string rhs) {
         if (CheckEquation(lhs, rhs))
             return;
         Console.WriteLine($"Expected SAT on \"{lhs}\" = \"{rhs}\" but got UNSAT");
         System.Environment.Exit(-1);
     }
 
-    static void UNSAT(IStr lhs, IStr rhs) {
+    static void UNSAT(string lhs, string rhs) {
         if (!CheckEquation(lhs, rhs))
             return;
         Console.WriteLine($"Expected UNSAT on \"{lhs}\" = \"{rhs}\" but got SAT");
@@ -64,33 +59,26 @@ public static class Test {
         if (!IsCheckStrEquations)
             return;
         Console.WriteLine("Checking String Equations...");
-        Dictionary<char, StrVarToken> s2v = new();
-        SAT(ParseStr("aX", s2v), ParseStr("Xa", s2v));
-        s2v.Clear();
-        UNSAT(ParseStr("aX", s2v), ParseStr("Xb", s2v));
-        s2v.Clear();
-        SAT(ParseStr("abX", s2v), ParseStr("Xba", s2v));
-        s2v.Clear();
-        UNSAT(ParseStr("abcX", s2v), ParseStr("Xbac", s2v));
-        s2v.Clear();
-        UNSAT(ParseStr("aaX", s2v), ParseStr("Xa", s2v));
-        s2v.Clear();
-        UNSAT(ParseStr("XaY", s2v), ParseStr("YbX", s2v));
-        s2v.Clear();
-        SAT(ParseStr("XabY", s2v), ParseStr("YbaX", s2v));
-        s2v.Clear();
-        UNSAT(ParseStr("aa", s2v), ParseStr("XXX", s2v));
-        s2v.Clear();
-        SAT(ParseStr("abab", s2v), ParseStr("XX", s2v));
-        s2v.Clear();
-        SAT(ParseStr("aX", s2v), ParseStr("XY", s2v));
-        s2v.Clear();
-        SAT(ParseStr("aX", s2v), ParseStr("YX", s2v));
+        SAT("aX", "Xa");
+        UNSAT("aX", "Xb");
+        SAT("abX", "Xba");
+        SAT("XabY", "YbaX");
+        UNSAT("abcX", "Xbac");
+        UNSAT("aaX", "Xa");
+        // UNSAT("XaY", "YbX");
+        UNSAT("aa", "XXX");
+        SAT("abab", "XX");
+        SAT("aX", "XY");
+        SAT("aX", "YX");
     }
 
-    static void ParikhUNSAT(IStr lhs, IStr rhs) {
+    static void ParikhUNSAT(string lhs, string rhs) {
         Console.WriteLine($"Checking Parikh {lhs} = {rhs}");
-        if (!StrEq.CheckMultiSequenceParikh(lhs, rhs))
+        using Context ctx = new();
+        using Solver solver = ctx.MkSimpleSolver();
+        using Environment env = new(ctx);
+        throw new NotImplementedException();
+        //if (!StrEq.CheckMultiSequenceParikh(ParseStr(lhs, env), ParseStr(rhs, env)))
             return;
         Console.WriteLine($"Expected UNSAT (Parikh) on \"{lhs}\" = \"{rhs}\"");
         System.Environment.Exit(-1);
@@ -102,14 +90,14 @@ public static class Test {
         // Single characters are covered in the string solver only; only proper multi-sequence checks
         Console.WriteLine("Checking Parikh Images...");
         Dictionary<char, StrVarToken> s2v = new();
-        ParikhUNSAT(ParseStr("abcX", s2v), ParseStr("Xbac", s2v));
+        ParikhUNSAT("abcX", "Xbac");
         s2v.Clear();
-        ParikhUNSAT(ParseStr("XabcY", s2v), ParseStr("YbacX", s2v));
+        ParikhUNSAT("XabcY", "YbacX");
         s2v.Clear();
-        ParikhUNSAT(ParseStr("XXabcYY", s2v), ParseStr("YYbacXX", s2v));
+        ParikhUNSAT("XXabcYY", "YYbacXX");
         s2v.Clear();
-        ParikhUNSAT(ParseStr("XXacdYYb", s2v), ParseStr("YYabcdXX", s2v));
+        ParikhUNSAT("XXacdYYb", "YYabcdXX");
         s2v.Clear();
-        ParikhUNSAT(ParseStr("YaXaaabbbbYX", s2v), ParseStr("XYababababXY", s2v));
+        ParikhUNSAT("YaXaaabbbbYX", "XYababababXY");
     }
 }

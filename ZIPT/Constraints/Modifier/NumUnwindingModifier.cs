@@ -1,4 +1,5 @@
-﻿using ZIPT.Constraints.ConstraintElement;
+﻿using System.Numerics;
+using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
 
 namespace ZIPT.Constraints.Modifier;
@@ -12,17 +13,15 @@ public abstract class NumUnwindingModifier : ModifierBase {
 
     public override void Apply(NielsenNode node) {
 
-        node.MkChild(node, 
+        node.MkChild(node,
             Array.Empty<Subst>(),
-            [new IntEq(Num.Clone())],
-            Array.Empty<DisEq>(),
+            [new IntEq(Num)],
             true); // Num == 0
 
 
         node.MkChild(node,
             Array.Empty<Subst>(),
-            [IntLe.MkLe(new PDD(1), Num)],
-            Array.Empty<DisEq>(),
+            [IntLe.MkLe(node.Env.OneInt, Num)],
             false); // 1 <= Num
     }
 

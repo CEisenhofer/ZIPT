@@ -1,6 +1,8 @@
-﻿using Microsoft.Z3;
+﻿using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.Strings;
+using ZIPT.Strings.Chunks;
 
 namespace ZIPT.IntUtils;
 
@@ -10,7 +12,7 @@ public class IndexOfVar : IntVar {
     public Str Contained { get; }
     public PDD<BigInteger> Start { get; }
 
-    public override BigIntInf MinLen => -1;
+    public override InfNum<BigInteger> MinLen => InfNum<BigInteger>.MinusOne;
 
     public IndexOfVar(Str s, Str contained, PDD<BigInteger> start) {
         S = s;

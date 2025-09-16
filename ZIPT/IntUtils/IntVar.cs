@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Numerics;
 using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.Strings;
@@ -10,7 +11,7 @@ public class IntVar : NamedInt {
     
     static uint nextId;
     public uint IntVarId { get; }
-    public override BigIntInf MinLen => BigIntInf.NegInf;
+    public override InfNum<BigInteger> MinLen => InfNum<BigInteger>.NegInfNum;
 
     public IntVar(uint intVarId) => 
         IntVarId = intVarId;
@@ -21,9 +22,6 @@ public class IntVar : NamedInt {
     public bool Equals(IntVar other) => IntVarId == other.IntVarId;
 
     public override int GetHashCode() => IntVarId.GetHashCode() * 919174721;
-
-    public override PDD<BigInteger> Apply(Subst subst) => new(new StrictMonomial(this));
-    public override PDD<BigInteger> Apply(Interpretation subst) => subst.ResolveVar(this);
 
     public override int CompareToInternal(NamedInt other) => 
         IntVarId.CompareTo(((IntVar)other).IntVarId);

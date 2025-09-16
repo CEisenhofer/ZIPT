@@ -14,12 +14,12 @@ public class PowerEpsilonModifier : ModifierBase {
         // Power.Base / "" (progress)
         node.MkChild(node, 
             Array.Empty<Subst>(),
-            [new IntEq(Power.Power.Clone())],
-            Array.Empty<DisEq>(), true);
+            [new IntEq(Power.Power)],
+            true);
         node.MkChild(node, 
             Array.Empty<Subst>(),
-            [new StrEq(Power.Base, node.Graph.Env.MkEmptyStr())],
-            Array.Empty<DisEq>(), true);
+            [new StrEq(Power.Base, node.Graph.Env.EmptyStr)],
+            true);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

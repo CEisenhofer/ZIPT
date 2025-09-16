@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
-using Microsoft.Z3;
+﻿using Microsoft.Z3;
+using System.Diagnostics;
 using ZIPT.Constraints;
-using ZIPT.Strings;
 using ZIPT.Strings.Tokens.AuxTokens;
 
 namespace ZIPT.Strings.Tokens;
@@ -9,6 +8,8 @@ namespace ZIPT.Strings.Tokens;
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
     public abstract bool IsNullable(NielsenNode node);
+
+    public abstract List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd);
 
     public abstract Expr ToExpr(NielsenGraph graph);
 
@@ -18,10 +19,9 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     // The order is important! The lower one will be used as root in the e-graph
     public static readonly Dictionary<Type, int> StrTokenOrder = new() {
         { typeof(PowerToken), 0 },
-        { typeof(SymCharToken), 1 },
-        { typeof(CharToken), 2 },
-        { typeof(StrVarToken), 3 },
-        { typeof(StrAtToken), 4 },
+        { typeof(CharToken), 1 },
+        { typeof(StrVarToken), 2 },
+        { typeof(StrAtToken), 3 },
     };
 
     public int CompareTo(StrToken? other) {

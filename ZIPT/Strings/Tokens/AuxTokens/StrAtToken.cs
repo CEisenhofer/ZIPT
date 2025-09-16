@@ -1,8 +1,8 @@
-﻿using Microsoft.Z3;
+﻿using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.IntUtils;
-using ZIPT.Strings;
-using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.AuxTokens;
 

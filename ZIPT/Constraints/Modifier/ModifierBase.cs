@@ -1,6 +1,4 @@
 ﻿using System.Diagnostics;
-using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
@@ -19,12 +17,8 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(ConstNumUnwindingModifier), TypeOrder.Count);
         // lhs = rhs => lhs' = rhs' && lhs'' = rhs''
         TypeOrder.Add(typeof(EqSplitModifier), TypeOrder.Count);
-        // o / @ || o != @
-        TypeOrder.Add(typeof(SCharCharModifier), TypeOrder.Count);
         // \/ x := u^n prefix(u); u const
         TypeOrder.Add(typeof(GPowerIntrModifier), TypeOrder.Count);
-        // x := o_1 ... o_{k - 1} || x := o_1 ... o_k x
-        TypeOrder.Add(typeof(VarPaddingModifier), TypeOrder.Count);
         // x := ax || x := ""
         TypeOrder.Add(typeof(ConstNielsenModifier), TypeOrder.Count);
         // x := b^n' prefix(b) && n' < n || x := b^n x

@@ -1,4 +1,5 @@
-﻿using Microsoft.Z3;
+﻿using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.Constraints;
 using ZIPT.Strings;
 using ZIPT.Strings.Tokens;
@@ -6,9 +7,7 @@ using ZIPT.Strings.Tokens;
 namespace ZIPT.IntUtils;
 
 public abstract class NamedInt : IComparable<NamedInt> {
-    public abstract BigIntInf MinLen { get; }
-    public abstract PDD<BigInteger> Apply(Subst subst);
-    public abstract PDD<BigInteger> Apply(Interpretation subst);
+    public abstract InfNum<BigInteger> MinLen { get; }
     public abstract int CompareToInternal(NamedInt other);
     public int CompareTo(NamedInt? other) {
         if (other is null)
