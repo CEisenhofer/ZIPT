@@ -32,6 +32,10 @@ public class StrContains : StrConstraint {
     public override StrContains Apply(Subst subst, NielsenNode node) =>
         new(node.Env.StrManager.Subst(S, subst),
             node.Env.StrManager.Subst(Contained, subst), Negated);
+    
+    public override StrContains Apply(CharSubst subst, NielsenNode node) =>
+        new(node.Env.StrManager.Subst(node.Env, S, subst),
+            node.Env.StrManager.Subst(node.Env, Contained, subst), Negated);
 
     public override StrContains Apply(Interpretation itp) =>
         new(itp.Env.StrManager.Subst(S, itp),
@@ -72,7 +76,7 @@ public class StrContains : StrConstraint {
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
+    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

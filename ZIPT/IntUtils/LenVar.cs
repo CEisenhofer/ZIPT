@@ -17,6 +17,25 @@ public sealed class LenVar : StrDepIntVar {
 
     public override int GetHashCode() => Var.GetHashCode() * 416749777;
 
+    public static PDD<BigInteger> AddLenPoly(StrToken t, PDD<BigInteger> poly, Environment env, Dictionary<NamedInt, PDD<BigInteger>> definitions) {
+        switch (t) {
+            case UnitToken:
+                poly = poly.Add(env.IntPDDManager.One);
+                break;
+            case NamedStrToken v:
+                poly = poly.Add(env.IntPDDManager.MkPDD(new LenVar(v)));
+                break;
+            case PowerToken pt: {
+                var subPoly = MkLenPoly(pt.Base, env, definitions);
+                poly = poly.Add(PDD<BigInteger>.MulByDefinitions(subPoly, pt.Power, definitions));
+                break;
+            }
+            default:
+                throw new NotSupportedException();
+        }
+        return poly;
+    }
+
     public static PDD<BigInteger> AddLenPoly(StrToken t, PDD<BigInteger> poly, Environment env) {
         switch (t) {
             case UnitToken:
@@ -45,6 +64,24 @@ public sealed class LenVar : StrDepIntVar {
         PDD<BigInteger> poly = env.IntPDDManager.Zero;
         foreach (var t in s) {
             poly = AddLenPoly(t, poly, env);
+        }
+        return poly;
+    }
+
+    [Pure]
+    public static PDD<BigInteger> MkLenPoly(IReadOnlyList<StrToken> s, Environment env, Dictionary<NamedInt, PDD<BigInteger>> definitions) {
+        PDD<BigInteger> poly = env.IntPDDManager.Zero;
+        foreach (var t in s) {
+            poly = AddLenPoly(t, poly, env, definitions);
+        }
+        return poly;
+    }
+
+    [Pure]
+    public static PDD<BigInteger> MkLenPoly(Str s, Environment env, Dictionary<NamedInt, PDD<BigInteger>> definitions) {
+        var poly = env.IntPDDManager.Zero;
+        foreach (var t in s.GetEnumerator()) {
+            poly = AddLenPoly(t, poly, env, definitions);
         }
         return poly;
     }

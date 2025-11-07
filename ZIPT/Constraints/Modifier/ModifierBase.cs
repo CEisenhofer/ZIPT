@@ -19,8 +19,12 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(EqSplitModifier), TypeOrder.Count);
         // \/ x := u^n prefix(u); u const
         TypeOrder.Add(typeof(GPowerIntrModifier), TypeOrder.Count);
+        // pr + po = r & t \in pr & s \in po
+        TypeOrder.Add(typeof(DecomposeModifier), TypeOrder.Count);
         // x := ax || x := ""
         TypeOrder.Add(typeof(ConstNielsenModifier), TypeOrder.Count);
+        // \/ x := u* prefix(u); u const
+        TypeOrder.Add(typeof(RegexSplitModifier), TypeOrder.Count);
         // x := b^n' prefix(b) && n' < n || x := b^n x
         TypeOrder.Add(typeof(PowerSplitModifier), TypeOrder.Count);
         // x := "" || (y := "" && |x| > 0) || (x := y && |x| > 0) || (x := yx && |x| > 0 && |y| > 0) ||( y := xy && |x| > 0 && |y| > 0)
@@ -32,7 +36,7 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
     protected ModifierBase() => 
         Debug.Assert(TypeOrder.ContainsKey(GetType()));
 
-    public abstract void Apply(NielsenNode node);
+    public abstract IEnumerable<NielsenEdge> Apply(NielsenNode node);
     protected abstract int CompareToInternal(ModifierBase otherM);
 
     public int CompareTo(ModifierBase? other) {

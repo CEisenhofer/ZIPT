@@ -4,7 +4,9 @@ using System.Diagnostics.Contracts;
 using System.Runtime.CompilerServices;
 using System.Text;
 using ZIPT.Constraints;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings.Chunks;
 
@@ -14,19 +16,57 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
     public abstract uint Length { get; }
     public abstract uint Level { get; }
     public bool Ground { get; protected set; }
+    public bool RegexFree { get; protected set; }
+    public bool Derivable { get; protected set; }
+    public bool Nullable { get; protected set; }
+    public bool BasicRegex { get; protected set; }
     public virtual bool Balanced => true;
     public virtual bool BalancedTrans => true;
 
+    protected Dictionary<CharacterSet, Str>? derivativeSetCacheFwd;
+    protected Dictionary<CharacterSet, Str>? derivativeSetCacheBwd;
+
+    Str normalised;
+
+    public Str Normalised
+    {
+        get
+        {
+            while (!ReferenceEquals(normalised, normalised.normalised)) {
+                normalised = normalised.normalised;
+            }
+            return normalised;
+        }
+        set
+        {
+            if (IsNormalised && !ReferenceEquals(this, value))
+                value.MoveCache(this);
+            normalised = value;
+        }
+    } // a representative for all equal strings [mostly this is itself; also it can change]; not normalised strings to avoid degenerated strings
+    public bool IsNormalised => ReferenceEquals(this, Normalised); // If two strings are normalised then they are equal iff they have equal references
+    public int DegenerationLevel { get; protected set; } // value for how much the datastructure is away from a balanced tree
+    public bool IsDegenerated => DegenerationLevel >= Options.MaxDegenerationLevel;
+
     public abstract bool ContainsVar(NamedStrToken v);
+    public abstract bool ContainsSChar(SymCharToken v);
     public abstract void CollectVars(HashSet<NamedStrToken> contained);
+    public abstract void CollectSChars(HashSet<SymCharToken> contained);
     public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
+    public abstract HashSet<NamedStrToken> ContainedVars();
+    public abstract MinTerms FirstMinTerms();
+    public abstract MinTerms LastMinTerms();
 
     public bool IsEmpty() => Level == 0;
     public bool IsNonEmpty() => Level != 0;
     public bool IsTemp => ChunkId == uint.MaxValue;
+    public bool IsFail => this is SingletonStr { StrToken: FailToken };
+    public bool IsFull => this is SingletonStr { StrToken: KleeneToken { Base: SingletonStr { StrToken: SetToken { Set.IsFull: true } } } };
 
-    protected Str(uint chunkId) =>
+    protected Str(uint chunkId) {
         ChunkId = chunkId;
+        normalised = this;
+    }
 
     public StrToken this[bool fwd, uint idx]
     {
@@ -65,6 +105,7 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
         get => StrManager.GetIndex(this, 0, fwd);
     }
 
+    // TODO: Cache?
     public StrToken First
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
@@ -77,26 +118,30 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
         get => StrManager.GetIndex(this, 0, false);
     }
 
+
     public abstract Str Translate(StrManager manager);
 
-    public int CompareTo(Str? other) {
+    public int CompareTo(Str? other, bool fwd) {
         if (other is null)
             return 1;
         Debug.Assert(ReferenceEquals(this, other) == (ChunkId == other.ChunkId));
         if (ReferenceEquals(this, other))
             return 0;
-        int cmp = Level.CompareTo(other.Level);
-        if (cmp != 0)
-            return cmp;
-        Debug.Assert(GetType() == other.GetType());
-        return CompareToInternal(other);
+        if (Length < other.Length)
+            return -1;
+        if (Length > other.Length)
+            return 1;
+        using var enum1 = fwd ? GetEnumerator().GetEnumerator() : GetRevEnumerator().GetEnumerator();
+        using var enum2 = fwd ? other.GetEnumerator().GetEnumerator() : other.GetRevEnumerator().GetEnumerator();
+        while (enum1.MoveNext() && enum2.MoveNext()) {
+            int cmp = enum1.Current.CompareTo(enum2.Current);
+            if (cmp != 0)
+                return cmp;
+        }
+        return 0;
     }
 
-    // Sometimes we need to do a lot of random access - let's convert it to a list for that
-    [Pure]
-    public abstract IReadOnlyList<StrToken> Sequence();
-
-    protected abstract int CompareToInternal(Str other);
+    public int CompareTo(Str? other) => CompareTo(other, true);
 
     public abstract override int GetHashCode();
 
@@ -104,27 +149,33 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
 
     public abstract override bool Equals(object? obj);
 
+    public static bool CachedEquals(Str s1, Str s2) =>
+        ReferenceEquals(s1.Normalised, s2.Normalised);
+
+    public bool CachedEquals(Str other) =>
+        CachedEquals(this, other);
+
     public bool RotationEquals(Str other, uint shift) {
         Debug.Assert(shift > 0 && shift < other.Length);
         if (Length != other.Length)
             return false;
         var enum2 = other.GetEnumerator();
-        var enum2r = enum2.GetEnumerator();
-        var enum1 = GetEnumerator((uint)shift);
-        var enum1r = enum1.GetEnumerator();
-        while (enum1r.MoveNext() && enum2r.MoveNext()) {
-            if (!enum1r.Current.Equals(enum2r.Current))
+        var enum2R = enum2.GetEnumerator();
+        var enum1 = GetEnumerator(shift);
+        var enum1R = enum1.GetEnumerator();
+        while (enum1R.MoveNext() && enum2R.MoveNext()) {
+            if (!enum1R.Current.Equals(enum2R.Current))
                 return false;
         }
-        enum1r.Dispose();
+        enum1R.Dispose();
         enum1 = GetEnumerator();
-        enum1r = enum1.GetEnumerator();
-        while (enum1r.MoveNext() && enum2r.MoveNext()) {
-            if (!enum1r.Current.Equals(enum2r.Current))
+        enum1R = enum1.GetEnumerator();
+        while (enum1R.MoveNext() && enum2R.MoveNext()) {
+            if (!enum1R.Current.Equals(enum2R.Current))
                 return false;
         }
-        enum1r.Dispose();
-        enum2r.Dispose();
+        enum1R.Dispose();
+        enum2R.Dispose();
         return true;
     }
 
@@ -134,10 +185,18 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
     public IEnumerable<StrToken> GetRevEnumerator() =>
         StrManager.GetRevEnumerator(this);
 
+    public StrToken[] ToArray() =>
+        StrManager.ToList(this);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public Expr ToExpr(NielsenGraph graph) =>
         StrManager.ToExpr(this, graph);
+
+    public abstract void MoveCache(Str old);
+
+    public Str Derivative(Environment env, CharToken a, bool fwd) => 
+        Derivative(env, new CharacterSet(new CharacterRange(a.Value)), fwd);
+    public abstract Str Derivative(Environment env, CharacterSet a, bool fwd);
 
     public string ToDot() {
         StringBuilder sb = new();
@@ -171,6 +230,7 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
 
     public abstract string RawString { get; }
     public string PlainString => GetPlainString(null);
+
     [Pure]
     public abstract string GetPlainString(NielsenGraph? node);
 

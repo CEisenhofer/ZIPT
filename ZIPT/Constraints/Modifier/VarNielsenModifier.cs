@@ -17,7 +17,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         V2 = v2;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
 #if false
         // V1 / "" (progress)
         // V2 / "" && |V1| >= 1 (progress)
@@ -72,29 +72,32 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
         Str s = node.Env.MkString(V2);
-        node.MkChild(node, [new Subst(V1, s)], Array.Empty<Constraint>(), true);
+        node.MkChild(node, [new Subst(V1, s)], Array.Empty<Constraint>(), [], true);
+        yield return node.Outgoing[^1];
 
         s = Forwards ? node.Env.MkString(V2, V1) : node.Env.MkString(V1, V2);
         node.MkChild(node,
             [new Subst(V1, s)],
-            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V1, node.Env))], // 0 < |V1|
+            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V1, node.Env))], [], // 0 < |V1|
             false);
+        yield return node.Outgoing[^1];
 
         s = Forwards ? node.Env.MkString(V1, V2) : node.Env.MkString(V2, V1);
         node.MkChild(node,
             [new Subst(V2, s)],
-            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V2, node.Env))], // 0 < |V2|
+            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V2, node.Env))], [], // 0 < |V2|
             false);
+        yield return node.Outgoing[^1];
 #endif
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
         VarNielsenModifier other = (VarNielsenModifier)otherM;
-        int cmp = Forwards.CompareTo(other.Forwards);
+        int cmp = V1.CompareTo(other.V1);
         if (cmp != 0)
             return cmp;
-        cmp = V1.CompareTo(other.V1);
-        return cmp != 0 ? cmp : V2.CompareTo(other.V2);
+        cmp = V2.CompareTo(other.V2);
+        return cmp != 0 ? cmp : -Forwards.CompareTo(other.Forwards);
     }
 
     public override string ToString() =>

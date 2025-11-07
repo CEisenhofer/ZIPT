@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
+using System.Xml.Linq;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
@@ -20,6 +21,7 @@ public class NielsenGraph {
     public uint DepthBound { get; private set; }
     public StringPropagator InnerStringPropagator { get; }
     public Solver SubSolver { get; } // Solver for assumption based integer reasoning
+    public NielsenNode? InitRoot { get; private set; }
     public NielsenNode? CurrentRoot { get; private set; }
 
     public Dictionary<NamedStrToken, int> CurrentModificationCnt { get; } = [];
@@ -63,7 +65,7 @@ public class NielsenGraph {
         SubSolver.Push();
     }
 
-    public bool Check(NielsenNode root, HashSet<BoolExpr> forbidden, HashSet<BoolExpr> usedForbidden) {
+    public bool Check(NielsenNode root, NielsenNode.LocalInfo info) {
         ResetAll();
         if (RunIdx == uint.MaxValue) {
             ResetCounter();
@@ -75,17 +77,22 @@ public class NielsenGraph {
         if (OuterPropagator.Cancel)
             throw new SolverTimeoutException();
 
-        CurrentRoot = root.Clone();
-        NielsenNode? existing = FindExistingShallowSimplified(CurrentRoot, true);
-        if (existing is not null) {
-            //Debug.Assert(ReferenceEquals(PendingNode, CurrentRoot));
-            //DropPending();
-            CurrentRoot = existing;
+        NielsenNode? existing = FindExisting(root);
+        if (existing is null) {
+            CurrentRoot = InitRoot = root.Clone();
+            if (NielsenNode.SimplifyAndInit(CurrentRoot, null) != BacktrackReasons.Unevaluated) {
+                Debug.Assert(CurrentRoot.IsCurrentlyConflict);
+                return false;
+            }
+            existing = FindExisting(CurrentRoot);
+            if (existing is not null) {
+                //Debug.Assert(ReferenceEquals(PendingNode, CurrentRoot));
+                //DropPending();
+                CurrentRoot = existing;
+            }
         }
-        if (NielsenNode.SimplifyAndInit(CurrentRoot, null) != BacktrackReasons.Unevaluated) {
-            Debug.Assert(CurrentRoot.IsCurrentlyConflict);
-            return false;
-        }
+        else
+            CurrentRoot = InitRoot = existing;
 
         Debug.Assert(SubSolver is not null);
 
@@ -95,10 +102,14 @@ public class NielsenGraph {
             Interval<BigInteger>.ToZ3Constraint(o.Value, o.Key, this)));
 
         DepthBound = Options.ItDeepDepthStart;
+        int pathCnt = CurrentPath.Count;
+        int modCnt = CurrentModificationCnt.Count;
+
         while (true) {
-            Debug.Assert(CurrentPath.IsEmpty());
-            Debug.Assert(CurrentModificationCnt.IsEmpty());
-            var res = CurrentRoot.Check(0, forbidden, usedForbidden);
+            Debug.Assert(CurrentPath.Count == pathCnt);
+            Debug.Assert(CurrentModificationCnt.Count == modCnt);
+            var res = CurrentRoot.Check(0, info);
+            Debug.Assert(res != SolveResult.CYCLIC);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
             if (res == SolveResult.SAT) {
@@ -141,13 +152,9 @@ public class NielsenGraph {
         return null;
     }
 
-    public Str? TryParseStr(Expr e) {
-        var tokens = Env.TryParseStr(e);
-        return tokens is null ? null : Env.MkString(tokens);
-    }
+    public Str? TryParseStr(Expr e) => Env.TryParseStr(e);
 
     public string ToDot() {
-        List<NielsenNode> subsumed = [];
         StringBuilder sb = new();
         sb.AppendLine("digraph G {");
         HashSet<NielsenEdge> satEdges = [];

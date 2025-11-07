@@ -24,7 +24,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
         Padding = padding;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         Debug.Assert(LhsIdx <= Eq.LHS.Length);
         Debug.Assert(RhsIdx <= Eq.RHS.Length);
         Debug.Assert(LhsIdx < Eq.LHS.Length || RhsIdx < Eq.RHS.Length);
@@ -36,7 +36,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
         Str lhs2 = node.Env.StrManager.Extract(Eq.LHS, LhsIdx, Forwards);
         Str rhs2 = node.Env.StrManager.Extract(Eq.RHS, LhsIdx, !Forwards);
 
-        var padVar = node.Env.GetOrCreateStrVar("o");
+        var padVar = node.Env.CreateFreshStrVar("o");
         if (Padding > 0) {
             lhs2 = node.Env.StrManager.Concat(lhs2, padVar, Forwards);
             rhs1 = node.Env.StrManager.Concat(padVar, rhs1, Forwards);
@@ -56,8 +56,9 @@ public class EqSplitModifier : DirectedNielsenModifier {
             cnstr.Add(iEq1);
         if (!iEq2.Poly.IsZero)
             cnstr.Add(iEq2);
-        NielsenNode c = node.MkChild(node, Array.Empty<Subst>(), cnstr, true);
-        c.RemoveStrEq(Eq);
+        node.MkChild(node, Array.Empty<Subst>(), cnstr, [Eq], true);
+        Debug.Assert(node.Outgoing.Count == 1);
+        return [node.Outgoing[0]];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

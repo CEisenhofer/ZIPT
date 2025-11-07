@@ -19,8 +19,15 @@ public abstract class NamedStrToken : StrToken {
     public NamedStrToken? Parent { get; } // The direct parent of this token
     protected NamedStrToken? Extension1 { get; set; } // x' for extension. e.g. x / ax' or x / x'a
     protected NamedStrToken? Extension2 { get; set; } // x'' in this unlikely case we need to split it up. e.g., x = x'x''
+    protected SymCharToken? extensionChar; // for unwinding regexes
+    public SymCharToken ExtensionChar => extensionChar ??= new SymCharToken(this);
     IntVar? PowerExtension { get; set; } // The unique power constant n used when eliminating a variable x / u^n u'
 
+    public override bool Ground => false;
+    public override bool RegexFree => true;
+    public override bool Derivable => false;
+    public override bool Nullable => false;
+    public override bool BasicRegex => true;
     protected NamedStrToken(NamedStrToken parent) {
         Parent = parent;
         ChildCnt = parent.ChildCnt;
@@ -43,10 +50,7 @@ public abstract class NamedStrToken : StrToken {
     public IntVar GetPowerExtension() => 
         PowerExtension ??= new IntVar();
 
-    public sealed override bool IsNullable(NielsenNode node) => 
-        LenVar.MkLenPoly(this, node.Env).GetBounds(node).Contains(0);
-
-    public sealed override List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd) {
+    public sealed override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) {
         // P(x) := y with x = yz, |y| < |x|
         // TODO
         NamedStrToken y = GetExtension1();
@@ -55,8 +59,8 @@ public abstract class NamedStrToken : StrToken {
         var xl = LenVar.MkLenPoly(this, node.Env);
         yl = yl.Add(BigInteger.One);
         if (fwd)
-            return [new PrefixDecomposition(node.Env.MkString(y), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(y, z)))];
-        return [new PrefixDecomposition(node.Env.MkString(y), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(z, y)))];
+            return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(y, z)))];
+        return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(z, y)))];
     }
 
     protected sealed override int CompareToInternal(StrToken other) {
@@ -64,6 +68,9 @@ public abstract class NamedStrToken : StrToken {
         int cmp = string.Compare(Name, ((NamedStrToken)other).Name, StringComparison.Ordinal);
         return cmp != 0 ? cmp : ChildIdx.CompareTo(((NamedStrToken)other).ChildIdx);
     }
+
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
+        nonTermSet.Add(this);
 
     public override bool Equals(StrToken? other) =>
         other is NamedStrToken token && Equals(token);

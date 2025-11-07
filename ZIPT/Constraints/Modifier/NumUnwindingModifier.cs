@@ -11,18 +11,19 @@ public abstract class NumUnwindingModifier : ModifierBase {
     public NumUnwindingModifier(PDD<BigInteger> num) => 
         Num = num;
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
 
         node.MkChild(node,
             Array.Empty<Subst>(),
-            [new IntEq(Num)],
+            [new IntEq(Num)], [],
             true); // Num == 0
-
+        yield return node.Outgoing[^1];
 
         node.MkChild(node,
             Array.Empty<Subst>(),
-            [IntLe.MkLe(node.Env.OneInt, Num)],
+            [IntLe.MkLe(node.Env.OneInt, Num)], [],
             false); // 1 <= Num
+        yield return node.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

@@ -19,19 +19,16 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         Power = power;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         // V / Base^Power' Base' && Power' < Power
         // V / Base^Power V
 
         IntVar newPow = new();
         var power = new PowerToken(Power.Base, node.Env.IntPDDManager.MkPDD(newPow));
-        var prefixes = StrManager.GetPrefixes(node, Power.Base, Forwards);
+        var prefixes = StrManager.GetDecompose(node, Power.Base, Forwards);
         Str s;
         foreach (var p in prefixes) {
-            if (Forwards)
-                s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Str);
-            else
-                s = node.Env.StrManager.Concat(p.Str, node.Env.MkString(power));
+            s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Prefix, Forwards);
 #if DEBUG
             var cmp = StrEqBase.LcpCompression(s, node.Env);
             if (cmp is not null)
@@ -43,22 +40,25 @@ public class PowerSplitModifier : DirectedNielsenModifier {
                 IntLe.MkLt(node.Env.IntPDDManager.MkPDD(newPow), Power.Power),
             ];
             cond.AddRange(p.SideConstraints);
-            if (p.VarDecomp is null)
-                node.MkChild(node, 
+            if (p.VarDecomp is null) {
+                node.MkChild(node,
                     [new Subst(StrVarToken, s)],
-                    cond, true);
+                    cond, [], true);
+                yield return node.Outgoing[^1];
+            }
             else {
                 Debug.Assert(false);
                 node.MkChild(node,
                     [new Subst(StrVarToken, node.Env.StrManager.Subst(s, p.VarDecomp.Value)), p.VarDecomp.Value],
-                    cond, false);
+                    cond, [], false);
+                yield return node.Outgoing[^1];
             }
         }
-        if (Forwards)
-            s = node.Env.MkString(StrVarToken, new PowerToken(Power.Base, Power.Power));
-        else
-            s = node.Env.MkString(new PowerToken(Power.Base, Power.Power), StrVarToken);
-        node.MkChild(node, [new Subst(StrVarToken, s)], Array.Empty<Constraint>(), false);
+        s = node.Env.MkString(new List<StrToken> {
+            new PowerToken(Power.Base, Power.Power), StrVarToken,
+        }, Forwards);
+        node.MkChild(node, [new Subst(StrVarToken, s)], Array.Empty<Constraint>(), [], false);
+        yield return node.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
@@ -67,7 +67,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         if (cmp != 0)
             return cmp;
         cmp = StrVarToken.CompareTo(other.StrVarToken);
-        return cmp != 0 ? cmp : Forwards.CompareTo(other.Forwards);
+        return cmp != 0 ? cmp : -Forwards.CompareTo(other.Forwards);
     }
 
     public override string ToString() =>

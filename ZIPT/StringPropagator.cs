@@ -1,8 +1,10 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Z3;
+using System.Diagnostics;
 using System.Numerics;
-using Microsoft.Z3;
+using System.Xml.Linq;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
+using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
@@ -34,7 +36,7 @@ public abstract class StringPropagator : UserPropagator {
     }
 
     StrVarToken GetFreshAuxStr() => 
-        Env.GetOrCreateStrVar("x");
+        Env.CreateFreshStrVar("x");
 
     public override void Push() {
         if (Graph.OuterPropagator.Cancel)
@@ -143,6 +145,22 @@ public abstract class StringPropagator : UserPropagator {
                         Ctx.MkEq(u, Env.MkConcat(x, Env.MkConcat(v, y)))
                     )
                 );
+                return;
+            }
+            if (Env.IsRegularMembership(f)) {
+                if (!val) {
+                    throw new NotImplementedException();
+                    // TODO: Negate the expression
+                    return;
+                }
+                // In theory, we could now assert the semi-linear length set, but not sure if this is too costly
+                Expr e1 = e.Arg(0);
+                Expr e2 = e.Arg(1);
+                var s1 = Env.TryParseStr(e1);
+                var s2 = Env.TryParseStr(e2);
+                Debug.Assert(s1 is not null);
+                Debug.Assert(s2 is not null);
+                MemInternal(s1, s2, (BoolExpr)e);
                 return;
             }
 
@@ -426,6 +444,7 @@ public abstract class StringPropagator : UserPropagator {
     }
 
     public virtual void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {}
+    public virtual void MemInternal(Str s1, Str s2, BoolExpr e) {}
 
     static int eqCount;
 
@@ -494,12 +513,12 @@ public abstract class StringPropagator : UserPropagator {
                 }
             }*/
 
-            var s1r = Env.TryParseStr(e1);
-            var s2r = Env.TryParseStr(e2);
-            Debug.Assert(s1r is not null);
-            Debug.Assert(s2r is not null);
+            var s1 = Env.TryParseStr(e1);
+            var s2 = Env.TryParseStr(e2);
+            Debug.Assert(s1 is not null);
+            Debug.Assert(s2 is not null);
 
-            if (s1r.Count >= 2 && s2r.Count >= 2) {
+            if (s1.Length >= 2 && s2.Length >= 2) {
 #if false
             // or some other condition to only do this if really necessary
             HashSet<NonTermToken> vars = [];
@@ -559,7 +578,7 @@ public abstract class StringPropagator : UserPropagator {
 #endif
             }
 
-            EqInternal(Env.MkString(s1r), e1, Env.MkString(s2r), e2);
+            EqInternal(s1, e1, s2, e2);
         }
         catch (Exception ex) {
             Console.WriteLine("Exception (Eq): " + ex.Message);
@@ -590,7 +609,7 @@ public abstract class StringPropagator : UserPropagator {
                 );
                 var s = Env.TryParseStr(e1);
                 Debug.Assert(s is not null);
-                AddNotEpsilonInternal(Env.MkString(s));
+                AddNotEpsilonInternal(s);
                 return;
             }
 
@@ -659,6 +678,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     public NielsenNode Root { get; } // This node is added as cloned to the graph - we can alter the constraints in it
 
     List<(Expr lhs, Expr rhs)> reportedEqs = [];
+    List<BoolExpr> reportedMems = [];
     List<BoolExpr> reportedFixed = [];
 
     readonly HashSet<BoolExpr> forbidden = [];
@@ -703,12 +723,16 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     }
 
+    public void DisEqInternal(Str s1, Expr e1, Str s2, Expr e2) {
+
+        var diseq = new StrNonEq(s1, s2);
+        // add s1 != s2
+        // as well as |s1| != |s2| if both are regex-free
+    }
+
     public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
         var eq = new StrEq(s1, s2);
-        NonTermSet nonTermSet = new();
-        HashSet<CharToken> alph = [];
-        eq.CollectSymbols(nonTermSet, alph);
 
         if (Root.ConstraintsStrEq.Add(eq)) { // u = v
             undoStack.Add(() =>
@@ -720,25 +744,41 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 undoStack.Add(() => newInformation = false);
             }
         }
-        var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env));
-        if (!la.Poly.IsZero && Root.ConstraintsIntEq.Add(la)) { // u = v => |u| = |v|
+        if (s1.RegexFree && s2.RegexFree) {
+            var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env));
+            if (!la.Poly.IsZero && Root.ConstraintsIntEq.Add(la)) { // u = v => |u| = |v|
+                undoStack.Add(() => { Log.Verify(Root.ConstraintsIntEq.Remove(la)); });
+                if (!newInformation) {
+                    newInformation = true;
+                    undoStack.Add(() => newInformation = false);
+                }
+            }
+        }
+        reportedEqs.Add((e1, e2));
+        undoStack.Add(() =>
+        {
+            reportedEqs.Pop();
+        });
+    }
+
+    public override void MemInternal(Str s1, Str s2, BoolExpr e) {
+
+        var eq = new StrMem(s1, s2);
+
+        if (Root.ConstraintsStrMem.Add(eq)) { // u = v
             undoStack.Add(() =>
             {
-                Log.Verify(Root.ConstraintsIntEq.Remove(la));
+                Log.Verify(Root.ConstraintsStrMem.Remove(eq));
             });
             if (!newInformation) {
                 newInformation = true;
                 undoStack.Add(() => newInformation = false);
             }
         }
-        // foreach (var a in alph) {
-        //     if (Root.IntEq.Add(new IntEq(Parikh.MkParikhPoly(a, s1), Parikh.MkParikhPoly(a, s2)))) // u = v => |u|_a = |v|_a
-        //         undoStack.Add(Root.IntEq.Pop);
-        // }
-        reportedEqs.Add((e1, e2));
+        reportedMems.Add(e);
         undoStack.Add(() =>
         {
-            reportedEqs.Pop();
+            reportedMems.Pop();
         });
     }
 
@@ -762,9 +802,13 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             finalCnt++;
             Log.WriteLine("Final (" + finalCnt + ")");
 
+#if DEBUG
+            // Console.WriteLine(Root);
+#endif
+
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
-            HashSet<BoolExpr> usedForbidden = [];
-            var res = Graph.Check(Root, forbidden, usedForbidden);
+            NielsenNode.LocalInfo info = new(forbidden);
+            var res = Graph.Check(Root, info);
             if (newInformation) {
                 newInformation = false;
                 undoStack.Add(() => newInformation = true);
@@ -790,9 +834,10 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 undoStack.Add(() => selectedPath = prev);
             }
             else {
-                var f = new BoolExpr[usedForbidden.Count + reportedFixed.Count];
+                var f = new BoolExpr[usedForbidden.Count + reportedMems.Count + reportedFixed.Count];
                 usedForbidden.CopyTo(f, 0);
-                reportedFixed.CopyTo(f, usedForbidden.Count);
+                reportedMems.CopyTo(f, usedForbidden.Count);
+                reportedFixed.CopyTo(f, usedForbidden.Count + reportedMems.Count);
                 Propagate(f, pair, Ctx.MkFalse());
             }
         }
@@ -811,33 +856,38 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public bool GetModel(out Interpretation itp) {
 
-        Debug.Assert(Graph.CurrentRoot is not null);
-        var currentRoot = Graph.CurrentRoot!;
         var currentPath = Graph.CurrentPath.ToList();
-        var satNode = currentPath.Count == 0 ? currentRoot : currentPath[^1].Tgt;
+        var satNode = currentPath.Count == 0 ? Graph.InitRoot : currentPath[^1].Tgt;
+        Debug.Assert(satNode is not null);
         Debug.Assert(satNode.ConstraintsStrEq.Count == 0);
-        
+        Debug.Assert(satNode.ConstraintsStrMem.All(o => o.IsPrimitiveRegex()));
+        Debug.Assert(satNode.ConstraintsReSplit.Count == 0);
+
         Graph.ResetIndices(); // We need the original indices for retrieving the correct root constraints
 
         NonTermSet initNonTermSet = new();
         HashSet<CharToken> initAlphabet = [];
-        currentRoot.CollectSymbols(initNonTermSet, initAlphabet);
+        Root.CollectSymbols(initNonTermSet, initAlphabet);
 
-        foreach (Constraint c in currentRoot.AllConstraints.Where(o => o is not StrEq)) {
+        using var checkSolver = Ctx.MkSimpleSolver();
+
+        foreach (Constraint c in satNode.AllConstraints.Where(o => o is not StrEq)) {
+            if (c is StrEq or StrMem)
+                continue;
             BoolExpr e = c.ToExpr(Graph);
-            Solver.Assert(e);
+            checkSolver.Assert(e);
         }
         // TODO: Do this also in other places
         foreach (var path in currentPath) {
             foreach (BoolExpr c in path.Asserted) {
-                Solver.Assert(c);
+                checkSolver.Assert(c);
             }
-            Solver.Assert(path.Assumption);
+            checkSolver.Assert(path.Assumption);
         }
 
-        var res = Solver.Check();
+        var res = checkSolver.Check();
         Debug.Assert(res == Status.SATISFIABLE);
-        var model = Solver.Model;
+        var model = checkSolver.Model;
 
         itp = new Interpretation(Env);
         foreach (var c in model.Consts) {
@@ -857,21 +907,23 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             }
         }
 
+        var witnesses = satNode.WitnessRegex();
+        foreach (var (nt, v) in witnesses) {
+            new Subst(nt, Env.MkString(v.OfType<StrToken>().ToList())).AddToInterpretation(itp);
+        }
+
         if (Options.ModelCompletion)
             itp.Complete(initAlphabet);
+        itp.Simplify();
 
         bool modelCheck = true;
 
         if (Options.CheckModel) {
-            foreach (var orig in currentRoot.AllConstraints) {
-                var cnstr = orig.Apply(itp);
-                BacktrackReasons reason = BacktrackReasons.Unevaluated;
-                if (cnstr.SimplifyAndPropagate(satNode, new NonTermSet(), new DetModifier(), ref reason, true) ==
-                    SimplifyResult.Satisfied)
-                    continue;
-                modelCheck = false;
-                Console.WriteLine("Constraint " + orig + " not satisfied: " + cnstr);
+            List<(Constraint orig, Constraint simpl)> failed = Root.CheckModel(itp);
+            foreach (var fail in failed) {
+                Console.WriteLine("Constraint " + fail.orig + " not satisfied: " + fail.simpl);
             }
+            modelCheck = failed.Count == 0;
 
             Console.WriteLine(modelCheck ? "Model seems fine" : "ERROR: Created invalid model");
         }

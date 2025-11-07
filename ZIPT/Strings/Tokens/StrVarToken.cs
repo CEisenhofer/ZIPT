@@ -1,7 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.Intrinsics.X86;
-using Microsoft.Z3;
-using ZIPT.MiscUtils;
+﻿using Microsoft.Z3;
 using ZIPT.Constraints;
 
 namespace ZIPT.Strings.Tokens;

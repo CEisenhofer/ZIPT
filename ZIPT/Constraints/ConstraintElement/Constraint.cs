@@ -1,6 +1,6 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Z3;
 using System.Diagnostics.Contracts;
-using Microsoft.Z3;
+using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
 using ZIPT.Strings.Tokens;
 
@@ -16,6 +16,9 @@ public abstract class Constraint {
 
     [Pure]
     public abstract Constraint Apply(Subst subst, NielsenNode node);
+    [Pure]
+    public abstract Constraint Apply(CharSubst subst, NielsenNode node);
+
     [Pure]
     public abstract Constraint Apply(Interpretation itp);
 

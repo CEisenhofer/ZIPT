@@ -2,7 +2,9 @@
 using System.Diagnostics.Contracts;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
+using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -27,6 +29,8 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         protected set => rhs = value;
     }
 
+    public virtual bool Sorted => true;
+
     protected StrEqBase(Str lhs, Str rhs) {
         this.lhs = lhs;
         this.rhs = rhs;
@@ -38,8 +42,10 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public override int GetHashCode() => HashCode.Combine(LHS, RHS);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected void SortStr() => 
-        SortStr(ref lhs, ref rhs, true);
+    protected void SortStr() {
+        if (Sorted)
+            SortStr(ref lhs, ref rhs, true);
+    }
 
     // for just calling member functions always assuming we process left only
 
@@ -57,23 +63,25 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             return false;
         Debug.Assert(s1.Length > 0);
         Debug.Assert(s2.Length > 0);
-        return StrToken.StrTokenOrder[s1[fwd].GetType()] <= StrToken.StrTokenOrder[s2[fwd].GetType()];
+        return s1.CompareTo(s2, fwd) <= 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static void SortStr(ref Str s1, ref Str s2, bool dir) {
-        if (!IsSorted(s1, s2, dir))
+    protected static void SortStr(ref Str s1, ref Str s2, bool fwd) {
+        if (!IsSorted(s1, s2, fwd))
             (s1, s2) = (s2, s1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected void SortStr(bool dir) => 
-        SortStr(ref lhs, ref rhs, dir);
+    protected void SortStr(bool fwd) {
+        Debug.Assert(Sorted);
+        SortStr(ref lhs, ref rhs, fwd);
+    }
 
     // TODO: u'(u''u')^n u'' for u''u' count as n + 1 for u''u'
     // Given p^m and s=u_1 ... u_n
     // Counts the number of p in prefix of s (just shallow; does not count powers of powers)
-    protected static (PDD<BigInteger> num, int idx) CommPower(Str @base, Str s, Environment env, bool dir) {
+    protected static (PDD<BigInteger> num, int idx) CommPower(Str @base, Str s, Environment env, bool fwd) {
         PDD<BigInteger> sum = env.ZeroInt;
         uint pos = 0;
         PDD<BigInteger> lastStableSum = sum;
@@ -81,12 +89,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         int i = 0;
 
         for (; i < s.Length; i++) {
-            var t = s[dir, i];
+            var t = s[fwd, i];
             if (pos == 0) {
                 lastStablePos = i;
                 lastStableSum = sum;
             }
-            if (t.Equals(@base[dir, pos])) {
+            if (t.Equals(@base[fwd, pos])) {
                 pos++;
                 if (pos >= @base.Length) {
                     Debug.Assert(pos == @base.Length);
@@ -98,7 +106,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             if (t is PowerToken p2 &&
                 (pos == 0
                     ? p2.Base.Equals(@base)
-                    : p2.Base.RotationEquals(@base, dir ? pos : (@base.Length - pos)))) {
+                    : p2.Base.RotationEquals(@base, fwd ? pos : (@base.Length - pos)))) {
                 // We might not keep this if it is shifted and we do not find a pos == 0 afterwards
                 sum = sum.Add(p2.Power);
                 continue;
@@ -112,20 +120,23 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return (lastStableSum, lastStablePos);
     }
 
-    protected bool SimplifySame(Environment env, bool dir) {
-        if (!lhs[dir].Equals(rhs[dir]))
+    protected bool SimplifySame(Environment env, bool fwd) {
+        if (!lhs[fwd].Equals(rhs[fwd]))
             return false;
-        Log.WriteLine("Simplify Eq: " + lhs[dir] + "; " + rhs[dir]);
-        lhs = env.StrManager.Drop(lhs, dir);
-        rhs = env.StrManager.Drop(rhs, dir);
+        if (!lhs[fwd].RegexFree)
+            // !!  a*u = a*v  =/>  u = v  !!
+            return false;
+        Log.WriteLine("Simplify Eq: " + lhs[fwd] + "; " + rhs[fwd]);
+        lhs = env.StrManager.Drop(lhs, fwd);
+        rhs = env.StrManager.Drop(rhs, fwd);
         return true;
     }
 
-    protected static bool IsPrefixConsistent(NielsenNode node, Str s1, Str s2, bool dir) {
+    protected static bool IsPrefixConsistent(NielsenNode node, Str s1, Str s2, bool fwd) {
         uint min = Math.Min(s1.Length, s2.Length);
         for (int i = 0; i < min; i++) {
-            StrToken t1 = s1[dir, i];
-            StrToken t2 = s2[dir, i];
+            StrToken t1 = s1[fwd, i];
+            StrToken t2 = s2[fwd, i];
             if (t1 is not CharToken c1 || t2 is not CharToken c2)
                 // It might still be inconsistent, but it is harder to detect
                 return true;
@@ -135,70 +146,89 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return true;
     }
 
-    public bool SimplifyPower(NielsenNode node, bool frwd) {
-        if (SimplifyPowerSide(node, frwd))
+    protected static SimplifyResult SimplifyEmpty(IEnumerable<StrToken> s, NielsenNode node, DetModifier constr) {
+        foreach (var t in s) {
+            if (t is UnitToken)
+                return SimplifyResult.Conflict;
+            if (t is StrVarToken v)
+                return constr.Add(new Subst(v, node.Env.EmptyStr));
+            if (t is PowerToken p) {
+                if (node.IsLt(node.Env.ZeroInt, p.Power))
+                    // p.Power > 0
+                    constr.Add(new StrEq(p.Base, node.Graph.Env.EmptyStr));
+                else if (!StrManager.IsNullable(node, p.Base))
+                    // p.Base != ""
+                    constr.Add(new IntEq(p.Power));
+            }
+            else
+                throw new NotSupportedException();
+        }
+        return SimplifyResult.Proceed;
+    }
+
+    public bool SimplifyPower(NielsenNode node, bool fwd) {
+        Debug.Assert(Sorted);
+        if (SimplifyPowerSide(node, fwd))
             return true;
         SwpSides();
-        bool elim = SimplifyPowerSide(node, frwd);
+        bool elim = SimplifyPowerSide(node, fwd);
         SwpSides();
         return elim;
     }
 
-    public bool SimplifyPowerSide(NielsenNode node, bool frwd) {
-        if (lhs[frwd] is not PowerToken p)
+    public bool SimplifyPowerSide(NielsenNode node, bool fwd) {
+        if (lhs[fwd] is not PowerToken p)
             return false;
         Str? s;
         if ((s = SimplifyPowerSingle(node, p)) is not null) {
-            lhs = node.Env.StrManager.Concat(s, node.Env.StrManager.Drop(lhs, frwd), frwd);
+            lhs = node.Env.StrManager.Concat(s, node.Env.StrManager.Drop(lhs, fwd), fwd);
             return true;
         }
-        if (SimplifyPowerElim(node, p, frwd))
+        if (SimplifyPowerElim(node, p, fwd))
             return true;
         // Reason why we do not do unwinding in presence of a variable:
         // xb... = a^n... with n >= 1
         // implies x /ax but this can result in some int constraint bound propagate n >= 2
         // and result in a cycle as this makes a^n unwindable again
         // Instead we have to split on x / a^n x and x / a^m with 0 <= m < n
-        return rhs[frwd] is not NamedStrToken && SimplifyPowerUnwind(node, p, frwd);
+        return rhs[fwd] is not NamedStrToken && SimplifyPowerUnwind(node, p, fwd);
     }
 
-    bool SimplifyPowerElim(NielsenNode node, PowerToken p, bool dir) {
-        Debug.Assert(ReferenceEquals(lhs[dir], p));
-        var r = CommPower(p.Base, rhs, node.Env, dir);
+    bool SimplifyPowerElim(NielsenNode node, PowerToken p, bool fwd) {
+        Debug.Assert(ReferenceEquals(lhs[fwd], p));
+        var r = CommPower(p.Base, rhs, node.Env, fwd);
         if (r.idx <= 0)
             return false;
         if (node.IsLe(r.num, p.Power) || node.IsLt(r.num, p.Power)) {
             // r.num < p.Power
-            lhs = node.Env.StrManager.Drop(lhs, dir);
-            for (var i = 0; i < r.idx; i++)
-                rhs = node.Env.StrManager.Drop(rhs, dir);
+            lhs = node.Env.StrManager.Drop(lhs, fwd);
+            rhs = node.Env.StrManager.Drop(rhs, (uint)r.idx, fwd);
             var sub = p.Power.Sub(r.num);
-            lhs = node.Env.StrManager.Concat(lhs, PowerToken.MkPower(p.Base, sub, node.Env), dir);
+            lhs = node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), lhs, fwd);
             Log.WriteLine("Simplify: power-elim " + p);
             return true;
         }
         if (node.IsLe(p.Power, r.num) || node.IsLt(p.Power, r.num)) {
             // p.Power <= r.num
-            lhs = node.Env.StrManager.Drop(lhs, dir);
-            for (var i = 0; i < r.idx; i++)
-                rhs = node.Env.StrManager.Drop(rhs, dir);
+            lhs = node.Env.StrManager.Drop(lhs, fwd);
+            rhs = node.Env.StrManager.Drop(rhs, (uint)r.idx, fwd);
             var sub = r.num.Sub(p.Power);
-            rhs = node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), rhs, dir);
+            rhs = node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), rhs, fwd);
             Log.WriteLine("Simplify: power-elim " + p);
             return true;
         }
         return false;
     }
 
-    bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, bool dir) {
+    bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, bool fwd) {
         if (!node.IsLt(node.Env.ZeroInt, p.Power))
             return false;
 
         Log.WriteLine("Simplify: >0-unwinding power " + p);
         // lhs.Unwind(dir, node);
-        lhs = node.Env.StrManager.Drop(lhs, dir);
+        lhs = node.Env.StrManager.Drop(lhs, fwd);
         var sub = p.Power.Sub(node.Env.OneInt);
-        lhs = node.Env.StrManager.Concat(lhs, node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), p.Base, dir), dir);
+        lhs = node.Env.StrManager.Concat(node.Env.StrManager.Concat(p.Base, PowerToken.MkPower(p.Base, sub, node.Env), fwd), lhs, fwd);
         return true;
     }
 
@@ -216,13 +246,20 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     protected static Str? SimplifyPowerSingle(NielsenNode node, PowerToken p) {
         // This can be locally violated e.g., if some integer constraint simplified to 1 <= 0 so IsLt(1, 0) evaluates to true
         // Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
-        if (p.Power.IsConst(out var dl) && dl.Sign < 0)
+        if (p.Power.TryGetConst(out var dl) && dl.Sign < 0)
             // We could also just ignore it, but probably not worth making efforts simplifying it
             return null;
 
-        if (p.Base is { Length: 1, First: PowerToken p2 })
+        if (p.Base is { Length: 1, First: PowerToken p2 }) {
             // (u^m)^n => u^{mn}
-            return node.Env.MkString(new PowerToken(p2.Base, PDD<BigInteger>.Mul(p.Power, p2.Power)));
+            Dictionary<NamedInt, PDD<BigInteger>> definitions = [];
+            var ret = PowerToken.MkPower(p2.Base, 
+                PDD<BigInteger>.MulByDefinitions(p.Power, p2.Power, definitions), node.Env);
+            foreach (var def in definitions) {
+                node.AddConstraint(new IntEq(node.Env.IntPDDManager.MkPDD(def.Key), def.Value));
+            }
+            return ret;
+        }
 
         // ""^n => ""
         if (p.Base.IsEmpty()) {
@@ -272,12 +309,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
                     r.Add(p.Base[i]);
             }
             Debug.Assert(partialList.Any(o => o is not null));
-            return node.Env.MkString(new PowerToken(node.Env.MkString(r), p.Power));
+            return PowerToken.MkPower(node.Env.MkString(r), p.Power, node.Env);
         }
 
         var lcp = LcpCompressionFull(p.Base, node.Env);
         if (lcp is not null)
-            return node.Env.MkString(new PowerToken(lcp, p.Power));
+            return PowerToken.MkPower(lcp, p.Power, node.Env);
         return null;
     }
 
@@ -292,6 +329,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     public static Str? LcpCompressionFull(Str s, Environment env) {
         if (s.Length < 2)
             return null;
+        // TODO: Cache this
 #if DEBUG
         Str orig = s;
 #endif

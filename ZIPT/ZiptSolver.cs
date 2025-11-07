@@ -1,17 +1,17 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Z3;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
-using Microsoft.Z3;
-using ZIPT.Strings.Tokens;
 
 namespace ZIPT;
 
 public enum SolveResult {
     SAT,
     UNSAT,
+    CYCLIC,
     UNKNOWN,
-    UNSOUND
+    UNSOUND,
 }
 
 public static class ZiptSolver {
@@ -22,19 +22,20 @@ public static class ZiptSolver {
             Console.Error.WriteLine(error);
         Console.Error.WriteLine("Usage: " + Assembly.GetExecutingAssembly().Location + " [Arguments] <input>");
         Console.Error.WriteLine("Arguments:");
-        Console.Error.WriteLine("\t-t:<timeout>   Set the time-out in milliseconds. Default: 0 (no timeout).");
-        Console.Error.WriteLine("\t-c             Complete Model.");
-        Console.Error.WriteLine("\t-m             Output Model.");
+        Console.Error.WriteLine("\t-t:<timeout>   Set the time-out in milliseconds. Default: 0 (no timeout)");
+        Console.Error.WriteLine("\t-e:<encoding>  Sets the character encoding [ascii, bmp, utf]");
+        Console.Error.WriteLine("\t-c             Complete Model");
+        Console.Error.WriteLine("\t-m             Output Model");
         Console.Error.WriteLine("\t-p             Retain proof graph. (one graph for each string solver call)");
-        Console.Error.WriteLine("\t-g             Output Nielsen Graph.");
-        Console.Error.WriteLine("\t-v             Validate Model.");
-        Console.Error.WriteLine("\t-h             Show this help message.");
+        Console.Error.WriteLine("\t-g             Output Nielsen Graph");
+        Console.Error.WriteLine("\t-v             Validate Model");
+        Console.Error.WriteLine("\t-h             Show this help message");
         System.Environment.Exit(-1);
     }
 
     public static void ParseOptions(string[] args) {
         Debug.Assert(args.Length > 0);
-        for (int i = 1; i < args.Length - 1; i++) {
+        for (int i = 0; i < args.Length - 1; i++) {
             string arg = args[i];
             if (arg.StartsWith("-t:")) {
                 if (!int.TryParse(arg[3..], out int timeout) || timeout < 0)
@@ -42,29 +43,57 @@ public static class ZiptSolver {
                 Options.TimeOut = timeout;
                 continue;
             }
-            if (arg.StartsWith("-p")) {
+            if (arg.StartsWith("-e:")) {
+                string name = arg[3..];
+                switch (name.ToLower()) {
+                    case "ascii":
+                        Options.MaxChar = Options.MaxCharAscii;
+                        break;
+                    case "bmp":
+                        Options.MaxChar = Options.MaxCharBmp;
+                        break;
+                    case "utf":
+                    case "unicode":
+                        Options.MaxChar = Options.MaxCharUtf;
+                        break;
+                    default:
+                        Usage("Unknown character encoding: " + name);
+                        return;
+                }
+                continue;
+            }
+            if (arg == "-p") {
                 Options.KeepProof = true;
                 continue;
             }
-            if (arg.StartsWith("-c")) {
+            if (arg == "-c") {
                 Options.ModelCompletion = true;
                 continue;
             }
-            if (arg.StartsWith("-v")) {
+            if (arg == "-v") {
                 Options.CheckModel = true;
                 continue;
             }
-            if (args[i].StartsWith("-m")) {
+            if (arg == "-a") {
+                Options.SaturateGraph = true;
+                continue;
+            }
+            if (arg == "-m") {
                 Options.OutputModel = true;
                 continue;
             }
-            if (args[i].StartsWith("-g")) {
+            if (arg == "-s") {
+                Options.OutputStats = true;
+                continue;
+            }
+            if (arg == "-g") {
                 Options.KeepProof = true;
                 Options.OutputGraph = true;
                 continue;
             }
-            if (arg.StartsWith("-h")) {
+            if (arg is "-h" or "-help") {
                 Usage(null);
+                return;
             }
         }
     }
@@ -138,7 +167,7 @@ public static class ZiptSolver {
 
     public static SolveResult Solve(SaturatingStringPropagator propagator) {
         SolveResult result = SolveResult.UNKNOWN;
-        Thread thread = new(() =>
+        ThreadStart run = () =>
         {
             Global.SetParameter("smt.random_seed", "16");
             Global.SetParameter("nlsat.randomize", "false");
@@ -153,10 +182,22 @@ public static class ZiptSolver {
 #if DEBUG
             // Console.WriteLine(propagator.Graph.ToDot());
 #endif
+            if (Options.OutputStats)
+                OutputStats();
             if (!propagator.Cancel) {
                 if (res == Status.SATISFIABLE) {
                     Console.WriteLine("SAT");
                     if (Options.OutputModel || Options.CheckModel) {
+                        if (Options.SaturateGraph) {
+                            try {
+                                Options.SaturateGraph = false;
+                                bool s = propagator.Graph.Check(propagator.Graph.CurrentRoot!, [], []);
+                                Debug.Assert(s);
+                            }
+                            finally {
+                                Options.SaturateGraph = true;
+                            }
+                        }
                         bool success = propagator.GetModel(out var itp);
                         if (Options.OutputModel)
                             Console.WriteLine(itp);
@@ -177,18 +218,47 @@ public static class ZiptSolver {
             }
             Console.WriteLine("UNKNOWN");
             result = SolveResult.UNKNOWN;
-        });
-        thread.Start();
-        if (Options.TimeOut > 0)
-            thread.Join(Options.TimeOut);
-        else
-            thread.Join();
-        if (thread.IsAlive) {
-            propagator.Cancel = true;
-            thread.Join();
-            propagator.Cancel = false;
+        };
+        if (Options.TimeOut > 0) {
+            Thread thread = new(run);
+            thread.Start();
+            if (Options.TimeOut > 0)
+                thread.Join(Options.TimeOut);
+            else
+                thread.Join();
+            if (thread.IsAlive) {
+                propagator.Cancel = true;
+                thread.Join();
+                propagator.Cancel = false;
+            }
         }
+        else
+            run();
         return result;
+    }
+
+    static void OutputStats() {
+        var properties = typeof(Stats).GetProperties();
+        List<(string name, int value)> entries = [];
+        foreach (var property in properties) {
+            var attribute = (StatAttribute?)Attribute.GetCustomAttribute(property, typeof(StatAttribute));
+            if (attribute is null)
+                continue;
+            var getter = property.GetMethod;
+            if (getter is null || getter.ReturnType != typeof(int))
+                continue;
+            object? val = getter.Invoke(null, []);
+            if (val is null || val.GetType() != typeof(int))
+                continue;
+            entries.Add((attribute.Name, (int)val));
+        }
+        int maxLen = entries.Max(o => o.name.Length);
+        Console.WriteLine("Stats:");
+        foreach (var entry in entries) {
+            int padding = maxLen - entry.name.Length;
+            string s = entry.name + ": " + new string(' ', padding) + entry.value;
+            Console.WriteLine(s);
+        }
     }
 
     static void AssertSMTLIB(Context ctx, Solver solver, StringPropagator propagator, string path) {

@@ -2,15 +2,15 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Contracts;
-using System.Net.Http.Headers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ZIPT.Constraints;
-using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings;
 
@@ -18,13 +18,21 @@ public sealed class StrManager {
 
     readonly Dictionary<(uint, uint), TupleStr> tupleChunks = [];
     readonly Dictionary<StrToken, SingletonStr> singleChunks = [];
+    readonly Dictionary<Str, Str> representative = []; // multiple strings might have different binary tree structures
 
     public EmptyStr EmptyStr { get; }
+    public SingletonStr FailStr { get; }
+    public SingletonStr AllStr { get; }
+    public SingletonStr AllChar { get; }
 
     uint nextChunkId;
 
-    public StrManager() =>
+    public StrManager() {
         EmptyStr = new EmptyStr(nextChunkId++);
+        FailStr = Single(new FailToken());
+        AllChar = Single(new SetToken(CharacterSet.Full));
+        AllStr = (SingletonStr)MkStar(AllChar);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public static StrToken GetIndex(Str str, uint idx, bool fwd) => 
@@ -86,76 +94,81 @@ public sealed class StrManager {
         Concat(Single(left), Single(right));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Str Concat(Str left, StrToken right) =>
-        Concat(left, Single(right));
+    public Str Concat(Str s1, StrToken right) =>
+        Concat(s1, Single(right));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Str Concat(StrToken left, Str right) =>
-        Concat(Single(left), right);
+    public Str Concat(StrToken left, Str s2) =>
+        Concat(Single(left), s2);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Str Concat(Str left, StrToken right, bool fwd) =>
-        Concat(left, Single(right), fwd);
+    public Str Concat(Str s1, StrToken right, bool fwd) =>
+        Concat(s1, Single(right), fwd);
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Str Concat(StrToken left, Str right, bool fwd) =>
-        Concat(Single(left), right, fwd);
+    public Str Concat(StrToken left, Str s2, bool fwd) =>
+        Concat(Single(left), s2, fwd);
 
     [Pure]
-    public Str Concat(Str left, Str right, bool fwd) =>
-        fwd ? Concat(left, right) : Concat(right, left);
+    public Str Concat(Str s1, Str s2, bool fwd) =>
+        fwd ? Concat(s1, s2) : Concat(s2, s1);
 
     [Pure]
-    public Str Concat(Str left, Str right) {
-        if (left is EmptyStr)
-            return right;
-        if (right is EmptyStr)
-            return left;
-        Debug.Assert(left.BalancedTrans);
-        Debug.Assert(right.BalancedTrans);
-        Debug.Assert(left is SingletonStr or TupleStr);
-        Debug.Assert(right is SingletonStr or TupleStr);
+    public Str Concat(Str s1, Str s2) {
+        if (s1 is EmptyStr)
+            return s2;
+        if (s2 is EmptyStr)
+            return s1;
+        if (s1.IsFail)
+            return FailStr;
+        if (s2.IsFail)
+            return FailStr;
+        // TODO: if s1 ends with r* and s2 starts with r*, merge
+        Debug.Assert(s1.BalancedTrans);
+        Debug.Assert(s2.BalancedTrans);
+        Debug.Assert(s1 is SingletonStr or TupleStr);
+        Debug.Assert(s2 is SingletonStr or TupleStr);
 
         // TODO: just left/right; don't create the object
-        Stack<(Str, bool)> toMerge = new((int)Math.Max(left.Level, right.Level));
+        Stack<(Str, bool)> toMerge = new((int)Math.Max(s1.Level, s2.Level));
 
-        while (!TupleStr.IsBalanced(left, right)) {
-            if (tupleChunks.TryGetValue((left.ChunkId, right.ChunkId), out var cached)) {
+        while (!TupleStr.IsBalanced(s1, s2)) {
+            if (tupleChunks.TryGetValue((s1.ChunkId, s2.ChunkId), out var cached)) {
                 Debug.Assert(cached.BalancedTrans);
-                left = cached.Left;
-                right = cached.Right;
+                s1 = cached.Left;
+                s2 = cached.Right;
                 break;
             }
-            if (left.Level < right.Level) {
-                var sub = (TupleStr)right;
+            if (s1.Level < s2.Level) {
+                var sub = (TupleStr)s2;
                 if (sub.Left.Level <= sub.Right.Level) {
                     // left rotation
                     toMerge.Push((sub.Right, true));
-                    right = sub.Left;
+                    s2 = sub.Left;
                 }
                 else {
                     // double left rotation
                     var res = CreateChunk(((TupleStr)sub.Left).Right, sub.Right);
                     toMerge.Push((res, true));
-                    right = ((TupleStr)sub.Left).Left;
+                    s2 = ((TupleStr)sub.Left).Left;
                 }
             }
             else {
-                var sub = (TupleStr)left;
+                var sub = (TupleStr)s1;
                 if (sub.Right.Level <= sub.Left.Level) {
                     toMerge.Push((sub.Left, false));
-                    left = sub.Right;
+                    s1 = sub.Right;
                 }
                 else {
                     var res = CreateChunk(sub.Left, ((TupleStr)sub.Right).Left);
                     toMerge.Push((res, false));
-                    left = ((TupleStr)sub.Right).Right;
+                    s1 = ((TupleStr)sub.Right).Right;
                 }
             }
         }
 
-        Str ret = CreateChunk(left, right);
+        Str ret = CreateChunk(s1, s2);
         while (toMerge.Count > 0) {
             var (rest, isLeft) = toMerge.Pop();
             if (isLeft) {
@@ -181,13 +194,34 @@ public sealed class StrManager {
             return right;
         if (right is EmptyStr)
             return left;
-        if (tupleChunks.TryGetValue((left.ChunkId, right.ChunkId), out var chunk))
+        Stats.NewStringTuple++;
+        if (tupleChunks.TryGetValue((left.ChunkId, right.ChunkId), out var chunk)) {
+            Stats.CachedStringTuple++;
             return chunk;
+        }
         Debug.Assert(left.BalancedTrans);
         Debug.Assert(right.BalancedTrans);
         chunk = new TupleStr(nextChunkId++, left, right);
-        Debug.Assert(chunk.Balanced);
+
+        if (chunk.IsDegenerated) {
+            TupleStr balanced = (TupleStr)FromUnbalancedStr(chunk);
+            tupleChunks.Add((left.ChunkId, right.ChunkId), balanced);
+            Stats.DegeneratedCnt++;
+            return balanced;
+        }
         tupleChunks.Add((left.ChunkId, right.ChunkId), chunk);
+        Debug.Assert(chunk.Balanced);
+        if (representative.TryGetValue(chunk, out var rep)) {
+            int cmp = chunk.DegenerationLevel.CompareTo(rep.DegenerationLevel);
+            if (cmp < 0) {
+                rep.Normalised = chunk;
+                representative[rep] = chunk;
+            }
+            else 
+                chunk.Normalised = rep;
+            return cmp > 0 ? rep : chunk;
+        }
+        representative.TryAdd(chunk, chunk);
         return chunk;
     }
 
@@ -216,8 +250,12 @@ public sealed class StrManager {
             return EmptyStr;
         uint cntOrig = cnt;
         Debug.Assert(str is TupleStr);
-        if (((TupleStr)str).DropLeftCache.TryGetValue(cnt, out var val))
+        TupleStr tuple = (TupleStr)str;
+        Stats.StringLeftDropping++;
+        if (tuple.DropLeftCache is not null && tuple.DropLeftCache.TryGetValue(cnt, out var val)) {
+            Stats.CachedStringLeftDropping++;
             return val;
+        }
 
         var current = str;
         List<Str> toConcat = new((int)current.Level);
@@ -238,7 +276,8 @@ public sealed class StrManager {
         for (int i = toConcat.Count; i > 0; i--) {
             res = Concat(res, toConcat[i - 1]);
         }
-        ((TupleStr)str).DropLeftCache.Add(cntOrig, res);
+        tuple.DropLeftCache ??= new Dictionary<uint, Str>();
+        tuple.DropLeftCache.Add(cntOrig, res);
         return res;
     }
 
@@ -251,8 +290,12 @@ public sealed class StrManager {
             return EmptyStr;
         uint cntOrig = cnt;
         Debug.Assert(str is TupleStr);
-        if (((TupleStr)str).DropRightCache.TryGetValue(cnt, out var val))
+        TupleStr tuple = (TupleStr)str;
+        Stats.StringRightDropping++;
+        if (tuple.DropRightCache is not null && tuple.DropRightCache.TryGetValue(cnt, out var val)) {
+            Stats.CachedStringRightDropping++;
             return val;
+        }
 
         var current = str;
         List<Str> toConcat = new((int)current.Level);
@@ -273,7 +316,8 @@ public sealed class StrManager {
         for (int i = toConcat.Count; i > 0; i--) {
             res = Concat(toConcat[i - 1], res);
         }
-        ((TupleStr)str).DropRightCache.Add(cntOrig, res);
+        tuple.DropRightCache ??= new Dictionary<uint, Str>();
+        tuple.DropRightCache.Add(cntOrig, res);
         return res;
     }
 
@@ -281,9 +325,12 @@ public sealed class StrManager {
     public Str Subst(Str str, Interpretation itp) {
         if (str.IsEmpty())
             return str;
+        Stats.StringSubstitution++;
         if (str is SingletonStr s) {
-            if (s.StrToken is NamedStrToken v && itp.Substitution.TryGetValue(v, out Str? newStr))
-                return newStr;
+            if (s.StrToken is NamedStrToken v && itp.Substitution.TryGetValue(v, out Subst subst))
+                return subst.Str;
+            if (s.StrToken is SymCharToken c && itp.CharSubstitution.TryGetValue(c, out CharSubst charSubst))
+                return itp.Env.MkString(charSubst.Val);
             if (s.StrToken is PowerToken p) {
                 var newBase = Subst(p.Base, itp);
                 var newPower = PDD<BigInteger>.Substitute(p.Power, itp);
@@ -309,6 +356,8 @@ public sealed class StrManager {
 
     [Pure]
     public Str Subst(Str str, NamedStrToken v, Str repl) {
+        if (str.Ground)
+            return str;
         if (!str.ContainsVar(v))
             return str;
         if (str is SingletonStr)
@@ -316,14 +365,47 @@ public sealed class StrManager {
 
         Debug.Assert(str is TupleStr);
         TupleStr tc = (TupleStr)str;
-        if (tc.SubstCache.TryGetValue((v, repl), out var res))
+        Stats.StringSubstitution++;
+        if (tc.SubstCache is not null && tc.SubstCache.TryGetValue((v, repl), out var res)) {
+            Stats.CachedStringSubstitution++;
             return res;
+        }
         // TODO: Make iterative
         var left = Subst(tc.Left, v, repl);
         var right = Subst(tc.Right, v, repl);
         res = Concat(left, right);
-        Debug.Assert(!tc.SubstCache.ContainsKey((v, repl)));
+        Debug.Assert(tc.SubstCache is null || !tc.SubstCache.ContainsKey((v, repl)));
+        tc.SubstCache ??= new Dictionary<(NamedStrToken, Str), Str>();
         tc.SubstCache.Add((v, repl), res);
+        Debug.Assert(res.BalancedTrans);
+        return res;
+    }
+
+    [Pure]
+    public Str Subst(Environment env, Str str, CharSubst subst) =>
+        Subst(env, str, subst.Var, subst.Val);
+
+    [Pure]
+    public Str Subst(Environment env, Str str, SymCharToken v, UnitToken repl) {
+        if (!str.ContainsSChar(v))
+            return str;
+        if (str is SingletonStr)
+            return env.MkString(repl);
+
+        Debug.Assert(str is TupleStr);
+        TupleStr tc = (TupleStr)str;
+        Stats.StringSubstitution++;
+        if (tc.SubstCharCache is not null && tc.SubstCharCache.TryGetValue((v, repl), out var res)) {
+            Stats.CachedStringSubstitution++;
+            return res;
+        }
+        // TODO: Make iterative
+        var left = Subst(env, tc.Left, v, repl);
+        var right = Subst(env, tc.Right, v, repl);
+        res = Concat(left, right);
+        Debug.Assert(tc.SubstCharCache is null || !tc.SubstCharCache.ContainsKey((v, repl)));
+        tc.SubstCharCache ??= new Dictionary<(SymCharToken, UnitToken), Str>();
+        tc.SubstCharCache.Add((v, repl), res);
         Debug.Assert(res.BalancedTrans);
         return res;
     }
@@ -336,7 +418,7 @@ public sealed class StrManager {
                 s = lts.Left;
             }
             Debug.Assert(s is SingletonStr);
-            if (!((SingletonStr)s).StrToken.IsNullable(node))
+            if (!((SingletonStr)s).StrToken.Nullable)
                 return false;
             if (todo.Count == 0)
                 return true;
@@ -346,20 +428,23 @@ public sealed class StrManager {
     }
 
     // Proper prefixes
-    public static List<PrefixDecomposition> GetPrefixes(NielsenNode node, Str s, bool fwd) {
+    public static List<StrDecomposition> GetDecompose(NielsenNode node, Str s, bool fwd) {
         // P(u_1...u_n) := P(u_1) | u_1 P(u_2) | ... | u_1...u_{n-1} P(u_n)
-        List<PrefixDecomposition> ret = [];
+        // TODO: Cache this
+        List<StrDecomposition> ret = [];
         Str prefix = node.Env.EmptyStr;
+        Str postfix = s;
         for (int i = 0; i < s.Length; i++) {
-            var current = s[fwd, i].GetPrefixes(node, fwd);
+            var current = s[fwd, i].GetDecomposition(node, fwd);
+            postfix = node.Env.StrManager.Drop(postfix, fwd);
             for (int j = 0; j < current.Count; j++) {
-                if (fwd)
-                    current[j].Str = node.Env.StrManager.Concat(current[j].Str, prefix);
-                else
-                    current[j].Str = node.Env.StrManager.Concat(prefix, current[j].Str);
+                current[j].Prefix = node.Env.StrManager.Concat(prefix, current[j].Prefix, fwd);
+            }
+            for (int j = 0; j < current.Count; j++) {
+                current[j].Postfix = node.Env.StrManager.Concat(current[j].Postfix, postfix, fwd);
             }
             ret.AddRange(current);
-            prefix = node.Env.StrManager.Concat(prefix, s[fwd, i]);
+            prefix = node.Env.StrManager.Concat(prefix, s[fwd, i], fwd);
         }
         return ret;
     }
@@ -396,6 +481,15 @@ public sealed class StrManager {
                 FromListBwd(tokens[..(tokens.Length / 2)])),
         };
 
+    [Pure]
+    public Str FromUnbalancedStr(Str s) {
+        Debug.Assert(s.IsDegenerated);
+        Debug.Assert(s is not Chunks.EmptyStr && s is not SingletonStr);
+        var list = s.ToArray();
+        Debug.Assert(list.Length == (int)s.Length);
+        return FromList(list);
+    }
+
 
     public Str Repeat(Str s, uint rep) {
         Str core = s;
@@ -408,6 +502,126 @@ public sealed class StrManager {
             rep /= 2;
         }
         return rest;
+    }
+
+    public Str MkComplement(Str s) {
+        if (s.Length == 0)
+            return EmptyStr;
+        if (s is { Length: 1, First: NotToken k })
+            return k.Base;
+        return Single(new NotToken(s));
+    }
+
+    public Str MkUnion(List<Str> tokens) {
+        var subTokens = new List<Str>(tokens.Count);
+        // Merge nested unions
+        foreach (var t in tokens) {
+            if (t is SingletonStr { StrToken: UnionToken u })
+                subTokens.AddRange(u.Cases);
+            else
+                subTokens.Add(t);
+        }
+        tokens = subTokens;
+        tokens.Sort();
+        int copyIdx = 0;
+        CharacterSet constSet = new();
+        for (int i = 0; i < tokens.Count; i++) {
+            if (copyIdx > 0 && tokens[i].Equals(tokens[copyIdx - 1]))
+                continue;
+            if (tokens[i].IsFail)
+                continue;
+            if (tokens[i].IsFull)
+                return AllStr;
+            // merge character sets
+            if (tokens[i] is SingletonStr { StrToken: CharToken c })
+                constSet.Add(c.Value);
+            else if (tokens[i] is SingletonStr { StrToken: SetToken st })
+                constSet.Add(st.Set);
+            else
+                tokens[copyIdx++] = tokens[i];
+        }
+        if (!constSet.IsEmpty) {
+            Debug.Assert(copyIdx < tokens.Count);
+            tokens[copyIdx++] = Single(new SetToken(constSet));
+            tokens.Sort(); // TODO: Change ordering such that singleton sets or ordered last anyway
+        }
+        else if (copyIdx == 0)
+            return FailStr;
+        if (copyIdx == 1)
+            return tokens[0];
+        tokens.RemoveRange(copyIdx, tokens.Count - copyIdx);
+        return Single(new UnionToken(tokens));
+    }
+
+    public Str MkIntersection(List<Str> tokens) {
+        if (tokens.IsEmpty())
+            return AllStr;
+        var subTokens = new List<Str>(tokens.Count);
+        foreach (var t in tokens) {
+            if (t is SingletonStr { StrToken: IntersectToken u })
+                subTokens.AddRange(u.Cases);
+            else
+                subTokens.Add(t);
+        }
+        tokens = subTokens;
+        tokens.Sort();
+        int copyIdx = 0;
+        // TODO: Intersect potential single character sets
+        // TODO: merge nested intersections
+        for (int i = 0; i < tokens.Count; i++) {
+            if (copyIdx > 0 && tokens[i].Equals(tokens[copyIdx - 1]))
+                continue;
+            if (tokens[i].IsFail)
+                return FailStr;
+            if (tokens[i].IsFull)
+                continue;
+            tokens[copyIdx++] = tokens[i];
+        }
+        if (copyIdx == 1)
+            return tokens[0];
+        tokens.RemoveRange(copyIdx, tokens.Count - copyIdx);
+        return Single(new IntersectToken(tokens));
+    }
+
+    public Str MkStar(Str s) {
+        if (s.Length == 0)
+            return EmptyStr;
+        if (s.IsFail)
+            return EmptyStr;
+        if (s is { Length: 1 }) {
+            if (s is { First: KleeneToken k })
+                return Single(k);
+            if (s is { First: UnionToken u }) {
+                // pretty helpful rewrite:
+                // (u_1|...|u_k*|...|u_n)* 
+                // => (u_1|...|u_k|...|u_n)*
+                // if one of the u_i has a star (is nullable), we can drop top-level stars from all
+                var newCases = new List<Str>(u.Cases.Count);
+                bool hasKleene = false;
+                foreach (var c in u.Cases) {
+                    if (c is { Length: 1, First: KleeneToken k2 }) {
+                        hasKleene = true;
+                        newCases.Add(k2.Base);
+                    }
+                    else
+                        newCases.Add(c);
+                }
+                // TODO: for other cases as well?
+                if (hasKleene)
+                    return Single(new KleeneToken(MkUnion(newCases)));
+            }
+        }
+        return Single(new KleeneToken(s));
+    }
+
+    public Str MkPlus(Str s) {
+        if (s.Length == 0)
+            return EmptyStr;
+        if (s is { Length: 1, First: KleeneToken k })
+            return Single(k);
+        if (s.IsFail)
+            return FailStr;
+        return Concat(s, Single(new KleeneToken(s)));
     }
 
     [Pure]
@@ -457,6 +671,88 @@ public sealed class StrManager {
             Debug.Assert(todo.Count > 0);
             s = todo.Pop();
         }
+    }
+
+    [Pure]
+    public static StrToken[] ToList(Str str) {
+        if (str.IsEmpty())
+            return Array.Empty<StrToken>();
+        if (str is SingletonStr s)
+            return [s.StrToken];
+        TupleStr initialStr = (TupleStr)str;
+        StrToken[] result;
+        if (initialStr.ListCache is not null) {
+            if (initialStr.ListCacheFrom == 0 && initialStr.ListCacheTo == (uint)initialStr.ListCache.Length) {
+                Stats.CachedStringSequence++;
+                return initialStr.ListCache;
+            }
+            result = new StrToken[(int)str.Length];
+            Array.Copy(initialStr.ListCache, initialStr.ListCacheFrom, 
+                result, 0, 
+                initialStr.ListCacheTo - initialStr.ListCacheFrom);
+            initialStr.ListCache = result;
+            initialStr.ListCacheFrom = 0;
+            initialStr.ListCacheTo = (uint)result.Length;
+            return result;
+        }
+        result = new StrToken[(int)str.Length];
+        Stack<(TupleStr str, int from)> todo = [];
+        int idx = 0;
+        while (true) {
+            if (str is TupleStr lts) {
+                if (lts.ListCache is not null) {
+                    Array.Copy(lts.ListCache, lts.ListCacheFrom, 
+                        result, idx,
+                        lts.ListCacheTo - lts.ListCacheFrom);
+                    idx += (int)(lts.ListCacheTo - lts.ListCacheFrom);
+                    continue;
+                }
+                todo.Push((lts, idx));
+                str = lts.Left;
+                continue;
+            }
+            Debug.Assert(str is SingletonStr);
+            result[idx++] = ((SingletonStr)str).StrToken;
+            if (todo.Count == 0) {
+                Debug.Assert(idx == result.Length);
+                initialStr.ListCache = result;
+                initialStr.ListCacheFrom = 0;
+                initialStr.ListCacheTo = (uint)result.Length;
+                return result;
+            }
+            Debug.Assert(todo.Count > 0);
+            var (prevStr, prevIdx) = todo.Pop();
+            if (prevStr.Left is TupleStr { ListCache: not null } lts2) {
+                lts2.ListCache = result;
+                lts2.ListCacheFrom = (uint)prevIdx;
+                lts2.ListCacheTo = (uint)idx;
+                Debug.Assert(lts2.ListCacheTo - lts2.ListCacheFrom == lts2.Length);
+            }
+            str = prevStr.Right;
+        }
+    }
+
+    [Pure]
+    public Str Simplify(Str str) {
+        if (str is EmptyStr)
+            return str;
+        if (str is SingletonStr s)
+            return s.StrToken.OptSimplify(this);
+
+        Debug.Assert(str is TupleStr);
+        TupleStr tc = (TupleStr)str;
+        if (tc.SimplifyCache is not null) {
+            Stats.CachedStringSimplification++;
+            return tc.SimplifyCache;
+        }
+        // TODO: Make iterative
+        var left = Simplify(tc.Left);
+        var right = Simplify(tc.Right);
+        var res = Concat(left, right);
+        Debug.Assert(tc.SimplifyCache is null);
+        tc.SimplifyCache = res;
+        Debug.Assert(res.BalancedTrans);
+        return res;
     }
 
     [Pure]

@@ -13,10 +13,12 @@ public class CombinedModifier : ModifierBase {
         Modifier = modifier;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         foreach (var modifier in Modifier) {
-            modifier.Apply(node);
+            foreach (var o in modifier.Apply(node))
+                yield return o;
         }
+        Debug.Assert(node.Outgoing.Count == 1);
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

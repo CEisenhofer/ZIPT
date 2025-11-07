@@ -34,12 +34,22 @@ public static class Options {
 
     public static bool CheckModel { get; set; } = false;
 
+    public static bool SaturateGraph { get; set; } = false;
+
     public static bool OutputModel { get; set; } = false;
 
     public static bool KeepProof { get; set; } = false;
 
     public static bool OutputGraph { get; set; } = false;
 
+    public static bool OutputStats { get; set; } = false;
+
+    public const uint MaxCharUtf = 196607;
+    public const uint MaxCharBmp = 65535;
+    public const uint MaxCharAscii = 255;
+    public static uint MaxChar { get; set; } = MaxCharUtf;
+
     public static int TimeOut { get; set; } = 0;
+    public static int MaxDegenerationLevel { get; set; } = 10;
 
 }

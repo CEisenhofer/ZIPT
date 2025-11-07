@@ -2,7 +2,7 @@
   "profiles": {
     "ZIPT": {
       "commandName": "Project",
-      "commandLineArgs": "-t:10000 -v -c -m -p C:\\Users\\Clemens\\Downloads\\QF_S\\20230329-woorpje-lu\\track01\\01_track_3.smt2"
+      "commandLineArgs": "-t:0 -s -v -c -m -p \"C:\\Users\\Clemens\\Downloads\\StringExamples\\xabxRabaS.smt2\""
     }
   }
 }

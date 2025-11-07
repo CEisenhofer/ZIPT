@@ -1,14 +1,13 @@
 ﻿using ZIPT.Constraints;
-using ZIPT.Constraints.ConstraintElement;
-using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens;
 
 public abstract class UnitToken : StrToken {
 
-    public sealed override bool IsNullable(NielsenNode node) => false;
+    public override bool Nullable => false;
+    public override bool BasicRegex => true;
 
-    public sealed override List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd) =>
+    public sealed override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) =>
         // P(a) := {}
-        [new PrefixDecomposition(node.Env.EmptyStr, [], null)];
+        [new StrDecomposition(node.Env.EmptyStr, node.Env.MkString(this), [], null)];
 }

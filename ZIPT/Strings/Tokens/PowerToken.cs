@@ -1,12 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
-using System.Runtime.Intrinsics.X86;
 using Microsoft.Z3;
-using ZIPT.MiscUtils;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
-using ZIPT.Strings;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens;
@@ -16,9 +14,16 @@ public sealed class PowerToken : StrToken {
     public Str Base { get; }
     public PDD<BigInteger> Power { get; }
 
-    public bool Ground => Base.Ground;
+    public override bool Ground => Base.Ground;
+    public override bool RegexFree => Base.RegexFree;
+    public override bool Derivable => false;
+    public override bool Nullable => Base.Nullable;
+    public override bool BasicRegex => true;
+    // !(0 < Power) && Base is nullable
+    // !node.IsLt(node.Env.ZeroInt, Power) && Base.IsNullable(node);
 
     public PowerToken(Str b, PDD<BigInteger> power) {
+        Debug.Assert(power.IsLinear);
         Base = b;
         Power = power;
         if (Base.Length == 1 && Base[0] is PowerToken p) {
@@ -35,13 +40,7 @@ public sealed class PowerToken : StrToken {
         return env.MkString(new PowerToken(b, power));
     }
 
-    // TODO: Check
-    public override bool IsNullable(NielsenNode node) => 
-        Power.GetBounds(node).Max.IsPos && StrManager.IsNullable(node, Base);
-    // !(0 < Power) && Base is nullable
-    // !node.IsLt(node.Env.ZeroInt, Power) && Base.IsNullable(node);
-
-    public override List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd) {
+    public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) {
         // P(u^n) := u^m P(u) with 0 <= m < n
         IntVar m = new();
         var newExponent = node.Env.IntPDDManager.MkPDD(m);
@@ -50,27 +49,34 @@ public sealed class PowerToken : StrToken {
         IntLe leastZero = new IntLe(node.Env.ZeroInt, newExponent);
         IntLe lessThanPower = IntLe.MkLt(newExponent, Power);
 
-        var prefixes = StrManager.GetPrefixes(node, Base, fwd);
+        var decompositions = StrManager.GetDecompose(node, Base, fwd);
 
-        for (int i = 0; i < prefixes.Count; i++) {
-            if (fwd)
-                prefixes[i].Str = node.Env.StrManager.Concat(prefixes[i].Str, newStr);
-            else
-                prefixes[i].Str = node.Env.StrManager.Concat(newStr, prefixes[i].Str);
-            prefixes[i].SideConstraints.Add(leastZero);
-            prefixes[i].SideConstraints.Add(lessThanPower);
+        for (int i = 0; i < decompositions.Count; i++) {
+            decompositions[i].Prefix = node.Env.StrManager.Concat(newStr, decompositions[i].Prefix, fwd);
+            decompositions[i].SideConstraints.Add(leastZero);
+            decompositions[i].SideConstraints.Add(lessThanPower);
+            // the postfix does not need changes
         }
 
-        return prefixes;
+        return decompositions;
     }
 
     public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Env.PowerFct.Apply(Base.ToExpr(graph), Power.ToExpr(graph));
+        graph.Env.MkPower(Base.ToExpr(graph), Power.ToExpr(graph));
 
     protected override int CompareToInternal(StrToken other) {
         int cmp = Base.CompareTo(((PowerToken)other).Base);
         return cmp != 0 ? cmp : Power.CompareTo(((PowerToken)other).Power);
     }
+
+    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+        Base.CollectSymbols(nonTermSet, alphabet);
+        Power.CollectSymbols(nonTermSet, alphabet);
+    }
+
+    public override MinTerms FirstMinTerms() => Base.FirstMinTerms();
+
+    public override MinTerms LastMinTerms() => Base.LastMinTerms();
 
     public override bool Equals(StrToken? other) =>
         other is PowerToken token && Equals(token);
@@ -80,9 +86,18 @@ public sealed class PowerToken : StrToken {
 
     public override int GetHashCode() => 495035077 * Base.GetHashCode() + 273877411 * Power.GetHashCode();
 
+    public override Str OptSimplify(StrManager manager) {
+        if (Base.IsEmpty())
+            return Base;
+        if (Power.TryGetConst(out BigInteger val) && val <= Options.ModelUnwindingBound) {
+            Str rep = manager.Repeat(Base, (uint)val);
+            return rep;
+        }
+        return manager.Single(this);
+    }
+
     public override string ToString(NielsenGraph? graph) {
         string b = Base.ToString(graph);
         return b.Length == 1 ? $"{b}^{{{Power}}}" : $"({b})^{{{Power}}}";
     }
-
 }

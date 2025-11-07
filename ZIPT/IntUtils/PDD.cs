@@ -92,7 +92,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
             if (IsZero)
                 return true;
             var c = this;
-            while (!c.IsConst()) {
+            while (!c.IsConst) {
                 c = c.Then!; // skip to the next branch
             }
             Debug.Assert(c.Const.HasValue);
@@ -101,16 +101,47 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public bool IsConst() => Const.HasValue;
+    [Pure]
+    public bool IsConst => Const.HasValue;
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public bool IsConst(out T val) {
+    public bool TryGetConst(out T val) {
         val = default;
-        if (!IsConst())
+        if (!IsConst)
             return false;
         val = Const!.Value;
         return true;
+    }
+
+    [Pure]
+    public bool IsLinear {
+        get
+        {
+            Stack<PDD<T>> todo = new();
+            todo.Push(this);
+            while (todo.Count > 0) {
+                var p = todo.Pop();
+                if (p.IsConst)
+                    continue;
+                Debug.Assert(p.Var is not null && p.Then is not null && p.Else is not null);
+                var then = p.Then;
+                var @else = p.Else;
+                if (!then.IsConst) {
+                    Debug.Assert(then.Var is not null && then.Then is not null && then.Else is not null);
+                    if (then.Var.Equals(p.Var))
+                        return false;
+                    todo.Push(then);
+                }
+                if (@else.IsConst) 
+                    continue;
+                Debug.Assert(@else.Var is not null && @else.Then is not null && @else.Else is not null);
+                if (@else.Var.Equals(p.Var))
+                    return false;
+                todo.Push(@else);
+            }
+            return true;
+        }
     }
 
     PDD(NamedInt var, PDD<T> thenBranch, PDD<T> elseBranch) {
@@ -132,8 +163,8 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         Const = value;
     }
 
-    public bool IsZero => IsConst() && Const!.Value.Equals(T.Zero);
-    public bool IsOne => IsConst() && Const!.Value.Equals(T.One);
+    public bool IsZero => IsConst && Const!.Value.Equals(T.Zero);
+    public bool IsOne => IsConst && Const!.Value.Equals(T.One);
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
@@ -146,7 +177,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     public static PDD<T> Add(PDD<T> a, PDD<T> b) {
         Debug.Assert(ReferenceEquals(a.Manager, b.Manager));
         PDDManager m = a.Manager;
-        if (a.IsConst() && b.IsConst())
+        if (a.IsConst && b.IsConst)
             return m.MkPDD(a.Const!.Value + b.Const!.Value);
 
         if (a == b)
@@ -156,13 +187,13 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         if (b.IsZero)
             return a;
 
-        if (a.IsConst())
+        if (a.IsConst)
             // happens at most once - recursion is fine
             return Add(b, a); // Const on the right
 
         Debug.Assert(a.Var is not null && a.Then is not null && a.Else is not null);
 
-        if (b.IsConst())
+        if (b.IsConst)
             return m.MkPDD(a.Var, a.Then, Add(a.Else, b));
 
         Debug.Assert(b.Var is not null && b.Then is not null && b.Else is not null);
@@ -188,7 +219,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public static PDD<T> Negate(PDD<T> p) =>
-        p.IsConst() 
+        p.IsConst 
             ? p.Manager.MkPDD(-p.Const!.Value) 
             : p.Manager.MkPDD(p.Var!, Negate(p.Then!), Negate(p.Else!));
 
@@ -199,17 +230,17 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     public static PDD<T> Mul(PDD<T> a, PDD<T> b) {
         Debug.Assert(ReferenceEquals(a.Manager, b.Manager));
         PDDManager m = a.Manager;
-        if (a.IsConst() && b.IsConst())
+        if (a.IsConst && b.IsConst)
             return m.MkPDD(a.Const!.Value * b.Const!.Value);
 
         if (a.IsZero || b.IsZero)
             return m.Zero;
-        if (a.IsConst())
+        if (a.IsConst)
             return Mul(b, a);
 
         Debug.Assert(a.Var is not null && a.Then is not null && a.Else is not null);
 
-        if (b.IsConst())
+        if (b.IsConst)
             return m.MkPDD(a.Var, Mul(a.Then, b), Mul(a.Else, b));
 
         Debug.Assert(b.Var is not null && b.Then is not null && b.Else is not null);
@@ -229,13 +260,51 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         }
     }
 
+    // Multiply the PDDs and introduce definitions to have the result linear
+    [Pure]
+    public static PDD<T> MulByDefinitions(PDD<T> a, PDD<T> b, Dictionary<NamedInt, PDD<T>> definitions) {
+        Debug.Assert(a.IsLinear);
+        Debug.Assert(b.IsLinear);
+        Debug.Assert(ReferenceEquals(a.Manager, b.Manager));
+        PDDManager m = a.Manager;
+        if (a.IsConst && b.IsConst)
+            return m.MkPDD(a.Const!.Value * b.Const!.Value);
+
+        if (a.IsZero || b.IsZero)
+            return m.Zero;
+        if (a.IsConst)
+            return MulByDefinitions(b, a, definitions);
+
+        Debug.Assert(a.Var is not null && a.Then is not null && a.Else is not null);
+
+        if (b.IsConst)
+            return m.MkPDD(a.Var, MulByDefinitions(a.Then, b, definitions), MulByDefinitions(a.Else, b, definitions));
+
+        Debug.Assert(b.Var is not null && b.Then is not null && b.Else is not null);
+
+        throw new NotImplementedException();
+        int cmp = a.Var.CompareTo(b.Var);
+
+        switch (cmp) {
+            case < 0:
+                return m.MkPDD(a.Var, MulByDefinitions(a.Then, b, definitions), MulByDefinitions(a.Else, b, definitions));
+            case > 0:
+                return m.MkPDD(b.Var, MulByDefinitions(a, b.Then, definitions), MulByDefinitions(a, b.Else, definitions));
+            default:
+                var thenProd = MulByDefinitions(a.Then, b.Then, definitions);
+                var mix = Add(MulByDefinitions(a.Then, b.Else, definitions), MulByDefinitions(a.Else, b.Then, definitions));
+                var elseProd = MulByDefinitions(a.Else, b.Else, definitions);
+                return m.MkPDD(a.Var, thenProd, Add(mix, elseProd));
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public PDD<T> Substitute(NamedInt targetVar, PDD<T> replacement) =>
         Substitute(this, targetVar, replacement);
 
     [Pure]
     public static PDD<T> Substitute(PDD<T> p, NamedInt targetVar, PDD<T> replacement) {
-        if (p.IsConst())
+        if (p.IsConst)
             return p;
 
         Debug.Assert(p.Var is not null && p.Then is not null && p.Else is not null);
@@ -260,7 +329,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
 
     [Pure]
     public static PDD<BigInteger> Substitute(PDD<BigInteger> p, Interpretation itp) {
-        if (p.IsConst())
+        if (p.IsConst)
             return p;
 
         Debug.Assert(p.Var is not null && p.Then is not null && p.Else is not null);
@@ -270,7 +339,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         var newVal = p.Manager.MkPDD(p.Var);
         if (p.Var is LenVar lv) {
             if (itp.Substitution.TryGetValue(lv.Var, out var newStr))
-                newVal = LenVar.MkLenPoly(newStr, itp.Env);
+                newVal = LenVar.MkLenPoly(newStr.Str, itp.Env);
         }
         else if (p.Var is IntVar iv) {
             if (itp.IntVal.TryGetValue(iv, out var value))
@@ -298,7 +367,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
                 continue;
             p.Marker = true;
             marked.Add(p);
-            if (p.IsConst()) {
+            if (p.IsConst) {
                 if (neg && p.Const!.Value.Sign > 0) {
                     neg = false;
                     if (!pos)
@@ -332,11 +401,11 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         if (ReferenceEquals(null, other))
             return 1;
         Debug.Assert(ReferenceEquals(Manager, other.Manager));
-        if (IsConst() && other.IsConst())
+        if (IsConst && other.IsConst)
             return Const!.Value.CompareTo(other.Const!.Value);
-        if (IsConst())
+        if (IsConst)
             return -1;
-        if (other.IsConst())
+        if (other.IsConst)
             return 1;
         Debug.Assert(Var is not null && Then is not null && Else is not null);
         Debug.Assert(other.Var is not null && other.Then is not null && other.Else is not null);
@@ -364,7 +433,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
                 continue;
             p.Marker = true;
             marked.Add(p);
-            if (p.IsConst())
+            if (p.IsConst)
                 continue;
             Debug.Assert(p.Var is not null && p.Then is not null && p.Else is not null);
             if (p.Var is IntVar iv)
@@ -381,7 +450,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     [Pure]
     public static IntExpr ToExpr(NielsenGraph graph, PDD<BigInteger> p) {
         Context ctx = graph.Env.Ctx;
-        if (p.IsConst()) {
+        if (p.IsConst) {
             try {
                 return ctx.MkInt((long)p.Const!.Value);
             }
@@ -397,7 +466,7 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
 
     [Pure]
     public static (PDD<BigInteger> pos, PDD<BigInteger> neg) GetPosNeg(PDD<BigInteger> p) {
-        if (p.IsConst()) {
+        if (p.IsConst) {
             int s = p.Const!.Value.Sign;
             if (s < 0)
                 return (p.Manager.Zero, p.Manager.MkPDD(-p.Const.Value));
@@ -417,9 +486,8 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
         foreach (var m in p) {
             Interval<BigInteger> subInterval = new(new InfNum<BigInteger>(m.Coefficient));
             foreach (var vt in m.Variables) {
-                if (!node.IntBounds.TryGetValue(vt.Var, out var varBounds))
-                    return Interval<BigInteger>.Full;
-                for (int i = 1; i < vt.Pow; i++) {
+                var varBounds = node.GetBounds(vt.Var);
+                for (int i = 0; i < vt.Pow; i++) {
                     subInterval = subInterval.MergeMultiplication(varBounds);
                 }
             }
@@ -432,8 +500,9 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
 
     // the constant offset is necessarily the last entry
     void CollectTerms(in T c, List<PowerTerm> vars, List<Monomial> terms) {
-        if (IsConst()) {
-            terms.Add(new Monomial(c * Const!.Value, [..vars]));
+        if (IsConst) {
+            if (!T.IsZero(Const!.Value))
+                terms.Add(new Monomial(c * Const!.Value, [..vars]));
             return;
         }
 
@@ -475,17 +544,14 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     public string ToExpandedString() {
         var terms = new List<Monomial>();
         CollectTerms(T.One, [], terms);
-        Debug.Assert(terms.Count > 0);
-        if (T.IsZero(terms[^1].Coefficient))
-            terms.RemoveAt(terms.Count - 1);
-        
         if (terms.Count == 0)
             return "0";
+        Debug.Assert(!T.IsZero(terms[^1].Coefficient));
         return string.Join(" + ", terms);
     }
 
     public string ToCompactString() {
-        if (IsConst())
+        if (IsConst)
             return Const!.Value.ToString()!;
 
         Debug.Assert(Var is not null);
@@ -580,8 +646,7 @@ static class PDDExtension {
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public static Interval<BigInteger> GetBounds(this PDD<BigInteger> p, NielsenNode node) {
-        var (monomials, offset) = p.MonomialDecomposition();
-        monomials.Add(new PDD<BigInteger>.Monomial(offset, []));
+        var monomials = p.Monomials();
         return PDD<BigInteger>.GetBounds(node, monomials);
     }
 }

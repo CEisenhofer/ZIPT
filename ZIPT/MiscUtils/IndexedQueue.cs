@@ -120,8 +120,8 @@ public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : 
         Count++;
     }
 
-    public void Add(T item, bool dir) {
-        if (dir)
+    public void Add(T item, bool fwd) {
+        if (fwd)
             AddFirst(item);
         else
             AddLast(item);
@@ -137,8 +137,8 @@ public class IndexedQueue<T> : ICollection<T>, IReadOnlyCollection<T> where T : 
         Count++;
     }
 
-    public void AddRange(ICollection<T> toAdd, bool dir) {
-        if (dir)
+    public void AddRange(ICollection<T> toAdd, bool fwd) {
+        if (fwd)
             AddFirstRange(toAdd);
         else
             AddLastRange(toAdd);

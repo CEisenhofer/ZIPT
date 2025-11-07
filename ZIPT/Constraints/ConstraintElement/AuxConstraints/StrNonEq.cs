@@ -9,28 +9,50 @@ namespace ZIPT.Constraints.ConstraintElement.AuxConstraints;
 
 public sealed class StrNonEq : StrEqBase {
 
-    public StrNonEq(Str lhs, Str rhs) : base(lhs, rhs) { }
+    public StrNonEq(Str lhs, Str rhs) : base(lhs, rhs) {
+        Debug.Assert(lhs.RegexFree);
+        Debug.Assert(rhs.RegexFree);
+    }
 
-    public override StrNonEq Apply(Subst subst, NielsenNode node) =>
-        new(node.Env.StrManager.Subst(LHS, subst),
-            node.Env.StrManager.Subst(RHS, subst));
+    public override StrNonEq Apply(Subst subst, NielsenNode node) {
+        var lhs = node.Env.StrManager.Subst(LHS, subst);
+        var rhs = node.Env.StrManager.Subst(RHS, subst);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrNonEq(lhs, rhs);
+    }
 
-    public override StrNonEq Apply(Interpretation itp) =>
-        new(itp.Env.StrManager.Subst(LHS, itp),
-            itp.Env.StrManager.Subst(RHS, itp));
+    public override StrNonEq Apply(CharSubst subst, NielsenNode node) {
+        var lhs = node.Env.StrManager.Subst(node.Env, LHS, subst);
+        var rhs = node.Env.StrManager.Subst(node.Env, RHS, subst);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrNonEq(lhs, rhs);
+    }
+    
+    public override StrNonEq Apply(Interpretation itp) {
+        var lhs = itp.Env.StrManager.Subst(LHS, itp);
+        var rhs = itp.Env.StrManager.Subst(RHS, itp);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrNonEq(lhs, rhs);
+    }
 
-    SimplifyResult Simplify(NielsenNode node, bool dir) {
+    SimplifyResult Simplify(NielsenNode node, bool fwd) {
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             Debug.Assert(LHS.IsNonEmpty());
             Debug.Assert(RHS.IsNonEmpty());
 
-            if (SimplifySame(node.Env, dir))
+            if (SimplifySame(node.Env, fwd))
                 continue;
 
-            if (LHS[dir] is CharToken c1 && RHS[dir] is CharToken c2 && !c1.Equals(c2))
+            if (LHS[fwd] is CharToken c1 && RHS[fwd] is CharToken c2 && !c1.Equals(c2))
                 return SimplifyResult.Satisfied;
 
-            if (SimplifyPower(node, dir))
+            if (SimplifyPower(node, fwd))
                 continue;
             break;
         }
@@ -60,14 +82,10 @@ public sealed class StrNonEq : StrEqBase {
         if (!LHS.IsEmpty() && !RHS.IsEmpty()) 
             return SimplifyResult.Proceed;
 
-        var eq = LHS.IsEmpty() ? RHS : LHS;
-        var l = LenVar.MkLenPoly(eq, node.Env);
-        if (node.IsLt(node.Env.ZeroInt, l))
-            return SimplifyResult.Satisfied;
         return SimplifyResult.Proceed;
     }
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
+    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

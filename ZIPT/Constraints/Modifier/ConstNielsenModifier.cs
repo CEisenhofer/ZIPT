@@ -14,25 +14,28 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
         T = t;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         // V / "" (progress)
         // V / T V (no progress)
         var subst = new Subst(V, node.Env.EmptyStr);
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), true);
+        node.MkChild(node, [subst], Array.Empty<Constraint>(), [], true);
+        yield return node.Outgoing[^1];
+        
         subst = new Subst(V, Forwards
             ? node.Env.MkString(T, V)
             : node.Env.MkString(V, T)
         );
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), false);
+        node.MkChild(node, [subst], Array.Empty<Constraint>(), [], false);
+        yield return node.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
         ConstNielsenModifier other = (ConstNielsenModifier)otherM;
-        int cmp = Forwards.CompareTo(other.Forwards);
+        int cmp = V.CompareTo(other.V);
         if (cmp != 0)
             return cmp;
-        cmp = V.CompareTo(other.V);
-        return cmp != 0 ? cmp : T.CompareTo(other.T);
+        cmp = T.CompareTo(other.T);
+        return cmp != 0 ? cmp : -Forwards.CompareTo(other.Forwards);
     }
 
     public override string ToString() => 

@@ -34,6 +34,8 @@ public class IntNonEq : IntConstraint {
         return ReferenceEquals(Poly, n) ? this : new IntNonEq(n);
     }
 
+    public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
+
     public override IntNonEq Apply(Interpretation itp) {
         var n = Poly;
         foreach (var kv in itp.IntVal) {
@@ -80,7 +82,7 @@ public class IntNonEq : IntConstraint {
             reason = BacktrackReasons.Arithmetic;
             return SimplifyResult.Conflict;
         }
-        if (Poly.IsConst(out BigInteger val)) {
+        if (Poly.TryGetConst(out BigInteger val)) {
             if (!val.IsZero)
                 return SimplifyResult.Satisfied;
             reason = BacktrackReasons.Arithmetic;

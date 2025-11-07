@@ -6,10 +6,12 @@ using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 using ZIPT.Strings.Tokens.AuxTokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT;
 
@@ -31,12 +33,19 @@ public class Environment : IDisposable {
     public bool IsLen(FuncDecl f) => f.Equals(LenFct);
 
     public readonly Expr Epsilon;
+    public readonly Expr Fail;
 
     // The easy functions
     public readonly FuncDecl StrAtFct;
     public readonly FuncDecl PrefixOfFct;
     public readonly FuncDecl SuffixOfFct;
     public readonly FuncDecl SubstringFct;
+    public readonly FuncDecl ReMemFct;
+    public readonly FuncDecl StarFct;
+    public readonly FuncDecl UnionFct;
+    public readonly FuncDecl InterFct;
+    public readonly FuncDecl RgFct;
+    public readonly FuncDecl CompFct;
 
     public bool IsStrAt(FuncDecl f) => f.Equals(StrAtFct);
     public bool IsPrefixOf(FuncDecl f) => f.Equals(PrefixOfFct);
@@ -50,6 +59,13 @@ public class Environment : IDisposable {
 
     public bool IsContains(FuncDecl f) => f.Equals(ContainsFct);
     public bool IsIndexOf(FuncDecl f) => f.Equals(IndexOfFct);
+    public bool IsRegularMembership(FuncDecl f) => f.Equals(ReMemFct);
+    public bool IsStar(FuncDecl f) => f.Equals(StarFct);
+    public bool IsUnion(FuncDecl f) => f.Equals(UnionFct);
+    public bool IsIntersection(FuncDecl f) => f.Equals(InterFct);
+    public bool IsRange(FuncDecl f) => f.Equals(RgFct);
+    public bool IsComplement(FuncDecl f) => f.Equals(CompFct);
+    public bool IsFail(FuncDecl f) => f.Equals(Fail.FuncDecl);
 
     public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
     public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
@@ -58,8 +74,10 @@ public class Environment : IDisposable {
     public readonly Dictionary<IntExpr, NamedInt> ExprToIntToken = [];
 
     public EmptyStr EmptyStr => StrManager.EmptyStr;
+    public SingletonStr FailStr => StrManager.FailStr;
     public Trie TrieRoot { get; } = new(); // for caching strings (still, strings are unfortunately not canonicalized)
     readonly Dictionary<string, StrVarToken> strVarCache = [];
+    readonly Dictionary<string, SymCharToken> charVarCache = [];
 
     public readonly StrManager StrManager;
     public readonly PDD<BigInteger>.PDDManager IntPDDManager = new();
@@ -83,6 +101,7 @@ public class Environment : IDisposable {
 
         StringSort = ctx.MkUninterpretedSort("Str");
         Epsilon = ctx.MkUserPropagatorFuncDecl("epsilon", [], StringSort).Apply();
+        Fail = ctx.MkUserPropagatorFuncDecl("fail", [], StringSort).Apply();
         ConcatFct = ctx.MkUserPropagatorFuncDecl("concat", [StringSort, StringSort], StringSort);
         PowerFct = ctx.MkUserPropagatorFuncDecl("power", [StringSort, ctx.IntSort], StringSort);
         LenFct = ctx.MkUserPropagatorFuncDecl("len", [StringSort], ctx.IntSort);
@@ -94,6 +113,13 @@ public class Environment : IDisposable {
 
         ContainsFct = ctx.MkUserPropagatorFuncDecl("contains", [StringSort, StringSort], ctx.BoolSort);
         IndexOfFct = ctx.MkUserPropagatorFuncDecl("indexOf", [StringSort, StringSort, ctx.IntSort], ctx.IntSort);
+
+        ReMemFct = ctx.MkUserPropagatorFuncDecl("reMember", [StringSort, StringSort], ctx.BoolSort);
+        StarFct = ctx.MkUserPropagatorFuncDecl("reStar", [StringSort], StringSort);
+        UnionFct = ctx.MkUserPropagatorFuncDecl("reUnion", [StringSort, StringSort], StringSort);
+        InterFct = ctx.MkUserPropagatorFuncDecl("reInter", [StringSort, StringSort], StringSort);
+        RgFct = ctx.MkUserPropagatorFuncDecl("reRange", [StringSort, StringSort], StringSort);
+        CompFct = ctx.MkUserPropagatorFuncDecl("reComp", [StringSort], StringSort);
     }
 
     public void Dispose() {
@@ -101,21 +127,41 @@ public class Environment : IDisposable {
             return;
         disposed = true;
         strVarCache.Clear();
+        charVarCache.Clear();
         StrTokenToExpr.Clear();
         ExprToIntToken.Clear();
     }
+
+    public StrVarToken CreateFreshStrVar(string var) =>
+        GetOrCreateStrVar(GetNextFreshStrName(var));
 
     public StrVarToken GetOrCreateStrVar(string var) {
         if (strVarCache.TryGetValue(var, out StrVarToken? v))
             return v;
         Debug.Assert(!var.Contains('$'));
         Debug.Assert(!var.Contains('#'));
+        Debug.Assert(!var.Contains('?'));
         v = new StrVarToken(var);
         strVarCache.Add(var, v);
         return v;
     }
 
-    public string GetFreshName(string name, int start = 1) {
+    public StrVarToken CreateFreshSymVar(string var) =>
+        GetOrCreateStrVar(GetNextFreshStrName(var));
+
+
+    public SymCharToken GetOrCreateSymChar(string var) {
+        if (charVarCache.TryGetValue(var, out SymCharToken? v))
+            return v;
+        Debug.Assert(!var.Contains('$'));
+        Debug.Assert(!var.Contains('#'));
+        Debug.Assert(!var.Contains('?'));
+        v = new SymCharToken(var);
+        charVarCache.Add(var, v);
+        return v;
+    }
+
+    public string GetFreshStrName(string name, int start = 1) {
         for (; start < int.MaxValue; start++) {
             if (!strVarCache.ContainsKey($"{name}#{start}"))
                 return $"{name}#{start}";
@@ -124,13 +170,31 @@ public class Environment : IDisposable {
         return "";
     }
 
-    public string GetNextFreshName(string name) {
+    public string GetNextFreshStrName(string name) {
         int idx = name.LastIndexOf('#');
         if (idx == -1)
-            return GetFreshName(name);
+            return GetFreshStrName(name);
         return int.TryParse(name[(idx + 1)..], out int num)
-            ? GetFreshName(name[..idx], num + 1)
-            : GetFreshName(name);
+            ? GetFreshStrName(name[..idx], num + 1)
+            : GetFreshStrName(name);
+    }
+
+    public string GetFreshCharName(string name, int start = 1) {
+        for (; start < int.MaxValue; start++) {
+            if (!charVarCache.ContainsKey($"?{name}#{start}"))
+                return $"?{name}#{start}";
+        }
+        Debug.Assert(false);
+        return "";
+    }
+
+    public string GetNextFreshCharName(string name) {
+        int idx = name.LastIndexOf('#');
+        if (idx == -1)
+            return GetFreshCharName(name);
+        return int.TryParse(name[(idx + 1)..], out int num)
+            ? GetFreshCharName(name[..idx], num + 1)
+            : GetFreshCharName(name);
     }
 
     public Str MkString(ReadOnlySpan<StrToken> t, bool forward = true) {
@@ -254,6 +318,23 @@ public class Environment : IDisposable {
                 return Ctx.MkEq(
                     TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
                     TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+            case Z3_decl_kind.Z3_OP_SEQ_IN_RE when e.Arg(0) is SeqExpr:
+                return ReMemFct.Apply(
+                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+            case Z3_decl_kind.Z3_OP_SEQ_TO_RE:
+                return TranslateStr(e.Arg(0), graph) ?? e.Arg(0);
+            case Z3_decl_kind.Z3_OP_RE_STAR:
+                return StarFct.Apply(
+                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0));
+            case Z3_decl_kind.Z3_OP_RE_UNION:
+                return UnionFct.Apply(
+                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+            case Z3_decl_kind.Z3_OP_RE_RANGE:
+                return RgFct.Apply(
+                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
             default:
                 var args = new Expr[e.NumArgs];
                 bool mod = false;
@@ -272,12 +353,14 @@ public class Environment : IDisposable {
 
     public Constraint? TryParse(BoolExpr expr) {
         FuncDecl decl = expr.FuncDecl;
-        if (decl.Equals(PrefixOfFct))
+        if (IsPrefixOf(decl))
             return ParsePrefix(expr.Arg(0), expr.Arg(1));
-        if (decl.Equals(SuffixOfFct))
+        if (IsSuffixOf(decl))
             return ParseSuffix(expr.Arg(0), expr.Arg(1));
-        if (decl.Equals(ContainsFct))
+        if (IsContains(decl))
             return ParseContains(expr.Arg(0), expr.Arg(1));
+        if (IsRegularMembership(decl))
+            return ParseMembership(expr.Arg(0), expr.Arg(1));
         return decl.DeclKind switch {
             Z3_decl_kind.Z3_OP_EQ => expr.Arg(0) is IntExpr
                 ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
@@ -290,6 +373,7 @@ public class Environment : IDisposable {
             Z3_decl_kind.Z3_OP_SEQ_PREFIX => ParsePrefix(expr.Args[0], expr.Args[1]),
             Z3_decl_kind.Z3_OP_SEQ_SUFFIX => ParseSuffix(expr.Args[0], expr.Args[1]),
             Z3_decl_kind.Z3_OP_SEQ_CONTAINS => ParseContains(expr.Args[0], expr.Args[1]),
+            Z3_decl_kind.Z3_OP_SEQ_IN_RE => ParseStrEq(expr.Args[0], expr.Args[1]),
             _ => throw new NotSupportedException(expr.FuncDecl.Name.ToString())
         };
     }
@@ -299,7 +383,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseStr(right);
-        return rhs is null ? null : new StrEq(MkString(lhs), MkString(rhs));
+        return rhs is null ? null : new StrEq(lhs, rhs);
     }
 
     public IntEq? ParseIntEq(IntExpr left, IntExpr right) {
@@ -333,9 +417,7 @@ public class Environment : IDisposable {
         var s = TryParseStr(str);
         if (s is null)
             return null;
-        var ss = MkString(s);
-        var sc = MkString(c);
-        return new StrPrefixOf(sc, ss, false);
+        return new StrPrefixOf(c, s, false);
     }
 
     public StrSuffixOf? ParseSuffix(Expr contained, Expr str) {
@@ -345,9 +427,7 @@ public class Environment : IDisposable {
         var s = TryParseStr(str);
         if (s is null)
             return null;
-        var ss = MkString(s);
-        var sc = MkString(c);
-        return new StrSuffixOf(sc, ss, false);
+        return new StrSuffixOf(c, s, false);
     }
 
     public StrContains? ParseContains(Expr str, Expr contained) {
@@ -357,23 +437,31 @@ public class Environment : IDisposable {
         var c = TryParseStr(contained);
         if (c is null)
             return null;
-        var ss = MkString(s);
-        var sc = MkString(c);
-        return new StrContains(ss, sc, false);
+        return new StrContains(s, c, false);
     }
 
-    public List<StrToken>? TryParseStr(Expr expr) {
+    public StrMem? ParseMembership(Expr str, Expr re) {
+        var s = TryParseStr(str);
+        if (s is null)
+            return null;
+        var c = TryParseStr(re);
+        if (c is null)
+            return null;
+        return new StrMem(s, c);
+    }
+
+    public Str? TryParseStr(Expr expr) {
         FuncDecl f = expr.FuncDecl;
         if (expr.Sort.Equals(StringSort)) {
             // Custom Z3
             if (expr.Equals(Epsilon))
-                return [];
+                return EmptyStr;
             if (IsConcat(f)) {
-                List<StrToken> res = [];
+                Str res = EmptyStr;
                 for (uint i = 0; i < expr.NumArgs; i++) {
                     if (TryParseStr(expr.Arg(i)) is not { } str)
                         return null;
-                    res.AddRange(str);
+                    res = StrManager.Concat(res, str);
                 }
                 return res;
             }
@@ -381,48 +469,95 @@ public class Environment : IDisposable {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                PDD<BigInteger>? p = TryParseInt((IntExpr)expr.Arg(1));
+                var p = TryParseInt((IntExpr)expr.Arg(1));
                 if (p is null)
                     return null;
-                return [new PowerToken(MkString(@base), p)];
+                return StrManager.Single(new PowerToken(@base, p));
             }
             if (IsStrAt(f)) {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                PDD<BigInteger>? at = TryParseInt((IntExpr)expr.Arg(1));
+                var at = TryParseInt((IntExpr)expr.Arg(1));
                 if (at is null)
                     return null;
-                return [new StrAtToken(MkString(@base), at)];
+                return StrManager.Single(new StrAtToken(@base, at));
             }
             if (IsSubstring(f)) {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                PDD<BigInteger>? from = TryParseInt((IntExpr)expr.Arg(1));
+                var from = TryParseInt((IntExpr)expr.Arg(1));
                 if (from is null)
                     return null;
-                PDD<BigInteger>? len = TryParseInt((IntExpr)expr.Arg(2));
+                var len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
-                return [new SubStrToken(MkString(@base), from, len)];
+                return StrManager.Single(new SubStrToken(@base, from, len));
+            }
+            if (IsStar(f)) {
+                var @base = TryParseStr(expr.Arg(0));
+                if (@base is null)
+                    return null;
+                return StrManager.MkStar(@base);
+            }
+            if (IsUnion(f)) {
+                Debug.Assert(expr.NumArgs == 2);
+                var s1 = TryParseStr(expr.Arg(0));
+                if (s1 is null)
+                    return null;
+                var s2 = TryParseStr(expr.Arg(1));
+                if (s2 is null)
+                    return null;
+                return StrManager.MkUnion([s1, s2]);
+            }
+            if (IsIntersection(f)) {
+                Debug.Assert(expr.NumArgs == 2);
+                var s1 = TryParseStr(expr.Arg(0));
+                if (s1 is null)
+                    return null;
+                var s2 = TryParseStr(expr.Arg(1));
+                if (s2 is null)
+                    return null;
+                return StrManager.MkIntersection([s1, s2]);
+            }
+            if (IsRange(f)) {
+                Debug.Assert(expr.NumArgs == 2);
+                var s1 = TryParseStr(expr.Arg(0));
+                if (s1 is null)
+                    return null;
+                var s2 = TryParseStr(expr.Arg(1));
+                if (s2 is null)
+                    return null;
+                if (s1 is not SingletonStr { StrToken: CharToken c1 } ||
+                    s2 is not SingletonStr { StrToken: CharToken c2 })
+                    return null;
+                if (c1.Value < c2.Value)
+                    return null;
+                return StrManager.Single(new SetToken(new CharacterSet(new CharacterRange(c1.Value, c2.Value))));
+            }
+            if (IsComplement(f)) {
+                var c = TryParseStr(expr.Arg(0));
+                if (c is null)
+                    return null;
+                return StrManager.MkComplement(c);
             }
             if (ExprToStrToken.TryGetValue(expr, out StrToken? s))
-                return [s];
+                return StrManager.Single(s);
         }
         else if (expr.Sort is SeqSort) {
             // Native Z3
             if (expr.IsString)
-                return expr.String.Select(o => (StrToken)new CharToken(o)).ToList();
+                return MkString(expr.String.Select(o => (StrToken)new CharToken(o)).ToList());
             if (expr.IsConst)
-                return [GetOrCreateStrVar(f.Name.ToString())];
+                return StrManager.Single(GetOrCreateStrVar(f.Name.ToString()));
             if (expr.IsConcat) {
-                List<StrToken> r = [];
+                Str r = EmptyStr;
                 foreach (var arg in expr.Args) {
                     var q = TryParseStr(arg);
                     if (q is null)
                         return null;
-                    r.AddRange(q);
+                    r = StrManager.Concat(r, q);
                 }
                 return r;
             }
@@ -430,22 +565,22 @@ public class Environment : IDisposable {
                 var s = TryParseStr(expr.Args[0]);
                 if (s is null)
                     return null;
-                PDD<BigInteger>? p = TryParseInt((IntExpr)expr.Args[1]);
+                var p = TryParseInt((IntExpr)expr.Args[1]);
                 if (p is null)
                     return null;
-                return [new StrAtToken(MkString(s), p)];
+                return StrManager.Single(new StrAtToken(s, p));
             }
             if (expr.IsExtract) {
                 var @base = TryParseStr(expr.Arg(0));
                 if (@base is null)
                     return null;
-                PDD<BigInteger>? from = TryParseInt((IntExpr)expr.Arg(1));
+                var from = TryParseInt((IntExpr)expr.Arg(1));
                 if (from is null)
                     return null;
-                PDD<BigInteger>? len = TryParseInt((IntExpr)expr.Arg(2));
+                var len = TryParseInt((IntExpr)expr.Arg(2));
                 if (len is null)
                     return null;
-                return [new SubStrToken(MkString(@base), from, len)];
+                return StrManager.Single(new SubStrToken(@base, from, len));
             }
         }
         throw new NotSupportedException(f.Name.ToString());
@@ -470,7 +605,7 @@ public class Environment : IDisposable {
             if (contained is null)
                 return null;
             var start = TryParseInt((IntExpr)expr.Arg(2));
-            return start is null ? null : IntPDDManager.MkPDD(new IndexOfVar(MkString(str), MkString(contained), start));
+            return start is null ? null : IntPDDManager.MkPDD(new IndexOfVar(str, contained, start));
         }
         if (ExprToIntToken.TryGetValue(expr, out var v))
             return IntPDDManager.MkPDD((IntVar)v);

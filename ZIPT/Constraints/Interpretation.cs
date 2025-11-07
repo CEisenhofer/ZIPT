@@ -1,9 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
-using ZIPT.MiscUtils;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.AuxTokens;
+using static System.Net.WebRequestMethods;
 
 namespace ZIPT.Constraints;
 
@@ -11,7 +13,8 @@ public class Interpretation {
 
     public Environment Env { get; }
     public Dictionary<IntVar, BigInteger> IntVal { get; } = [];
-    public Dictionary<NamedStrToken, Str> Substitution { get; } = [];
+    public Dictionary<NamedStrToken, Subst> Substitution { get; } = [];
+    public Dictionary<SymCharToken, CharSubst> CharSubstitution { get; } = [];
 
     public PDD<BigInteger> ResolveVar(IntVar v) => IntVal.TryGetValue(v, out var i) 
         ? Env.IntPDDManager.MkPDD(i) 
@@ -25,40 +28,36 @@ public class Interpretation {
         IntVal[v] = l;
     }
 
-    public void Apply(Subst subst) {
-        List<(NamedStrToken k, Str v)> newDict = [];
-        foreach (var kv in Substitution) {
-            var n = Env.StrManager.Subst(kv.Value, subst);
-            if (!ReferenceEquals(n, kv.Value))
-                newDict.Add((kv.Key, n));
-        }
-        foreach (var (k, v) in newDict) {
-            Substitution[k] = v;
-        }
-        if (!Substitution.ContainsKey(subst.Var))
-            Substitution.Add(subst.Var, subst.Str);
+    public void Apply(Subst subst) => 
+        Substitution[subst.Var] = new Subst(subst.Var, Env.StrManager.Subst(subst.Str, this));
+
+    public void Apply(CharSubst subst) {
+        Str s = Env.StrManager.Subst(Env.MkString(subst.Val), this);
+        Debug.Assert(s is { Length: 1, First: UnitToken });
+        UnitToken u = (UnitToken)s.First;
+        CharSubstitution[subst.Var] = new CharSubst(subst.Var, u);
     }
 
     public void Complete(HashSet<CharToken> alphabet) {
         NonTermSet nonTermSet = new();
         var ch = alphabet.IsNonEmpty() ? alphabet.First() : new CharToken('a');
         foreach (var v in Substitution.Values) {
-            v.CollectSymbols(nonTermSet, []);
+            v.Str.CollectSymbols(nonTermSet, []);
         }
         Interpretation clean = new(Env);
         foreach (var v in nonTermSet.IntVars) {
             clean.Add(v, !IntVal.ContainsKey(v) ? 0 : IntVal[v]);
         }
         foreach (var p in nonTermSet.StrVars.OfType<StrVarToken>()) {
-            clean.Substitution.Add(p, Env.EmptyStr);
+            clean.Substitution.Add(p, new Subst(p, Env.EmptyStr));
         }
         var prev = Substitution.ToList();
         Substitution.Clear();
         foreach (var p in prev) {
-            Substitution.Add(p.Key, Env.StrManager.Subst(p.Value, clean));
+            Substitution.Add(p.Key, new Subst(p.Key, Env.StrManager.Subst(p.Value.Str, clean)));
         }
         foreach (var p in nonTermSet.StrVars) {
-            Substitution.TryAdd(p, Env.EmptyStr);
+            Substitution.TryAdd(p, new Subst(p, Env.EmptyStr));
         }
     }
 
@@ -83,11 +82,18 @@ public class Interpretation {
         }
     }
 
+    public void Simplify() {
+        List<NamedStrToken> keys = Substitution.Keys.ToList();
+        foreach (var k in keys) {
+            Substitution[k] = new Subst(k, Env.StrManager.Simplify(Substitution[k].Str));
+        }
+    }
+
     public override string ToString() =>
         string.Join(";\n",
             Substitution
                 .OrderBy(o => o.Key.Name)
-                .Select(o => $"{o.Key} / {(o.Value.Length == 0 ? "ε" : o.Value)}")
+                .Select(o => o.Value.ToString())
                 .Concat(
                     IntVal.Select(o => $"{o.Key} := {o.Value}")));
 

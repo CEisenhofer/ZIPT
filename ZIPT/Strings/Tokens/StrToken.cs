@@ -1,15 +1,24 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using ZIPT.Constraints;
+using ZIPT.Constraints.ConstraintElement.AuxConstraints;
+using ZIPT.MiscUtils;
+using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens.AuxTokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings.Tokens;
 
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
-    public abstract bool IsNullable(NielsenNode node);
+    public abstract bool Ground { get; }
+    public abstract bool RegexFree { get; }
+    public abstract bool Derivable { get; }
+    public abstract bool Nullable { get; }
+    public abstract bool BasicRegex { get; }
 
-    public abstract List<PrefixDecomposition> GetPrefixes(NielsenNode node, bool fwd);
+    public abstract List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd);
 
     public abstract Expr ToExpr(NielsenGraph graph);
 
@@ -18,10 +27,18 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
     // The order is important! The lower one will be used as root in the e-graph
     public static readonly Dictionary<Type, int> StrTokenOrder = new() {
-        { typeof(PowerToken), 0 },
-        { typeof(CharToken), 1 },
-        { typeof(StrVarToken), 2 },
-        { typeof(StrAtToken), 3 },
+        { typeof(FailToken), 0 },
+        { typeof(PowerToken), 1 },
+        { typeof(CharToken), 2 },
+        { typeof(StrVarToken), 3 },
+        { typeof(StrAtToken), 4 },
+        { typeof(PreToken), 5 },
+        { typeof(PostToken), 6 },
+        { typeof(NotToken), 7 },
+        { typeof(KleeneToken), 8 },
+        { typeof(UnionToken), 9 },
+        { typeof(IntersectToken), 10 },
+        { typeof(SetToken), 11 }, // deliberately last, as for merging those for intersection (MkUnion) can easily add them as last
     };
 
     public int CompareTo(StrToken? other) {
@@ -36,12 +53,24 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     }
 
     protected abstract int CompareToInternal(StrToken other);
+    public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
+
+    [Pure]
+    public virtual MinTerms FirstMinTerms() => throw new NotSupportedException();
+    [Pure]
+    public virtual MinTerms LastMinTerms() => throw new NotSupportedException();
 
     public abstract bool Equals(StrToken? other);
     public abstract override int GetHashCode();
+    public virtual Str OptSimplify(StrManager manager) => manager.Single(this);
 
     public sealed override string ToString() => ToString(null);
     public abstract string ToString(NielsenGraph? graph);
+
+    public Str Derivative(Environment env, CharToken set, bool fwd) =>
+        Derivative(env, new CharacterSet(new CharacterRange(set.Value)), fwd);
+
+    public virtual Str Derivative(Environment env, CharacterSet set, bool fwd) => throw new NotSupportedException();
 
     public static string ExprToStr(NielsenGraph? graph, Expr e) {
         if (e.IsTrue)

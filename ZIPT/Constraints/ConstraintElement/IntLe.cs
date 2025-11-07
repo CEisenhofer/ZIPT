@@ -35,6 +35,8 @@ public class IntLe : IntConstraint {
         return ReferenceEquals(Poly, n) ? this : new IntLe(n);
     }
 
+    public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
+
     public override IntLe Apply(Interpretation itp) {
         var n = Poly;
         foreach (var kv in itp.IntVal) {
@@ -58,7 +60,7 @@ public class IntLe : IntConstraint {
     }
 
     public SimplifyResult Simplify(NielsenNode node) {
-        if (Poly.IsConst(out BigInteger val))
+        if (Poly.TryGetConst(out BigInteger val))
             return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Max.IsPos)
@@ -111,11 +113,10 @@ public class IntLe : IntConstraint {
         bool restart = false;
         int i = 0;
 
-        var (monomials, _) = Poly.MonomialDecomposition();
+        var monomials = Poly.Monomials();
 
         foreach (var n in monomials) {
             if (n.Variables.Count == 0) {
-                Debug.Assert(false);
                 // Ignored - constant offset
                 i++;
                 continue;

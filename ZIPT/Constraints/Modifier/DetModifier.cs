@@ -24,12 +24,15 @@ public class DetModifier : ModifierBase {
         return SimplifyResult.Proceed;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null);
+        Debug.Assert(node.Outgoing.Count == 0);
         node.MkChild(node, 
             CollectionExtension.EmptyOrUnit(Substitution),
-            SideConstraints,
+            SideConstraints, [],
             true);
+        Debug.Assert(node.Outgoing.Count == 1);
+        yield return node.Outgoing[0];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 0;

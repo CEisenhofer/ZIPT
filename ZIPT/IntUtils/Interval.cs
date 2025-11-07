@@ -99,6 +99,9 @@ public readonly struct Interval<T> where T : INumberBase<T>, IComparable<T> {
         new(Min + other.Min, Max + other.Max);
 
     public Interval<T> MergeMultiplication(Interval<T> other) {
+        if (Min.IsNegInf && other.Max.IsPosInf ||
+            other.Min.IsNegInf && Max.IsPosInf)
+            return Full;
         var v1 = Min * other.Max;
         var v2 = other.Min * Max;
         var v3 = Max * other.Max;

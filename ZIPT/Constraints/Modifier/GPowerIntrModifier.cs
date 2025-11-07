@@ -15,7 +15,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         Cases = cases;
     }
 
-    public override void Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
         // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
@@ -26,11 +26,11 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
             if (b.Length == 1 && b[true] is PowerToken pt)
                 b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
-            var prefixes = StrManager.GetPrefixes(node, b, Forwards);
+            var prefixes = StrManager.GetDecompose(node, b, Forwards);
             var power = new PowerToken(b, powerConstant);
 
             foreach (var p in prefixes) {
-                Str s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Str, Forwards);
+                Str s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Prefix, Forwards);
                 var subst = new Subst(v, s);
                 Debug.Assert(p.VarDecomp is null);
                 Constraint[] cnstr = new Constraint[p.SideConstraints.Count + 1];
@@ -38,7 +38,8 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
                     cnstr[i] = p.SideConstraints[i];
                 }
                 cnstr[^1] = IntLe.MkLe(node.Env.ZeroInt, powerConstant);
-                node.MkChild(node, [subst], cnstr, true);
+                node.MkChild(node, [subst], cnstr, [], true);
+                yield return node.Outgoing[^1];
             }
         }
     }

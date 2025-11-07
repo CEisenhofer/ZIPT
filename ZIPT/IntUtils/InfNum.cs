@@ -7,7 +7,8 @@ public readonly struct InfNum<T> : IComparable<InfNum<T>> where T : INumberBase<
 
     readonly T val;
     public bool IsInf { get; } = false;
-    public bool IsPos => T.IsPositive(val);
+    // unfortunately, T.IsPositive also returns true on zero...
+    public bool IsPos => !T.IsZero(val) && T.IsPositive(val);
     public bool IsNeg => T.IsNegative(val);
     public bool IsOne => !IsInf && val.Equals(T.One);
     public bool IsZero => T.IsZero(val);

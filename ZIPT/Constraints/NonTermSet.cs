@@ -9,6 +9,7 @@ public class NonTermSet {
 
     // Maybe sorted list instead of hashset? ...
     public HashSet<NamedStrToken> StrVars { get; } = [];
+    public HashSet<SymCharToken> CharVars { get; } = [];
     public HashSet<IntVar> IntVars { get; } = [];
 
     public int Count => StrVars.Count + IntVars.Count;
@@ -28,6 +29,7 @@ public class NonTermSet {
     }
 
     public void Add(NamedStrToken strVar) => StrVars.Add(strVar);
+    public void Add(SymCharToken charVar) => CharVars.Add(charVar);
     public void Add(IntVar intVar) => IntVars.Add(intVar);
 
     public void Add(NonTermSet set) {
@@ -40,9 +42,11 @@ public class NonTermSet {
     }
 
     public void Remove(NamedStrToken strVar) => StrVars.Remove(strVar);
+    public void Remove(SymCharToken charVar) => CharVars.Remove(charVar);
     public void Remove(IntVar intVar) => IntVars.Remove(intVar);
 
     public bool Contains(NamedStrToken strVar) => StrVars.Contains(strVar);
+    public bool Contains(SymCharToken charVar) => CharVars.Contains(charVar);
     public bool Contains(IntVar intVar) => IntVars.Contains(intVar);
 
     public NonTermSet Clone() {
@@ -50,56 +54,25 @@ public class NonTermSet {
         foreach (var strVar in StrVars) {
             clone.StrVars.Add(strVar);
         }
+        foreach (var charVar in CharVars) {
+            clone.CharVars.Add(charVar);
+        }
         foreach (var intVar in IntVars) {
             clone.IntVars.Add(intVar);
         }
         return clone;
     }
 
-    public static bool IsIntersecting(NonTermSet set1, NonTermSet set2) {
-        var (s1, s2) = 
-            set1.StrVars.Count < set2.StrVars.Count 
-            ? (set1.StrVars, set2.StrVars) 
-            : (set2.StrVars, set1.StrVars);
-        Debug.Assert(s1.Count <= s2.Count);
-        foreach (var strVar in s1) {
-            if (s2.Contains(strVar))
-                return true;
-        }
-
-        var (i1, i2) = 
-            set1.IntVars.Count < set2.IntVars.Count 
-                ? (set1.IntVars, set2.IntVars) 
-                : (set2.IntVars, set1.IntVars);
-        Debug.Assert(i1.Count <= i2.Count);
-        foreach (var intVar in i1) {
-            if (i2.Contains(intVar))
-                return true;
-        }
-        return false;
-    }
-
-    public void Add(Subst subst) {
-        Add(subst.Var);
-    }
-
-    public void Apply(Subst subst) {
-        subst.CollectValueSymbols(this);
-    }
-
-    public void Apply(Interpretation itp) {
-        foreach (var s in itp.Substitution.Values) {
-            s.CollectSymbols(this, []);
-        }
-    }
-
-
-
     public override string ToString() {
         StringBuilder sb = new();
         sb.Append("String Variables: ");
         foreach (var strVar in StrVars) {
             sb.Append('\t').AppendLine(strVar.ToString());
+        }
+        sb.AppendLine();
+        sb.Append("Char Variables: ");
+        foreach (var charVar in CharVars) {
+            sb.Append('\t').AppendLine(charVar.ToString());
         }
         sb.AppendLine();
         sb.Append("Integer Variables: ");

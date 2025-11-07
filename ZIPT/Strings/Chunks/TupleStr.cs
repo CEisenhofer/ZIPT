@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Xml.Linq;
 using ZIPT.Constraints;
 using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings.Chunks;
 
@@ -15,14 +15,21 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
 
     // Maybe
     HashSet<NamedStrToken>? containedVars;
+    HashSet<SymCharToken>? containedSChars;
+    MinTerms? firstChars;
+    MinTerms? lastChars;
 
     TriangleMatrix hashMatrix;
     int hash;
 
-    public readonly Dictionary<uint, Str> DropLeftCache = [];
-    public readonly Dictionary<uint, Str> DropRightCache = [];
-    public readonly Dictionary<(NamedStrToken, Str), Str> SubstCache = [];
-    StrToken[]? seqCache;
+    public Dictionary<uint, Str>? DropLeftCache;
+    public Dictionary<uint, Str>? DropRightCache;
+    public Dictionary<(NamedStrToken, Str), Str>? SubstCache;
+    public Dictionary<(SymCharToken, UnitToken), Str>? SubstCharCache;
+    public Str? SimplifyCache;
+    public StrToken[]? ListCache;
+    public uint ListCacheFrom;
+    public uint ListCacheTo; // from where to where in the list cache [C# does not allow a span here :/]
 
     public override uint Length { get; }
     public override uint Level { get; }
@@ -32,10 +39,47 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [MemberNotNull(nameof(containedVars))]
     void InitContainedVars() {
-        if (containedVars is not null)
+        if (containedVars is not null) {
+            Stats.CachedStringVariableContains++;
             return;
+        }
         Left.CollectVars(containedVars = []);
         Right.CollectVars(containedVars);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MemberNotNull(nameof(containedSChars))]
+    void InitContainedSChars() {
+        if (containedSChars is not null) {
+            Stats.CachedStringVariableContains++;
+            return;
+        }
+        Left.CollectSChars(containedSChars = []);
+        Right.CollectSChars(containedSChars);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MemberNotNull(nameof(firstChars))]
+    void InitFirstCandidates() {
+        if (firstChars is not null) {
+            Stats.CachedFirstChars++;
+            return;
+        }
+        firstChars = Left.FirstMinTerms();
+        if (Left.Nullable)
+            firstChars = firstChars.Merge(Right.FirstMinTerms());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MemberNotNull(nameof(lastChars))]
+    void InitLastCandidates() {
+        if (lastChars is not null) {
+            Stats.CachedLastChars++;
+            return;
+        }
+        lastChars = Right.LastMinTerms();
+        if (Right.Nullable)
+            lastChars = lastChars.Merge(Left.LastMinTerms());
     }
 
     public override bool ContainsVar(NamedStrToken v) {
@@ -50,9 +94,36 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
         }
     }
 
+    public override bool ContainsSChar(SymCharToken v) {
+        InitContainedSChars();
+        return containedSChars.Contains(v);
+    }
+
+    public override void CollectSChars(HashSet<SymCharToken> contained) {
+        InitContainedSChars();
+        foreach (var v in containedSChars) {
+            contained.Add(v);
+        }
+    }
+
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         Left.CollectSymbols(nonTermSet, alphabet);
         Right.CollectSymbols(nonTermSet, alphabet);
+    }
+
+    public override HashSet<NamedStrToken> ContainedVars() {
+        InitContainedVars();
+        return containedVars;
+    }
+
+    public override MinTerms FirstMinTerms() {
+        InitFirstCandidates();
+        return firstChars;
+    }
+
+    public override MinTerms LastMinTerms() {
+        InitLastCandidates();
+        return lastChars;
     }
 
     public static bool IsBalanced(Str left, Str right) =>
@@ -60,6 +131,7 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
 
     public TupleStr(Str left, Str right) : this(uint.MaxValue, left, right) {
         // temporal chunk
+        DegenerationLevel = left.DegenerationLevel + right.DegenerationLevel + (IsBalanced(left, right) ? 0 : 1);
     }
 
     public TupleStr(uint chunkId, Str left, Str right) : base(chunkId) {
@@ -68,52 +140,20 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
         Length = left.Length + right.Length;
         Level = Math.Max(left.Level, right.Level) + 1;
         Ground = left.Ground && right.Ground;
+        RegexFree = left.RegexFree && right.RegexFree;
+        Derivable = left.Derivable && (!left.Nullable || right.Derivable);
+        Nullable = left.Nullable && right.Nullable;
+        BasicRegex = left.BasicRegex && right.BasicRegex;
+        DegenerationLevel = ComputeDegeneration(left, right);
     }
+
+    static int ComputeDegeneration(Str left, Str right) =>
+        left.DegenerationLevel + right.DegenerationLevel + (IsBalanced(left, right) ? 0 : 1);
 
     public override TupleStr Translate(StrManager manager) {
         var left = Left.Translate(manager);
         var right = Right.Translate(manager);
         return (TupleStr)manager.Concat(left, right);
-    }
-
-    public override IReadOnlyList<StrToken> Sequence() {
-        if (seqCache is not null)
-            return seqCache;
-        // Not sure if we should cache also children
-        var tokens = new StrToken[Length];
-        Stack<Str> todo = [];
-        Str s = this;
-        int i = 0;
-        while (true) {
-            bool cacheHit = false;
-            while (s is TupleStr lts) {
-                if (lts.seqCache is not null) {
-                    lts.seqCache.CopyTo(tokens, i);
-                    i += lts.seqCache.Length;
-                    cacheHit = true;
-                    break;
-                }
-                todo.Push(lts.Right);
-                s = lts.Left;
-            }
-            if (!cacheHit) {
-                Debug.Assert(s is SingletonStr);
-                SingletonStr single = (SingletonStr)s;
-                tokens[i++] = single.StrToken;
-            }
-            if (todo.Count == 0) {
-                seqCache = tokens;
-                return tokens;
-            }
-            Debug.Assert(todo.Count > 0);
-            s = todo.Pop();
-        }
-    }
-
-    protected override int CompareToInternal(Str other) {
-        var otherTuple = (TupleStr)other;
-        int cmp = Left.CompareTo(otherTuple.Left);
-        return cmp != 0 ? cmp : Right.CompareTo(otherTuple.Right);
     }
 
     public override bool Equals(object? obj) =>
@@ -125,7 +165,7 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
     public bool Equals(TupleStr? other) {
         if (other is null)
             return false;
-        if (ReferenceEquals(this, other))
+        if (CachedEquals(other))
             return true;
         Debug.Assert(ChunkId != other.ChunkId);
         if (Length != other.Length)
@@ -151,7 +191,7 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
             while (left is TupleStr ltc && right is TupleStr rtc) {
                 int cmp = left.Length.CompareTo(right.Length);
                 if (cmp == 0) {
-                    if (ReferenceEquals(left, right))
+                    if (CachedEquals(left, right))
                         goto skip;
                     /*if (!left.Equals(right))
                         return false;*/
@@ -224,6 +264,67 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
         return hash;
     }
 
+    public override void MoveCache(Str old) {
+        Debug.Assert(!ReferenceEquals(old, this));
+        Debug.Assert(old is TupleStr);
+        TupleStr oldStr = (TupleStr)old;
+        if (containedVars is not null)
+            containedVars = oldStr.containedVars;
+        if (containedSChars is not null)
+            containedSChars = oldStr.containedSChars;
+        if (ListCache is not null) {
+            ListCache = oldStr.ListCache;
+            ListCacheFrom = oldStr.ListCacheFrom;
+            ListCacheTo = oldStr.ListCacheTo;
+        }
+        if (firstChars is not null)
+            firstChars = oldStr.firstChars;
+        if (lastChars is not null)
+            lastChars = oldStr.lastChars;
+        if (SimplifyCache is not null)
+            SimplifyCache = oldStr.SimplifyCache;
+        if (DropLeftCache is not null)
+            DropLeftCache = oldStr.DropLeftCache;
+        if (DropRightCache is not null)
+            DropRightCache = oldStr.DropRightCache;
+        if (SubstCache is not null)
+            SubstCache = oldStr.SubstCache;
+    }
+
+    public override Str Derivative(Environment env, CharacterSet a, bool fwd) {
+        Str? result;
+        if (fwd) {
+            derivativeSetCacheFwd ??= [];
+            if (derivativeSetCacheFwd.TryGetValue(a, out result))
+                return result;
+            var res1 = Left.Derivative(env, a, fwd);
+            if (!Left.Nullable) {
+                result = env.StrManager.Concat(res1, Right);
+            }
+            else {
+                var res2 = Right.Derivative(env, a, fwd);
+                result = env.StrManager.MkUnion([env.StrManager.Concat(res1, Right), res2]);
+            }
+            derivativeSetCacheFwd.Add(a, result);
+        }
+        else {
+            derivativeSetCacheBwd ??= [];
+            if (derivativeSetCacheBwd.TryGetValue(a, out result))
+                return result;
+            var res1 = Right.Derivative(env, a, fwd);
+            if (!Right.Nullable) {
+                result = env.StrManager.Concat(Left, res1);
+            }
+            else {
+                var res2 = Left.Derivative(env, a, fwd);
+                result = env.StrManager.MkUnion([env.StrManager.Concat(Left, res1), res2]);
+            }
+            derivativeSetCacheBwd.Add(a, result);
+        }
+        return result;
+    }
+
     public override string RawString => $"({Left.RawString}{Right.RawString})";
+
     public override string GetPlainString(NielsenGraph? graph) => Left.GetPlainString(graph) + Right.GetPlainString(graph); 
 }

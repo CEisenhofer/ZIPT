@@ -282,8 +282,8 @@ public class OStr : IEquatable<OStr>, IComparable<OStr>, IReadOnlyList<StrToken>
     }
 
 
-    public OStr Unwind(bool dir, NielsenNode node) =>
-        dir ? UnwindFrwd(node) : UnwindBkwd(node);
+    public OStr Unwind(bool fwd, NielsenNode node) =>
+        fwd ? UnwindFrwd(node) : UnwindBkwd(node);
 
     public OStr UnwindFrwd(NielsenNode node) {
         Debug.Assert(Chunks.Count > 0);

@@ -1,8 +1,5 @@
 ﻿using Microsoft.Z3;
-using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.Numerics;
-using System.Xml.Linq;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.Strings.Tokens;
@@ -37,13 +34,15 @@ public class IntEq : IntConstraint {
         return ReferenceEquals(Poly, n) ? this : new IntEq(n);
     }
 
+    public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
+
     public override IntEq Apply(Interpretation itp) {
         var n = Poly;
         foreach (var kv in itp.IntVal) {
             n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
         }
         foreach (var kv in itp.Substitution) {
-            var (lenVar, newLen) = new Subst(kv.Key, kv.Value).GetLenReplacement(itp.Env);
+            var (lenVar, newLen) = kv.Value.GetLenReplacement(itp.Env);
             n = n.Substitute(lenVar, newLen);
         }
         return ReferenceEquals(Poly, n) ? this : new IntEq(n);
@@ -84,7 +83,7 @@ public class IntEq : IntConstraint {
 
     public SimplifyResult Simplify(NielsenNode node) {
         simplifyCnt++;
-        if (Poly.IsConst(out BigInteger val))
+        if (Poly.TryGetConst(out BigInteger val))
             return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
         var bounds = Poly.GetBounds(node);
         if (!bounds.Contains(0))
@@ -129,11 +128,10 @@ public class IntEq : IntConstraint {
         bool restart = false;
         int i = 0;
 
-        var (monomials, _) = Poly.MonomialDecomposition();
+        var monomials = Poly.Monomials();
 
         foreach (var n in monomials) {
             if (n.Variables.Count == 0) {
-                Debug.Assert(false);
                 // Ignored - constant offset
                 i++;
                 continue;

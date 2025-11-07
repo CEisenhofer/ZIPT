@@ -5,7 +5,6 @@ using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
-using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -13,25 +12,47 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public sealed class StrEq : StrEqBase {
 
-    public StrEq(Str lhs, Str rhs) : base(lhs, rhs) { }
+    public StrEq(Str lhs, Str rhs) : base(lhs, rhs) {
+        Debug.Assert(lhs.RegexFree);
+        Debug.Assert(rhs.RegexFree);
+    }
 
-    public override StrEq Apply(Subst subst, NielsenNode node) =>
-        new(node.Env.StrManager.Subst(LHS, subst),
-            node.Env.StrManager.Subst(RHS, subst));
+    public override StrEq Apply(Subst subst, NielsenNode node) {
+        var lhs = node.Env.StrManager.Subst(LHS, subst);
+        var rhs = node.Env.StrManager.Subst(RHS, subst);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrEq(lhs, rhs);
+    }
 
-    public override StrEq Apply(Interpretation itp) =>
-        new(itp.Env.StrManager.Subst(LHS, itp),
-            itp.Env.StrManager.Subst(RHS, itp));
+    public override StrEq Apply(CharSubst subst, NielsenNode node) {
+        var lhs = node.Env.StrManager.Subst(node.Env, LHS, subst);
+        var rhs = node.Env.StrManager.Subst(node.Env, RHS, subst);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrEq(lhs, rhs);
+    }
 
+    public override StrEq Apply(Interpretation itp) {
+        var lhs = itp.Env.StrManager.Subst(LHS, itp);
+        var rhs = itp.Env.StrManager.Subst(RHS, itp);
+        SortStr(ref lhs, ref rhs, true);
+        if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
+            return this;
+        return new StrEq(lhs, rhs);
+    }
 
-    public void GetNielsenDep(Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool dir) {
+    
+    public void GetNielsenDep(Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
         if (LHS.IsEmpty() || RHS.IsEmpty())
             return;
         // TODO: Optimize this
         Str s1 = LHS;
         Str s2 = RHS;
-        var t1 = s1[dir];
-        var t2 = s2[dir];
+        var t1 = s1[fwd];
+        var t2 = s2[fwd];
         if (t2 is NamedStrToken) {
             (s1, s2) = (s2, s1);
             (t1, t2) = (t2, t1);
@@ -50,7 +71,7 @@ public sealed class StrEq : StrEqBase {
         }
         List<StrToken> s = [];
         for (int i = 0; i < s2.Length; i++) {
-            var t = s2[dir, i];
+            var t = s2[fwd, i];
             if (t is NamedStrToken v3) {
                 if (!varDep.TryGetValue(v1, out var varSet))
                     varDep.Add(v1, varSet = []);
@@ -239,26 +260,6 @@ public sealed class StrEq : StrEqBase {
         sConstr.Add(new Subst(v1, env.MkString(tokens, fwd)));
     }
 
-    static SimplifyResult SimplifyEmpty(IEnumerable<StrToken> s, NielsenNode node, DetModifier constr) {
-        foreach (var t in s) {
-            if (t is UnitToken)
-                return SimplifyResult.Conflict;
-            if (t is StrVarToken v)
-                return constr.Add(new Subst(v, node.Env.EmptyStr));
-            if (t is PowerToken p) {
-                if (node.IsLt(node.Env.ZeroInt, p.Power))
-                    // p.Power > 0
-                    constr.Add(new StrEq(p.Base, node.Graph.Env.EmptyStr));
-                else if (!StrManager.IsNullable(node, p.Base))
-                    // p.Base != ""
-                    constr.Add(new IntEq(p.Power));
-            }
-            else
-                throw new NotSupportedException();
-        }
-        return SimplifyResult.Proceed;
-    }
-
     // Try to add the substitution: x / s ==> do an occurrence check. If it fails, we have to add it as an ordinary equation
     public SimplifyResult AddDefinition(StrVarToken v, Str s, NielsenNode node, DetModifier sConstr) =>
         s.ContainsVar(v) 
@@ -266,11 +267,12 @@ public sealed class StrEq : StrEqBase {
             : sConstr.Add(new Subst(v, s));
 
     SimplifyResult SimplifyDir(NielsenNode node, DetModifier sConstr, bool fwd) {
-        // This can cause problems, as it might unwind/compress the beginning/end over and over again (might even detect it as subsumed)
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             SortStr(fwd);
             Debug.Assert(LHS.Length > 0);
             Debug.Assert(RHS.Length > 0);
+            Debug.Assert(LHS.RegexFree);
+            Debug.Assert(RHS.RegexFree);
 
             if (SimplifySame(node.Env, fwd))
                 continue;
@@ -405,10 +407,10 @@ public sealed class StrEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    static NumCmpModifier? SplitPowerElim(StrToken t, Str s, Environment env, bool dir) {
+    static NumCmpModifier? SplitPowerElim(StrToken t, Str s, Environment env, bool fwd) {
         if (t is not PowerToken p1)
             return null;
-        var r = CommPower(p1.Base, s, env, dir);
+        var r = CommPower(p1.Base, s, env, fwd);
         return r.idx > 0 ? new NumCmpModifier(p1.Power, r.num) : null;
     }
 
@@ -453,8 +455,11 @@ public sealed class StrEq : StrEqBase {
 
     static int splitEqCnt;
 
-    ModifierBase? SplitEq(bool dir, Environment env/*, Dictionary<NamedInt, PDD<BigRational>> intSubst*/) {
+    ModifierBase? SplitEq(bool fwd, Environment env/*, Dictionary<NamedInt, PDD<BigRational>> intSubst*/) {
         if (LHS.IsEmpty() || RHS.IsEmpty())
+            return null;
+        if (!LHS.RegexFree || !RHS.RegexFree)
+            // Actually we would need to stop only once we hit a regex token
             return null;
         splitEqCnt++;
         BigInteger constDiff = BigInteger.Zero;
@@ -470,12 +475,12 @@ public sealed class StrEq : StrEqBase {
 
         //PDD<BigInteger> len = LenVar.MkLenPoly([LHS[dir]], env);
         //PDD<BigRational> lhsLen = len.Apply(intSubst);
-        var lhsLen = LenVar.MkLenPoly([LHS[dir]], env);
+        var lhsLen = LenVar.MkLenPoly([LHS[fwd]], env, []);
         constDiff += lhsLen.ConstOffset;
 
         //len = LenVar.MkLenPoly([RHS[dir]], env);
         //PDD<BigRational> rhsLen = len.Apply(intSubst);
-        var rhsLen = LenVar.MkLenPoly([RHS[dir]], env);
+        var rhsLen = LenVar.MkLenPoly([RHS[fwd]], env, []);
         constDiff -= rhsLen.ConstOffset;
 
         // We ignore equal cases until we find the first variable
@@ -496,7 +501,7 @@ public sealed class StrEq : StrEqBase {
 
                 if (LHS.Length <= lhsIdx)
                     break;
-                t = LHS[dir, lhsIdx++];
+                t = LHS[fwd, lhsIdx++];
                 if (t is NamedStrToken) {
                     if (bestPending.HasValue && (!best.HasValue || bestPending > best)) {
                         best = bestPending;
@@ -508,7 +513,7 @@ public sealed class StrEq : StrEqBase {
                     }
                     seenVariable = true;
                 }
-                len = LenVar.MkLenPoly([t], env);
+                len = LenVar.MkLenPoly([t], env, []);
                 //ratLen = len.Apply(intSubst);
                 constDiff += len.ConstOffset;
                 lhsLen = lhsLen.Add(len);
@@ -516,7 +521,7 @@ public sealed class StrEq : StrEqBase {
             }
             if (RHS.Length <= rhsIdx)
                 break;
-            t = RHS[dir, rhsIdx++];
+            t = RHS[fwd, rhsIdx++];
             if (t is NamedStrToken) {
                 if (bestPending.HasValue && (!best.HasValue || bestPending > best)) {
                     best = bestPending;
@@ -528,7 +533,7 @@ public sealed class StrEq : StrEqBase {
                 }
                 seenVariable = true;
             }
-            len = LenVar.MkLenPoly([t], env);
+            len = LenVar.MkLenPoly([t], env, []);
             //ratLen = len.Apply(intSubst);
             constDiff -= len.ConstOffset;
             rhsLen = rhsLen.Add(len);
@@ -542,7 +547,7 @@ public sealed class StrEq : StrEqBase {
             best > int.MaxValue ||
             best < int.MinValue
                 ? null
-                : new EqSplitModifier(this, (uint)bestLhs, (uint)bestRhs, (int)best, dir);
+                : new EqSplitModifier(this, (uint)bestLhs, (uint)bestRhs, (int)best, fwd);
     }
 
 #if false
@@ -780,32 +785,32 @@ public sealed class StrEq : StrEqBase {
     }
 #endif
 
-    static ModifierBase? SplitVarVar(Str s1, Str s2, bool dir) {
-        if (s1.IsEmpty() || s2.IsEmpty() || s1[dir] is not StrVarToken v1 || s2[dir] is not StrVarToken v2)
+    static ModifierBase? SplitVarVar(Str s1, Str s2, bool fwd) {
+        if (s1.IsEmpty() || s2.IsEmpty() || s1[fwd] is not StrVarToken v1 || s2[fwd] is not StrVarToken v2)
             return null;
-        return new VarNielsenModifier(v1, v2, dir);
+        return new VarNielsenModifier(v1, v2, fwd);
     }
 
-    ModifierBase? SplitGroundPower(StrToken t, Str s, Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s[dir] is not UnitToken)
+    ModifierBase? SplitGroundPower(StrToken t, Str s, Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
+        if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is NamedStrToken)
             return null;
-        var p = TryGetPowerSplitBase(v, s, env, varDep, dir);
-        return p.Count == 0 ? null : new GPowerIntrModifier(p, dir);
+        var p = TryGetPowerSplitBase(v, s, env, varDep, fwd);
+        return p.Count == 0 ? null : new GPowerIntrModifier(p, fwd);
     }
 
-    ModifierBase? SplitVarChar(StrToken t, Str s, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s[dir] is not UnitToken)
+    ModifierBase? SplitVarChar(StrToken t, Str s, bool fwd) {
+        if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is not UnitToken)
             return null;
-        return new ConstNielsenModifier(v, s[dir], dir);
+        return new ConstNielsenModifier(v, s[fwd], fwd);
     }
 
-    ModifierBase? SplitVarPower(StrToken t, Str s, bool dir) {
-        if (t is not StrVarToken v || s.IsEmpty() || s[dir] is not PowerToken { Ground: true } p)
+    ModifierBase? SplitVarPower(StrToken t, Str s, bool fwd) {
+        if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is not PowerToken { Ground: true } p)
             return null;
-        return new PowerSplitModifier(v, p, dir);
+        return new PowerSplitModifier(v, p, fwd);
     }
 
-    ModifierBase ExtendDir(Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, Environment env, Dictionary<NamedInt, PDD<BigRational>> intSubst, bool dir) {
+    ModifierBase ExtendDir(Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, Environment env, Dictionary<NamedInt, PDD<BigRational>> intSubst, bool fwd) {
         Debug.Assert(IsSorted());
         if (LHS.IsEmpty()) {
             Debug.Assert(!RHS.IsEmpty());
@@ -817,34 +822,34 @@ public sealed class StrEq : StrEqBase {
         }
         Debug.Assert(!LHS.IsEmpty() && !RHS.IsEmpty());
 
-        var t1 = LHS[dir];
-        var t2 = RHS[dir];
+        var t1 = LHS[fwd];
+        var t2 = RHS[fwd];
 
         ModifierBase? ret;
 
-        if ((ret = SplitPowerElim(t1, RHS, env, dir)) is not null)
+        if ((ret = SplitPowerElim(t1, RHS, env, fwd)) is not null)
             return ret;
-        if ((ret = SplitPowerElim(t2, LHS, env, dir)) is not null)
+        if ((ret = SplitPowerElim(t2, LHS, env, fwd)) is not null)
             return ret;
         if (t2 is not NamedStrToken && (ret = SplitPowerUnwind(t1, false)) is not null)
             return ret;
         if (t1 is not NamedStrToken && (ret = SplitPowerUnwind(t2, false)) is not null)
             return ret;
-        if ((ret = SplitGroundPower(t1, RHS, env, varDep, dir)) is not null)
+        if ((ret = SplitGroundPower(t1, RHS, env, varDep, fwd)) is not null)
             return ret;
-        if ((ret = SplitGroundPower(t2, LHS, env, varDep, dir)) is not null)
+        if ((ret = SplitGroundPower(t2, LHS, env, varDep, fwd)) is not null)
             return ret;
-        if ((ret = SplitEq(dir, env/*, intSubst*/)) is not null)
+        if ((ret = SplitEq(fwd, env/*, intSubst*/)) is not null)
             return ret;
-        if ((ret = SplitVarPower(t1, RHS, dir)) is not null)
+        if ((ret = SplitVarPower(t1, RHS, fwd)) is not null)
             return ret;
-        if ((ret = SplitVarPower(t2, LHS, dir)) is not null)
+        if ((ret = SplitVarPower(t2, LHS, fwd)) is not null)
             return ret;
-        if ((ret = SplitVarChar(t1, RHS, dir)) is not null)
+        if ((ret = SplitVarChar(t1, RHS, fwd)) is not null)
             return ret;
-        if ((ret = SplitVarChar(t2, LHS, dir)) is not null)
+        if ((ret = SplitVarChar(t2, LHS, fwd)) is not null)
             return ret;
-        if ((ret = SplitVarVar(LHS, RHS, dir)) is not null)
+        if ((ret = SplitVarVar(LHS, RHS, fwd)) is not null)
             return ret;
         if ((ret = SplitPowerUnwind(t1, true)) is not null)
             return ret;
@@ -855,7 +860,7 @@ public sealed class StrEq : StrEqBase {
 
     static int extendCnt;
 
-    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
+    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
         extendCnt++;
         // Don't sort -- this should have happened before in simplify!!
         var m1 = ExtendDir(node.forwardVarDep, node.Env, intSubst, true);
@@ -878,9 +883,8 @@ public sealed class StrEq : StrEqBase {
     public override StrConstraint Negate() => 
         new StrNonEq(LHS, RHS);
 
-    public override BoolExpr ToExpr(NielsenGraph graph) {
-        return graph.Ctx.MkEq(LHS.ToExpr(graph), RHS.ToExpr(graph));
-    }
+    public override BoolExpr ToExpr(NielsenGraph graph) => 
+        graph.Ctx.MkEq(LHS.ToExpr(graph), RHS.ToExpr(graph));
 
     public override int GetHashCode() => 
         HashCode.Combine(LHS.GetHashCode(), RHS.GetHashCode()) * 782620193;
