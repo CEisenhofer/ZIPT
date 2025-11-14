@@ -38,12 +38,12 @@ public sealed class IntersectToken : StrToken {
         throw new NotImplementedException();
     }
 
-    public override Expr ToExpr(NielsenGraph graph) {
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
         Debug.Assert(Cases.Count > 1);
-        Expr expr = Cases[^1].ToExpr(graph);
+        Expr expr = Cases[^1].ToExpr(env, currentModificationCnt);
         for (int i = Cases.Count - 1; i > 0; i--) {
-            var e = Cases[i - 1].ToExpr(graph);
-            expr = graph.Env.InterFct.Apply(e, expr);
+            var e = Cases[i - 1].ToExpr(env, currentModificationCnt);
+            expr = env.InterFct.Apply(e, expr);
         }
         return expr;
     }

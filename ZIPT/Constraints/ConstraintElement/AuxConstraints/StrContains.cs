@@ -42,7 +42,7 @@ public class StrContains : StrConstraint {
             itp.Env.StrManager.Subst(Contained, itp), Negated);
 
     // Just very rudimentary implementation - it will get eliminated anyway...
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr,
         ref BacktrackReasons reason) {
         if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
@@ -62,8 +62,8 @@ public class StrContains : StrConstraint {
         return Negated ? SimplifyResult.Conflict : SimplifyResult.Satisfied;
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Env.ContainsFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        (BoolExpr)env.ContainsFct.Apply(S.ToExpr(env, currentModificationCnt), Contained.ToExpr(env, currentModificationCnt));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         S.CollectSymbols(nonTermSet, alphabet);
@@ -76,7 +76,7 @@ public class StrContains : StrConstraint {
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
 
-    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
+    public override ModifierBase Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

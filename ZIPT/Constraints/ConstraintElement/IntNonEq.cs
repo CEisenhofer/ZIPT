@@ -22,8 +22,7 @@ public class IntNonEq : IntConstraint {
     }
 
     public IntNonEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        Poly = lhs;
-        Poly = Poly.Sub(rhs);
+        Poly = lhs.Sub(rhs);
         if (!Poly.IsNormal)
             Poly = Poly.Negate();
     }
@@ -74,8 +73,8 @@ public class IntNonEq : IntConstraint {
         return $"{pos} != {neg}";
     }
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
-        var bounds = Poly.GetBounds(node);
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
+        var bounds = Poly.GetBounds(info.CurrentNode);
         if (!bounds.Contains(0))
             return SimplifyResult.Satisfied;
         if (bounds.IsUnit) {
@@ -91,8 +90,8 @@ public class IntNonEq : IntConstraint {
         return SimplifyResult.Proceed;
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        graph.Ctx.MkNot(graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0)));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        env.Ctx.MkNot(env.Ctx.MkEq(Poly.ToExpr(env, currentModificationCnt), env.Ctx.MkInt(0)));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
         Poly.CollectSymbols(nonTermSet, alphabet);

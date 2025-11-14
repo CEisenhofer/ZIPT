@@ -189,8 +189,11 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
         StrManager.ToList(this);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Expr ToExpr(NielsenGraph graph) =>
-        StrManager.ToExpr(this, graph);
+    public Expr ToExpr(LocalInfo info) => ToExpr(info.Env, info.CurrentModificationCnt);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
+    public Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        StrManager.ToExpr(this, env, currentModificationCnt);
 
     public abstract void MoveCache(Str old);
 

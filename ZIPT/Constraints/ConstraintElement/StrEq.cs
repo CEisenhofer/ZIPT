@@ -44,7 +44,7 @@ public sealed class StrEq : StrEqBase {
         return new StrEq(lhs, rhs);
     }
 
-    
+
     public void GetNielsenDep(Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
         if (LHS.IsEmpty() || RHS.IsEmpty())
             return;
@@ -83,7 +83,7 @@ public sealed class StrEq : StrEqBase {
                 }
                 varSet.Add(v3, s);
                 return;
-            }
+    }
             s.Add(t);
         }
     }
@@ -167,8 +167,11 @@ public sealed class StrEq : StrEqBase {
         }
         // TODO: Check the other if it is also a variable
 
-        if (s.IsNonEmpty()) 
-            sConstr.Add(new Subst(v1, env.MkString(s)));
+        if (s.IsNonEmpty()) {
+            var res = sConstr.Add(new Subst(v1, env.MkString(s)));
+            if (res != SimplifyResult.Proceed)
+                return;
+        }
 
         if (t2 is not CharToken || s1.Length <= 1)
             return;
@@ -266,7 +269,7 @@ public sealed class StrEq : StrEqBase {
             ? SimplifyResult.Proceed 
             : sConstr.Add(new Subst(v, s));
 
-    SimplifyResult SimplifyDir(NielsenNode node, DetModifier sConstr, bool fwd) {
+    SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             SortStr(fwd);
             Debug.Assert(LHS.Length > 0);
@@ -274,7 +277,7 @@ public sealed class StrEq : StrEqBase {
             Debug.Assert(LHS.RegexFree);
             Debug.Assert(RHS.RegexFree);
 
-            if (SimplifySame(node.Env, fwd))
+            if (SimplifySame(info.Env, fwd))
                 continue;
 
             var t1 = LHS[fwd];
@@ -283,31 +286,31 @@ public sealed class StrEq : StrEqBase {
             if (t1 is CharToken c1 && t2 is CharToken c2 && !c1.Equals(c2))
                 return SimplifyResult.Conflict;
 
-            //if (t1 is SymCharToken sc1 && t2 is UnitToken u)
-            //    return sConstr.Add(new SubstSChar(sc1, u));
+            if (t1 is SymCharToken sc1 && t2 is UnitToken u)
+                return sConstr.Add(new CharSubst(sc1, u));
 
             if (t1 is PowerToken p1) {
-                if (node.IsZero(p1.Power)) {
-                    LHS = node.Env.StrManager.Drop(LHS, fwd);
+                if (info.CurrentNode.IsZero(p1.Power)) {
+                    LHS = info.Env.StrManager.Drop(LHS, fwd);
                     continue;
                 }
-                if (!IsPrefixConsistent(node, p1.Base, RHS, fwd)) {
-                    sConstr.Add(new IntEq(node.Env.ZeroInt, p1.Power));
+                if (!IsPrefixConsistent(info.CurrentNode, p1.Base, RHS, fwd)) {
+                    sConstr.Add(new IntEq(info.Env.ZeroInt, p1.Power));
                     return SimplifyResult.Proceed;
                 }
             }
             if (t2 is PowerToken p2) {
-                if (node.IsZero(p2.Power)) {
-                    RHS = node.Env.StrManager.Drop(RHS, fwd);
+                if (info.CurrentNode.IsZero(p2.Power)) {
+                    RHS = info.Env.StrManager.Drop(RHS, fwd);
                     continue;
                 }
-                if (!IsPrefixConsistent(node, p2.Base, LHS, fwd)) {
-                    sConstr.Add(new IntEq(node.Env.ZeroInt, p2.Power));
+                if (!IsPrefixConsistent(info.CurrentNode, p2.Base, LHS, fwd)) {
+                    sConstr.Add(new IntEq(info.Env.ZeroInt, p2.Power));
                     return SimplifyResult.Proceed;
                 }
             }
 
-            if (SimplifyPower(node, fwd))
+            if (SimplifyPower(info, fwd))
                 continue;
             break;
         }
@@ -316,19 +319,19 @@ public sealed class StrEq : StrEqBase {
 
     static int simplifyCount;
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
         simplifyCount++;
         Log.WriteLine($"Simplify Eq ({simplifyCount}): {LHS} = {RHS}");
 #if false
         lhs = LcpCompression(lhs) ?? lhs;
         rhs = LcpCompression(rhs) ?? rhs;
 #endif
-        if (SimplifyDir(node, sConstr, true) == SimplifyResult.Conflict) {
+        if (SimplifyDir(info, sConstr, true) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
 
-        if (SimplifyDir(node, sConstr, false) == SimplifyResult.Conflict) {
+        if (SimplifyDir(info, sConstr, false) == SimplifyResult.Conflict) {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
@@ -341,21 +344,21 @@ public sealed class StrEq : StrEqBase {
             // Remove powers that actually do not exist anymore
             while (eq.IsNonEmpty() && eq[true] is PowerToken p) {
                 Str? s;
-                if ((s = SimplifyPowerSingle(node, p)) is not null) {
-                    eq = node.Env.StrManager.DropLeft(eq);
-                    eq = node.Env.StrManager.Concat(eq, s);
+                if ((s = SimplifyPowerSingle(info, p)) is not null) {
+                    eq = info.Env.StrManager.DropLeft(eq);
+                    eq = info.Env.StrManager.Concat(eq, s);
                     continue;
                 }
                 break;
             }
             if (eq.IsEmpty())
                 return SimplifyResult.Satisfied;
-            if (SimplifyEmpty(eq.GetEnumerator(), node, sConstr) == SimplifyResult.Conflict) {
+            if (SimplifyEmpty(eq.GetEnumerator(), info.CurrentNode, sConstr) == SimplifyResult.Conflict) {
                 reason = BacktrackReasons.SymbolClash;
                 return SimplifyResult.Conflict;
             }
             LHS = eq;
-            RHS = node.Env.EmptyStr;
+            RHS = info.Env.EmptyStr;
             SortStr();
             return SimplifyResult.Proceed;
         }
@@ -400,9 +403,9 @@ public sealed class StrEq : StrEqBase {
         // Propagate assignments
         // important: clone it; otherwise one might into endless recursions when applied to itself
         if (LHS is { Length: 1, First: StrVarToken s1 })
-            AddDefinition(s1, RHS, node, sConstr);
+            AddDefinition(s1, RHS, info.CurrentNode, sConstr);
         if (RHS is { Length: 1, First: StrVarToken s2 })
-            AddDefinition(s2, LHS, node, sConstr);
+            AddDefinition(s2, LHS, info.CurrentNode, sConstr);
         SortStr();
         return SimplifyResult.Proceed;
     }
@@ -550,7 +553,6 @@ public sealed class StrEq : StrEqBase {
                 : new EqSplitModifier(this, (uint)bestLhs, (uint)bestRhs, (int)best, fwd);
     }
 
-#if false
     static int Periodicity(Str s, int from, int to) {
         if (from == to)
             // units are always a-periodic
@@ -575,18 +577,18 @@ public sealed class StrEq : StrEqBase {
         return (to - from + 1) - prefix[^1];
     }
 
-    static void GetParikhCandidates(Str s, int from, int to, HashSet<List<StrToken>> pattern) {
+    static void GetParikhCandidates(Environment env, Str s, int from, int to, HashSet<Str> pattern) {
         // TODO: Check if the pattern is already in the set (trie!)
         Debug.Assert(from < to);
         int p = Periodicity(s, from, to - 1);
         if (p == to - from) {
-            pattern.Add(s.SubStr(from, to - from));
+            pattern.Add(env.StrManager.SubStr(s, from, to - from));
             return;
         }
         int rotLen = to - p - from;
         // All rotations of the base of the periodic base
         for (int i = from; i < to - rotLen; i++) {
-            GetParikhCandidates(s, i, i + rotLen, pattern);
+            GetParikhCandidates(env, s, i, i + rotLen, pattern);
         }
     }
 
@@ -606,9 +608,7 @@ public sealed class StrEq : StrEqBase {
         return (int)s.Length;
     }
 
-    static HashSet<List<StrToken>> GetParikhCandidates(Str s) {
-        HashSet<List<StrToken>> pattern = [];
-
+    static HashSet<Str> GetParikhCandidates(Environment env, Str s) {
         // [from; to)
         List<(int from, int to)> charIntervals = [];
 
@@ -631,19 +631,20 @@ public sealed class StrEq : StrEqBase {
 
         // TODO: We might not only find maximum ones, but it does not matter
         charIntervals.Sort((a, b) => - ((a.to - a.from) - (b.to - b.from)));
+        HashSet<Str> pattern = [];
 
         for (int i = 0; i < charIntervals.Count; i++) {
             (from, to) = charIntervals[i];
-            GetParikhCandidates(s, from, to, pattern);
+            GetParikhCandidates(env, s, from, to, pattern);
         }
         return pattern;
     }
 
-    static void GroupParikh(Str s, List<StrToken> pattern, IDictionary<Str, int> patternOcc, ref int constant, int sig) {
-        Debug.Assert(pattern.IsWord());
-        Debug.Assert(pattern.Count > 1);
+    static void GroupParikh(Environment env, Str s, Str pattern, IDictionary<Str, int> patternOcc, ref int constant, int sign) {
+        Debug.Assert(pattern.GetEnumerator().All(o => o is CharToken));
+        Debug.Assert(pattern.Length > 1);
 
-        Str? runningStr = null;
+        List<StrToken>? runningStr = null;
         int i = 0;
 
         while (i < s.Length) {
@@ -652,13 +653,13 @@ public sealed class StrEq : StrEqBase {
             int j;
             while (i < s.Length) {
                 j = 0;
-                for (; i + j < s.Length && j < pattern.Count; j++) {
+                for (; i + j < s.Length && j < pattern.Length; j++) {
                     if (!s[i + j].Equals(pattern[j]))
                         break;
                 }
-                if (j >= pattern.Count) {
+                if (j >= pattern.Length) {
                     // we found a proper occurrence
-                    constant += sig;
+                    constant += sign;
                     i += j;
                     continue;
                 }
@@ -673,7 +674,7 @@ public sealed class StrEq : StrEqBase {
                     continue;
                 }
                 // we hit a gap
-                runningStr = s.SubStr(i, j + 1);
+                runningStr = env.StrManager.SubStr(s, i, j + 1).ToArray().ToList();
                 i += j + 1;
                 break;
             }
@@ -684,12 +685,12 @@ public sealed class StrEq : StrEqBase {
             while (i < s.Length) {
                 if (s[i] is not CharToken) {
                     // consecutive non-variables; just add
-                    runningStr.AddLast(s[i]);
+                    runningStr.Add(s[i]);
                     i++;
                     continue;
                 }
                 j = GetNextNonChar(i, s);
-                if (j - i >= pattern.Count || j >= s.Length)
+                if (j - i >= pattern.Length || j >= s.Length)
                     break;
                 // Check if it is in the center
                 k = 1;
@@ -704,31 +705,32 @@ public sealed class StrEq : StrEqBase {
                 }
                 if (k < j - i) {
                     // we have a center gap
-                    runningStr.AddLastRange(s.SubStr(i, j - i + 1));
+                    runningStr.AddRange(env.StrManager.SubStr(s, i, j - i + 1).ToArray());
                     i = j + 1;
                     continue;
                 }
                 break;
             }
             // check for right gap
-            j = Math.Min(GetNextNonChar(i, s) - i, Math.Min(pattern.Count, (int)s.Length - i));
+            j = Math.Min(GetNextNonChar(i, s) - i, Math.Min((int)pattern.Length, (int)s.Length - i));
             // find the end of the gap (we look for the largest such k)
             for (; j > 1; j--) {
                 int l = 1;
                 for (; l < j; l++) {
-                    if (!s[i + j - l - 1].Equals(pattern[^l]))
+                    if (!s[i + j - l - 1].Equals(pattern[false, l - 1]))
                         break;
                 }
                 if (l >= j)
                     break;
             }
             int tail = Math.Max(0, j - 1);
-            runningStr.AddLastRange(s.SubStr(i, tail));
+            runningStr.AddRange(env.StrManager.SubStr(s, i, tail).ToArray());
             i += tail;
-            if (!patternOcc.TryGetValue(runningStr, out int v))
-                patternOcc.Add(runningStr, sig);
+            Str r = env.MkString(runningStr);
+            if (!patternOcc.TryGetValue(r, out int v))
+                patternOcc.Add(r, sign);
             else
-                patternOcc[runningStr] = v + sig;
+                patternOcc[r] = v + sign;
 
             runningStr = null;
         }
@@ -737,23 +739,23 @@ public sealed class StrEq : StrEqBase {
 
     static int OverApprox(Str gap) {
         Debug.Assert(gap.IsNonEmpty());
-        Debug.Assert(gap.Any(o => o is not CharToken));
+        Debug.Assert(gap.GetEnumerator().Any(o => o is not CharToken));
         if (gap.Length == 1)
             return 0;
         int overApprox = 0;
-        if (gap[0] is CharToken)
+        if (gap.First is CharToken)
             overApprox++;
-        if (gap[^1] is CharToken)
+        if (gap.Last is CharToken)
             overApprox++;
-        return gap.Count(o => o is not CharToken) + overApprox - 1;
+        return gap.GetEnumerator().Count(o => o is not CharToken) + overApprox - 1;
 
     }
 
-    static bool CheckMultiSequenceParikh(Str s1, Str s2, List<StrToken> pattern) {
+    static bool CheckMultiSequenceParikh(Environment env, Str s1, Str s2, Str pattern) {
         Dictionary<Str, int> patternOcc = [];
         int constant = 0;
-        GroupParikh(s1, pattern, patternOcc, ref constant, 1);
-        GroupParikh(s2, pattern, patternOcc, ref constant, -1);
+        GroupParikh(env, s1, pattern, patternOcc, ref constant, 1);
+        GroupParikh(env, s2, pattern, patternOcc, ref constant, -1);
 
         int sum1 = constant;
         int sum2 = -constant;
@@ -770,20 +772,19 @@ public sealed class StrEq : StrEqBase {
         return sum1 >= 0 && sum2 >= 0;
     }
 
-    public static bool CheckMultiSequenceParikh(Str s1, Str s2) {
-        var c = GetParikhCandidates(s1);
-        var c2 = GetParikhCandidates(s2);
+    public static bool CheckMultiSequenceParikh(Environment env, Str s1, Str s2) {
+        var c = GetParikhCandidates(env, s1);
+        var c2 = GetParikhCandidates(env, s2);
         c.UnionWith(c2);
         foreach (var s in c2) {
-            Debug.Assert(s.Count > 0);
-            if (s.Count < 2)
+            Debug.Assert(s.IsNonEmpty());
+            if (s.Length < 2)
                 continue;
-            if (!CheckMultiSequenceParikh(s1, s2, s))
+            if (!CheckMultiSequenceParikh(env, s1, s2, s))
                 return false;
         }
         return true;
     }
-#endif
 
     static ModifierBase? SplitVarVar(Str s1, Str s2, bool fwd) {
         if (s1.IsEmpty() || s2.IsEmpty() || s1[fwd] is not StrVarToken v1 || s2[fwd] is not StrVarToken v2)
@@ -880,11 +881,10 @@ public sealed class StrEq : StrEqBase {
         return cmp != 0 ? cmp : RHS.CompareTo(otherEq.RHS);
     }
 
-    public override StrConstraint Negate() => 
-        new StrNonEq(LHS, RHS);
+    public override StrNonEq Negate() => new(LHS, RHS);
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        graph.Ctx.MkEq(LHS.ToExpr(graph), RHS.ToExpr(graph));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        env.Ctx.MkEq(LHS.ToExpr(env, currentModificationCnt), RHS.ToExpr(env, currentModificationCnt));
 
     public override int GetHashCode() => 
         HashCode.Combine(LHS.GetHashCode(), RHS.GetHashCode()) * 782620193;

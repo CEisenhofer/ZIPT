@@ -30,9 +30,10 @@ public struct Subst {
     }
 
     public void AddToInterpretation(Interpretation itp) => itp.Apply(this);
-    public IntExpr KeyLenExpr(NielsenGraph graph) => lenVar.ToExpr(graph);
-    public IntExpr ValueLenExpr(NielsenGraph graph) =>
-        GetLenReplacement(graph.Env).newLen.ToExpr(graph);
+    public IntExpr KeyLenExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        lenVar.ToExpr(env, currentModificationCnt);
+    public IntExpr ValueLenExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        GetLenReplacement(env).newLen.ToExpr(env, currentModificationCnt);
     public void CollectValueSymbols(NonTermSet nonTermSet) => Str.CollectSymbols(nonTermSet, []);
 
     public override string ToString() => $"{Var} / {(Str.Length == 0 ? "ε" : Str)}";

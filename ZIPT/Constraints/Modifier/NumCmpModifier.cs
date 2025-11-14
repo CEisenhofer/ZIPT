@@ -15,20 +15,20 @@ public class NumCmpModifier : ModifierBase {
         N2 = n2;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // N1 < N2 (progress)
         // N2 <= N1 (progress)
 
-        node.MkChild(node, 
-            Array.Empty<Subst>(),
+        info.CurrentNode.MkChild(info, 
+            [], [],
             [IntLe.MkLt(N1, N2)], [],
             true); // N1 < N2
-        yield return node.Outgoing[^1];
-        node.MkChild(node,
-            Array.Empty<Subst>(),
+        yield return info.CurrentNode.Outgoing[^1];
+        info.CurrentNode.MkChild(info,
+            [], [],
             [IntLe.MkLe(N2, N1)], [],
             true); // N2 <= N1
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

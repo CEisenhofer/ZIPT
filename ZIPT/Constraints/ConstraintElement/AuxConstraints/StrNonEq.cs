@@ -41,34 +41,34 @@ public sealed class StrNonEq : StrEqBase {
         return new StrNonEq(lhs, rhs);
     }
 
-    SimplifyResult Simplify(NielsenNode node, bool fwd) {
+    SimplifyResult Simplify(LocalInfo info, bool fwd) {
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             Debug.Assert(LHS.IsNonEmpty());
             Debug.Assert(RHS.IsNonEmpty());
 
-            if (SimplifySame(node.Env, fwd))
+            if (SimplifySame(info.Env, fwd))
                 continue;
 
             if (LHS[fwd] is CharToken c1 && RHS[fwd] is CharToken c2 && !c1.Equals(c2))
                 return SimplifyResult.Satisfied;
 
-            if (SimplifyPower(node, fwd))
+            if (SimplifyPower(info, fwd))
                 continue;
             break;
         }
         return SimplifyResult.Proceed;
     }
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
         Log.WriteLine($"Simplify DisEq: {LHS} != {RHS}");
         SimplifyResult res;
         Debug.Assert(IsSorted());
-        if ((res = Simplify(node, true)) != SimplifyResult.Proceed) {
+        if ((res = Simplify(info, true)) != SimplifyResult.Proceed) {
             reason = res == SimplifyResult.Conflict ? BacktrackReasons.SymbolClash : reason;
             SortStr();
             return res;
         }
-        if ((res = Simplify(node, false)) != SimplifyResult.Proceed) {
+        if ((res = Simplify(info, false)) != SimplifyResult.Proceed) {
             reason = res == SimplifyResult.Conflict ? BacktrackReasons.SymbolClash : reason;
             SortStr();
             return res;
@@ -102,8 +102,8 @@ public sealed class StrNonEq : StrEqBase {
 
     public override StrConstraint Negate() => new StrEq(LHS, RHS);
 
-    public override BoolExpr ToExpr(NielsenGraph graph) =>
-        graph.Ctx.MkNot(graph.Ctx.MkEq(LHS.ToExpr(graph), RHS.ToExpr(graph)));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        env.Ctx.MkNot(env.Ctx.MkEq(LHS.ToExpr(env, currentModificationCnt), RHS.ToExpr(env, currentModificationCnt)));
 
     public override int GetHashCode() =>
         HashCode.Combine(LHS, RHS) * 737001851;

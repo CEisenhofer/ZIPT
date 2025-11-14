@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Contracts;
+using System.Text.RegularExpressions;
 using Microsoft.Z3;
-using ZIPT.MiscUtils;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.Strings.Tokens;
 
@@ -8,8 +9,8 @@ namespace ZIPT.Constraints;
 
 public class NielsenEdge : IEquatable<NielsenEdge> {
     public NielsenNode Src { get; }
-    public BoolExpr Assumption { get; }
     public IReadOnlyList<Subst> Subst { get; }
+    public IReadOnlyList<CharSubst> SubstC { get; }
     public IReadOnlyCollection<Constraint> SideConstraints { get; }
     public List<BoolExpr> Asserted { get; } = [];
     public List<NamedStrToken> BumpedModCount { get; }
@@ -17,13 +18,15 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
 
     public string ModStr =>
         string.Join("\\n",
-            Subst.Select(o => o.ToString()).
-                Concat(SideConstraints.Select(o => o.ToString())));
+            Subst.Select(o => o.ToString()).Concat(
+                SubstC.Select(o => o.ToString()).Concat(
+                    SideConstraints.Select(o => o.ToString()))));
 
-    public NielsenEdge(NielsenNode src, BoolExpr assumption, IReadOnlyList<Subst> subst, IReadOnlyCollection<Constraint> sideConds, NielsenNode tgt) {
+    public NielsenEdge(NielsenNode src, IReadOnlyList<Subst> subst, IReadOnlyList<CharSubst> substC,
+        IReadOnlyCollection<Constraint> sideConds, NielsenNode tgt) {
         Src = src;
-        Assumption = assumption;
         Subst = subst;
+        SubstC = substC;
         SideConstraints = sideConds;
         Tgt = tgt;
         BumpedModCount = [];
@@ -36,37 +39,37 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         }
     }
 
-    public void AssertToZ3(BoolExpr e) {
+    public void AddZ3Constraint(BoolExpr e) {
         if (e.IsTrue)
             return;
-        var graph = Src.Graph;
-        e = graph.Ctx.MkImplies(Assumption, e);
         Asserted.Add((BoolExpr)e.Dup());
-        graph.SubSolver.Assert(e);
     }
 
-    public void IncModCount(NielsenGraph graph) {
+    public void IncModCount(LocalInfo info) {
         foreach (var b in BumpedModCount) {
-            int prev = graph.CurrentModificationCnt.GetValueOrDefault(b, 0);
-            graph.CurrentModificationCnt[b] = prev + 1;
+            int prev = info.CurrentModificationCnt.GetValueOrDefault(b, 0);
+            info.CurrentModificationCnt[b] = prev + 1;
         }
-        graph.CurrentPath.Add(this);
-        graph.ModCnt++;
+        info.CurrentPath.Add(Src.Id, this);
+        info.ModCnt++;
+        info.CurrentNode = Tgt;
     }
 
-    public void DecModCount(NielsenGraph graph) {
-        Debug.Assert(graph.ModCnt > 0);
-        graph.ModCnt--;
-        graph.CurrentPath.Pop();
+    public void DecModCount(LocalInfo info) {
+        Debug.Assert(info.ModCnt > 0);
+        info.ModCnt--;
+        info.CurrentPath.Remove(Src.Id);
         for (int i = BumpedModCount.Count; i > 0; i--) {
             NamedStrToken toDec = BumpedModCount[i - 1];
-            int prev = graph.CurrentModificationCnt[toDec];
+            int prev = info.CurrentModificationCnt[toDec];
             Debug.Assert(prev >= 1);
             if (prev == 1)
-                graph.CurrentModificationCnt.Remove(toDec);
+                info.CurrentModificationCnt.Remove(toDec);
             else
-                graph.CurrentModificationCnt[toDec] = prev - 1;
+                info.CurrentModificationCnt[toDec] = prev - 1;
         }
+        Debug.Assert(ReferenceEquals(info.CurrentNode, Tgt));
+        info.CurrentNode = Src;
     }
 
     public override bool Equals(object? obj) =>
@@ -79,5 +82,5 @@ public class NielsenEdge : IEquatable<NielsenEdge> {
         HashCode.Combine(Src, Tgt);
 
     public override string ToString() => 
-        $"{Src} --[{string.Join(", ", Subst)};{string.Join(", ", SideConstraints)}]--> {Tgt}";
+        $"{Src} --[{string.Join(", ", Subst)};{string.Join(", ", SubstC)};{string.Join(", ", SideConstraints)}]--> {Tgt}";
 }

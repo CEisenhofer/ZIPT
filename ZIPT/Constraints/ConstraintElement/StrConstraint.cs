@@ -6,6 +6,8 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
 
+    public sealed override bool Shared => false;
+
     public abstract bool Contains(NamedStrToken namedStrToken);
     public abstract ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst);
     public abstract int CompareToInternal(StrConstraint other);
@@ -17,4 +19,5 @@ public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
+
 }

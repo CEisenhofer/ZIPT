@@ -17,7 +17,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         V2 = v2;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
 #if false
         // V1 / "" (progress)
         // V2 / "" && |V1| >= 1 (progress)
@@ -71,23 +71,23 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         // V1 / V2 (progress)
         // V1 / V1V2 (no progress)
         // V2 / V2V1 (no progress)
-        Str s = node.Env.MkString(V2);
-        node.MkChild(node, [new Subst(V1, s)], Array.Empty<Constraint>(), [], true);
-        yield return node.Outgoing[^1];
+        Str s = info.Env.MkString(V2);
+        info.CurrentNode.MkChild(info, [new Subst(V1, s)], [], [], [], true);
+        yield return info.CurrentNode.Outgoing[^1];
 
-        s = Forwards ? node.Env.MkString(V2, V1) : node.Env.MkString(V1, V2);
-        node.MkChild(node,
-            [new Subst(V1, s)],
-            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V1, node.Env))], [], // 0 < |V1|
+        s = Forwards ? info.Env.MkString(V2, V1) : info.Env.MkString(V1, V2);
+        info.CurrentNode.MkChild(info,
+            [new Subst(V1, s)], [],
+            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V1, info.Env))], [], // 0 < |V1|
             false);
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
 
-        s = Forwards ? node.Env.MkString(V1, V2) : node.Env.MkString(V2, V1);
-        node.MkChild(node,
-            [new Subst(V2, s)],
-            [IntLe.MkLt(node.Env.ZeroInt, LenVar.MkLenPoly(V2, node.Env))], [], // 0 < |V2|
+        s = Forwards ? info.Env.MkString(V1, V2) : info.Env.MkString(V2, V1);
+        info.CurrentNode.MkChild(info,
+            [new Subst(V2, s)], [],
+            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V2, info.Env))], [], // 0 < |V2|
             false);
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
 #endif
     }
 

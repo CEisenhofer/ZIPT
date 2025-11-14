@@ -8,22 +8,22 @@ public abstract class NumUnwindingModifier : ModifierBase {
 
     public PDD<BigInteger> Num { get; }
 
-    public NumUnwindingModifier(PDD<BigInteger> num) => 
+    protected NumUnwindingModifier(PDD<BigInteger> num) => 
         Num = num;
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
 
-        node.MkChild(node,
-            Array.Empty<Subst>(),
+        info.CurrentNode.MkChild(info,
+            [], [],
             [new IntEq(Num)], [],
             true); // Num == 0
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
 
-        node.MkChild(node,
-            Array.Empty<Subst>(),
-            [IntLe.MkLe(node.Env.OneInt, Num)], [],
+        info.CurrentNode.MkChild(info,
+            [], [],
+            [IntLe.MkLe(info.Env.OneInt, Num)], [],
             false); // 1 <= Num
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

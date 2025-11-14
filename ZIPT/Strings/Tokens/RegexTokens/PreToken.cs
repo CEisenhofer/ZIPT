@@ -1,8 +1,8 @@
 ﻿using Microsoft.Z3;
-using ZIPT.Constraints;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+#if false
 public class PreToken : NamedStrToken {
 
     readonly uint id;
@@ -14,13 +14,13 @@ public class PreToken : NamedStrToken {
         this.id = id;
     }
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        Expr? e = env.GetCachedStrExpr(this, currentModificationCnt);
         if (e is not null)
             return e;
-        FuncDecl f = graph.Env.Ctx.MkFreshConstDecl(Name, graph.Env.StringSort);
-        e = graph.Env.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], graph.Env.StringSort).Apply();
-        graph.Env.SetCachedExpr(this, e, graph);
+        FuncDecl f = env.Ctx.MkFreshConstDecl(Name, env.StringSort);
+        e = env.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], env.StringSort).Apply();
+        env.SetCachedExpr(this, e, currentModificationCnt);
         return e;
     }
 
@@ -30,3 +30,4 @@ public class PreToken : NamedStrToken {
     public override NamedStrToken GetExtension2() =>
         throw new NotSupportedException();
 }
+#endif

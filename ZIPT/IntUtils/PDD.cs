@@ -448,8 +448,8 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     }
 
     [Pure]
-    public static IntExpr ToExpr(NielsenGraph graph, PDD<BigInteger> p) {
-        Context ctx = graph.Env.Ctx;
+    public static IntExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt, PDD<BigInteger> p) {
+        Context ctx = env.Ctx;
         if (p.IsConst) {
             try {
                 return ctx.MkInt((long)p.Const!.Value);
@@ -459,9 +459,9 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
             }
         }
         Debug.Assert(p.Var is not null && p.Then is not null && p.Else is not null);
-        IntExpr thenExpr = ToExpr(graph, p.Then);
-        IntExpr elseExpr = ToExpr(graph, p.Else);
-        return (IntExpr)ctx.MkAdd(ctx.MkMul(p.Var.ToExpr(graph), thenExpr), elseExpr);
+        IntExpr thenExpr = ToExpr(env, currentModificationCnt, p.Then);
+        IntExpr elseExpr = ToExpr(env, currentModificationCnt, p.Else);
+        return (IntExpr)ctx.MkAdd(ctx.MkMul(p.Var.ToExpr(env, currentModificationCnt), thenExpr), elseExpr);
     }
 
     [Pure]
@@ -641,8 +641,8 @@ static class PDDExtension {
         PDD<BigInteger>.GetPosNeg(p);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public static IntExpr ToExpr(this PDD<BigInteger> p, NielsenGraph graph) =>
-        PDD<BigInteger>.ToExpr(graph, p);
+    public static IntExpr ToExpr(this PDD<BigInteger> p, Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        PDD<BigInteger>.ToExpr(env, currentModificationCnt, p);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public static Interval<BigInteger> GetBounds(this PDD<BigInteger> p, NielsenNode node) {

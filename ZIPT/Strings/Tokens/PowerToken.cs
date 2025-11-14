@@ -61,8 +61,8 @@ public sealed class PowerToken : StrToken {
         return decompositions;
     }
 
-    public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Env.MkPower(Base.ToExpr(graph), Power.ToExpr(graph));
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        env.MkPower(Base.ToExpr(env, currentModificationCnt), Power.ToExpr(env, currentModificationCnt));
 
     protected override int CompareToInternal(StrToken other) {
         int cmp = Base.CompareTo(((PowerToken)other).Base);

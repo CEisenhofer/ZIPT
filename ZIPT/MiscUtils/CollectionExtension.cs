@@ -175,6 +175,6 @@ public static class CollectionExtension {
         }
     }
 
-    public static T[] EmptyOrUnit<T>(T? elem) where T : struct => elem is null ? Array.Empty<T>() : [elem.Value];
-    public static T[] EmptyOrUnit<T>(T? elem) => elem is null ? Array.Empty<T>() : [elem];
+    public static T[] EmptyOrUnit<T>(T? elem) where T : struct => elem is null ? [] : [elem.Value];
+    public static T[] EmptyOrUnit<T>(T? elem) => elem is null ? [] : [elem];
 }

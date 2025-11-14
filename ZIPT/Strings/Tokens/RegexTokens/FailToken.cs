@@ -18,7 +18,7 @@ public sealed class FailToken : StrToken {
     public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) => 
         throw new NotSupportedException();
 
-    public override Expr ToExpr(NielsenGraph graph) => graph.Env.Fail;
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => env.Fail;
 
     protected override int CompareToInternal(StrToken other) => 0;
 

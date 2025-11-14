@@ -9,6 +9,7 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
+#if false
 // xu \in r might have been split into
 // 1) x \in prefix
 // 2) u \in postfix
@@ -104,7 +105,7 @@ public class ReSplit : StrConstraint {
         return new ReSplit(newRegex, Prefix, Postfix, Blocked.ToList(), isPropagating);
     }
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
         if (IsPropagating) {
             if (sConstr.Add(new Subst(Postfix, Regex)) == SimplifyResult.Proceed)
                 return SimplifyResult.RestartAndSatisfied;
@@ -179,3 +180,4 @@ public class ReSplit : StrConstraint {
     }
 
 }
+#endif

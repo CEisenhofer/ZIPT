@@ -9,20 +9,20 @@ public class PowerEpsilonModifier : ModifierBase {
 
     public PowerEpsilonModifier(PowerToken power) => Power = power;
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // Power.Power = 0 (progress)
         // Power.Base / "" (progress)
-        node.MkChild(node, 
-            Array.Empty<Subst>(),
+        info.CurrentNode.MkChild(info, 
+            [], [],
             [new IntEq(Power.Power)], [],
             true);
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
 
-        node.MkChild(node, 
-            Array.Empty<Subst>(),
-            [new StrEq(Power.Base, node.Graph.Env.EmptyStr)], [],
+        info.CurrentNode.MkChild(info, 
+            [], [],
+            [new StrEq(Power.Base, info.Env.EmptyStr)], [],
             true);
-        yield return node.Outgoing[^1];
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 

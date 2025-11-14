@@ -21,12 +21,12 @@ public sealed class StrAtToken : NamedStrToken {
     public override StrAtToken GetExtension1() => (StrAtToken)(Extension1 ??= new StrAtToken(S, I));
     public override StrAtToken GetExtension2() => (StrAtToken)(Extension2 ??= new StrAtToken(S, I));
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        Expr? e = graph.Env.GetCachedStrExpr(this, graph);
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        Expr? e = env.GetCachedStrExpr(this, currentModificationCnt);
         if (e is not null)
             return e;
-        e = graph.Env.StrAtFct.Apply(S.ToExpr(graph), I.ToExpr(graph));
-        graph.Env.SetCachedExpr(this, e, graph);
+        e = env.StrAtFct.Apply(S.ToExpr(env, currentModificationCnt), I.ToExpr(env, currentModificationCnt));
+        env.SetCachedExpr(this, e, currentModificationCnt);
         return e;
     }
 }

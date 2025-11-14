@@ -28,11 +28,11 @@ public class IntVar : NamedInt {
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(this);
 
-    public override IntExpr ToExpr(NielsenGraph graph) {
-        if (graph.Env.GetCachedIntExpr(this, graph) is { } e)
+    public override IntExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        if (env.GetCachedIntExpr(this, currentModificationCnt) is { } e)
             return e;
-        e = graph.Ctx.MkIntConst(ToString());
-        graph.Env.SetCachedExpr(this, e, graph);
+        e = env.Ctx.MkIntConst(ToString());
+        env.SetCachedExpr(this, e, currentModificationCnt);
         return e;
     }
 

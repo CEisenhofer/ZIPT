@@ -322,6 +322,18 @@ public sealed class StrManager {
     }
 
     [Pure]
+    public Str SubStr(Str str, int from, int len) =>
+        SubStr(str, (uint)from, (uint)len);
+
+    [Pure]
+    public Str SubStr(Str str, uint from, uint len) {
+        Debug.Assert(from + len <= str.Length);
+        Str s = DropLeft(str, from);
+        s = DropRight(s, s.Length - len);
+        return s;
+    }
+
+    [Pure]
     public Str Subst(Str str, Interpretation itp) {
         if (str.IsEmpty())
             return str;
@@ -507,8 +519,14 @@ public sealed class StrManager {
     public Str MkComplement(Str s) {
         if (s.Length == 0)
             return EmptyStr;
-        if (s is { Length: 1, First: NotToken k })
-            return k.Base;
+        if (s is { Length: 1, First: NotToken n })
+            return n.Base;
+        if (s is { Length: 1, IsFull: true })
+            return FailStr;
+        if (s is { Length: 1, IsFail: true })
+            return AllStr;
+        if (s is { Length: 1, First: SetToken set })
+            return Single(new SetToken(set.Set.Complement()));
         return Single(new NotToken(s));
     }
 
@@ -577,6 +595,8 @@ public sealed class StrManager {
                 continue;
             tokens[copyIdx++] = tokens[i];
         }
+        if (copyIdx == 0)
+            return AllStr;
         if (copyIdx == 1)
             return tokens[0];
         tokens.RemoveRange(copyIdx, tokens.Count - copyIdx);
@@ -676,7 +696,7 @@ public sealed class StrManager {
     [Pure]
     public static StrToken[] ToList(Str str) {
         if (str.IsEmpty())
-            return Array.Empty<StrToken>();
+            return [];
         if (str is SingletonStr s)
             return [s.StrToken];
         TupleStr initialStr = (TupleStr)str;
@@ -756,17 +776,17 @@ public sealed class StrManager {
     }
 
     [Pure]
-    public static Expr ToExpr(Str s, NielsenGraph graph) {
+    public static Expr ToExpr(Str s, Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
         if (s.IsEmpty())
-            return graph.Env.Epsilon;
+            return env.Epsilon;
         using var e = GetRevEnumerator(s).GetEnumerator();
         if (!e.MoveNext()) {
             Debug.Assert(false);
-            return graph.Env.Epsilon;
+            return env.Epsilon;
         }
-        Expr expr = e.Current.ToExpr(graph);
+        Expr expr = e.Current.ToExpr(env, currentModificationCnt);
         while (e.MoveNext()) {
-            expr = graph.Env.MkConcat(e.Current.ToExpr(graph), expr);
+            expr = env.MkConcat(e.Current.ToExpr(env, currentModificationCnt), expr);
         }
         return expr;
     }

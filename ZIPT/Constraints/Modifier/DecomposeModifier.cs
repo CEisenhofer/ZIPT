@@ -7,6 +7,7 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+#if false
 public class DecomposeModifier : ModifierBase {
     public StrMem Mem { get; }
 
@@ -17,18 +18,18 @@ public class DecomposeModifier : ModifierBase {
         Mem = mem;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // Do the decomposition of tu into
         // prefix + postfix = r
         // t \in prefix
         // u \in postfix
-        var prefix = new PreToken((uint)node.Id);
-        var postfix = new PostToken((uint)node.Id);
+        var prefix = new PreToken((uint)info.Id);
+        var postfix = new PostToken((uint)info.Id);
         var splitConstraint = new ReSplit(Mem.Regex, prefix, postfix);
-        var m1 = new StrMem(node.Env.MkString(Mem.Str.First), node.Env.MkString(prefix));
-        var m2 = new StrMem(node.Env.StrManager.DropLeft(Mem.Str), node.Env.MkString(postfix));
-        node.MkChild(node, [], [m1, m2, splitConstraint], [Mem], true);
-        yield return node.Outgoing[^1];
+        var m1 = new StrMem(info.Env.MkString(Mem.Str.First), info.Env.MkString(prefix));
+        var m2 = new StrMem(info.Env.StrManager.DropLeft(Mem.Str), info.Env.MkString(postfix));
+        info.CurrentNode.MkChild(info, [], [m1, m2, splitConstraint], [Mem], true);
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
@@ -39,3 +40,4 @@ public class DecomposeModifier : ModifierBase {
     public override string ToString() => 
         $"Decompose({Mem})";
 }
+#endif

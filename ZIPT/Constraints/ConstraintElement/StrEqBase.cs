@@ -166,32 +166,32 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return SimplifyResult.Proceed;
     }
 
-    public bool SimplifyPower(NielsenNode node, bool fwd) {
+    public bool SimplifyPower(LocalInfo info, bool fwd) {
         Debug.Assert(Sorted);
-        if (SimplifyPowerSide(node, fwd))
+        if (SimplifyPowerSide(info, fwd))
             return true;
         SwpSides();
-        bool elim = SimplifyPowerSide(node, fwd);
+        bool elim = SimplifyPowerSide(info, fwd);
         SwpSides();
         return elim;
     }
 
-    public bool SimplifyPowerSide(NielsenNode node, bool fwd) {
+    public bool SimplifyPowerSide(LocalInfo info, bool fwd) {
         if (lhs[fwd] is not PowerToken p)
             return false;
         Str? s;
-        if ((s = SimplifyPowerSingle(node, p)) is not null) {
-            lhs = node.Env.StrManager.Concat(s, node.Env.StrManager.Drop(lhs, fwd), fwd);
+        if ((s = SimplifyPowerSingle(info, p)) is not null) {
+            lhs = info.Env.StrManager.Concat(s, info.Env.StrManager.Drop(lhs, fwd), fwd);
             return true;
         }
-        if (SimplifyPowerElim(node, p, fwd))
+        if (SimplifyPowerElim(info.CurrentNode, p, fwd))
             return true;
         // Reason why we do not do unwinding in presence of a variable:
         // xb... = a^n... with n >= 1
         // implies x /ax but this can result in some int constraint bound propagate n >= 2
         // and result in a cycle as this makes a^n unwindable again
         // Instead we have to split on x / a^n x and x / a^m with 0 <= m < n
-        return rhs[fwd] is not NamedStrToken && SimplifyPowerUnwind(node, p, fwd);
+        return rhs[fwd] is not NamedStrToken && SimplifyPowerUnwind(info.CurrentNode, p, fwd);
     }
 
     bool SimplifyPowerElim(NielsenNode node, PowerToken p, bool fwd) {
@@ -243,7 +243,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // u^i => u...u [l times, where l is the lower bound of i] - maybe not a good idea, but not sure [option?]
     // The direction is there to decide in which direction to unwind
     // u^n => uu^{n - 1} vs u^{n - 1}u
-    protected static Str? SimplifyPowerSingle(NielsenNode node, PowerToken p) {
+    protected static Str? SimplifyPowerSingle(LocalInfo info, PowerToken p) {
         // This can be locally violated e.g., if some integer constraint simplified to 1 <= 0 so IsLt(1, 0) evaluates to true
         // Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
         if (p.Power.TryGetConst(out var dl) && dl.Sign < 0)
@@ -254,9 +254,9 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             // (u^m)^n => u^{mn}
             Dictionary<NamedInt, PDD<BigInteger>> definitions = [];
             var ret = PowerToken.MkPower(p2.Base, 
-                PDD<BigInteger>.MulByDefinitions(p.Power, p2.Power, definitions), node.Env);
+                PDD<BigInteger>.MulByDefinitions(p.Power, p2.Power, definitions), info.Env);
             foreach (var def in definitions) {
-                node.AddConstraint(new IntEq(node.Env.IntPDDManager.MkPDD(def.Key), def.Value));
+                info.CurrentNode.AddConstraint(new IntEq(info.Env.IntPDDManager.MkPDD(def.Key), def.Value));
             }
             return ret;
         }
@@ -264,15 +264,15 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         // ""^n => ""
         if (p.Base.IsEmpty()) {
             Log.WriteLine("Simplify: Resolve empty-power " + p);
-            return node.Env.EmptyStr;
+            return info.Env.EmptyStr;
         }
         // u^0 => ""
-        if (node.IsPowerElim(p.Power)) {
+        if (info.CurrentNode.IsPowerElim(p.Power)) {
             Log.WriteLine("Simplify: Drop 0-power " + p);
-            return node.Env.EmptyStr;
+            return info.Env.EmptyStr;
         }
         // u^1 => u
-        if (node.IsOne(p.Power)) {
+        if (info.CurrentNode.IsOne(p.Power)) {
             Log.WriteLine("Simplify: Resolve 1-power " + p);
             return p.Base;
         }
@@ -282,11 +282,11 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
         if (Options.ReasoningUnwindingBound > 1) {
             // Unwind based on options...
-            var bounds = p.Power.GetBounds(node);
+            var bounds = p.Power.GetBounds(info.CurrentNode);
             if (bounds.IsUnit) {
                 Debug.Assert((BigInteger)bounds.Min > 1);
                 Log.WriteLine("Simplify: Resolve " + bounds.Min + "-power " + p);
-                return node.Env.StrManager.Repeat(p.Base, (uint)(BigInteger)bounds.Min);
+                return info.Env.StrManager.Repeat(p.Base, (uint)(BigInteger)bounds.Min);
             }
         }
 
@@ -296,7 +296,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         List<Str?> partialList = [];
         bool has = false;
         for (int i = 0; i < p.Base.Length; i++) {
-            Str? r = p.Base[i] is PowerToken p3 ? SimplifyPowerSingle(node, p3) : null;
+            Str? r = p.Base[i] is PowerToken p3 ? SimplifyPowerSingle(info, p3) : null;
             has |= r is not null;
             partialList.Add(r);
         }
@@ -309,12 +309,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
                     r.Add(p.Base[i]);
             }
             Debug.Assert(partialList.Any(o => o is not null));
-            return PowerToken.MkPower(node.Env.MkString(r), p.Power, node.Env);
+            return PowerToken.MkPower(info.Env.MkString(r), p.Power, info.Env);
         }
 
-        var lcp = LcpCompressionFull(p.Base, node.Env);
+        var lcp = LcpCompressionFull(p.Base, info.Env);
         if (lcp is not null)
-            return PowerToken.MkPower(lcp, p.Power, node.Env);
+            return PowerToken.MkPower(lcp, p.Power, info.Env);
         return null;
     }
 

@@ -20,7 +20,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
     public abstract List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd);
 
-    public abstract Expr ToExpr(NielsenGraph graph);
+    public abstract Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt);
 
     public override bool Equals(object? other) =>
         other is StrToken token && Equals(token);
@@ -32,8 +32,8 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
         { typeof(CharToken), 2 },
         { typeof(StrVarToken), 3 },
         { typeof(StrAtToken), 4 },
-        { typeof(PreToken), 5 },
-        { typeof(PostToken), 6 },
+        // { typeof(PreToken), 5 },
+        // { typeof(PostToken), 6 },
         { typeof(NotToken), 7 },
         { typeof(KleeneToken), 8 },
         { typeof(UnionToken), 9 },

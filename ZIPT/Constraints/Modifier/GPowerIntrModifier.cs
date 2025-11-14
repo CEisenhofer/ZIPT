@@ -15,31 +15,31 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
         Cases = cases;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
-            var powerConstant = node.Env.IntPDDManager.MkPDD(v.GetPowerExtension());
+            var powerConstant = info.Env.IntPDDManager.MkPDD(v.GetPowerExtension());
 
             // TODO: If b = u^n => b = u
-            Str b = StrEqBase.LcpCompressionFull(@base, node.Env) ?? @base;
+            Str b = StrEqBase.LcpCompressionFull(@base, info.Env) ?? @base;
             if (b.Length == 1 && b[true] is PowerToken pt)
                 b = pt.Base; // aax... = x... => stronger x = a^n; the forms a^{2n} or (aa)^n are unnecessarily complicated
 
-            var prefixes = StrManager.GetDecompose(node, b, Forwards);
+            var prefixes = StrManager.GetDecompose(info.CurrentNode, b, Forwards);
             var power = new PowerToken(b, powerConstant);
 
             foreach (var p in prefixes) {
-                Str s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Prefix, Forwards);
+                Str s = info.Env.StrManager.Concat(info.Env.MkString(power), p.Prefix, Forwards);
                 var subst = new Subst(v, s);
                 Debug.Assert(p.VarDecomp is null);
                 Constraint[] cnstr = new Constraint[p.SideConstraints.Count + 1];
                 for (int i = 0; i < p.SideConstraints.Count; i++) {
                     cnstr[i] = p.SideConstraints[i];
                 }
-                cnstr[^1] = IntLe.MkLe(node.Env.ZeroInt, powerConstant);
-                node.MkChild(node, [subst], cnstr, [], true);
-                yield return node.Outgoing[^1];
+                cnstr[^1] = IntLe.MkLe(info.Env.ZeroInt, powerConstant);
+                info.CurrentNode.MkChild(info, [subst], [], cnstr, [], true);
+                yield return info.CurrentNode.Outgoing[^1];
             }
         }
     }

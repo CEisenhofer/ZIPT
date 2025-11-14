@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Diagnostics.Contracts;
+using ZIPT.IntUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.MiscUtils;
@@ -83,7 +84,7 @@ public class MinTerms {
 
     public uint CharacterCount => (uint)Intervals.Sum(o => o.char2 - o.char1 + 1);
     public bool IsUnit => Intervals.Count == 1 && Intervals[0].char1 == Intervals[0].char2;
-    public CharToken First => new((char)Intervals[0].char1);
+    public CharToken First => new(Intervals[0].char1);
 
     public MinTerms() { }
 
@@ -129,7 +130,24 @@ public class MinTerms {
     }
 
     public MinTerms Complement() {
-        throw new NotImplementedException();
+        if (Intervals.Count == 0)
+            return new MinTerms(CharacterSet.Full);
+        MinTerms ret = new();
+        int i = 0;
+        uint start = 0;
+
+        while (true) {
+            for (; i < Intervals.Count && Intervals[i].char1 == start; i++) {
+                start = Intervals[i].char2;
+            }
+            if (i >= Intervals.Count) {
+                if (start != CharacterSet.MaxChar)
+                    ret.Intervals.Add((start, CharacterSet.MaxChar - 1, 0));
+                return ret;
+            }
+            ret.Intervals.Add((start, Intervals[i].char2 - 1, 0));
+            start = Intervals[i++].char2 + 1;
+        }
     }
 
     // TODO: optimize!!!

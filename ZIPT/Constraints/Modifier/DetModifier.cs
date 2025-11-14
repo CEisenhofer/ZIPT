@@ -6,39 +6,72 @@ namespace ZIPT.Constraints.Modifier;
 
 public class DetModifier : ModifierBase {
 
-    //List<Subst> Substitutions { get; } = [];
     Subst? Substitution { get; set; }
+    CharSubst? SubstitutionC { get; set; }
     public HashSet<Constraint> SideConstraints { get; } = [];
-    public bool Trivial => Substitution is null && SideConstraints.IsEmpty();
+    public bool Trivial => Substitution is null && SubstitutionC is null && SideConstraints.IsEmpty();
 
     public void Add(Constraint cnstr) =>
         SideConstraints.Add(cnstr);
 
+    public void AddRewritten(Constraint cnstr, NielsenNode node) {
+        if (Substitution.HasValue)
+            SideConstraints.Add(cnstr.Apply(Substitution.Value, node));
+        else if (SubstitutionC.HasValue)
+            SideConstraints.Add(cnstr.Apply(SubstitutionC.Value, node));
+        else
+            Add(cnstr);
+    }
+
+    public void ForceAdd(Subst s, Environment env) {
+        if (!Substitution.HasValue) {
+            Add(s);
+            return;
+        }
+        if (Substitution.Equals(s))
+            return;
+        Debug.Assert(!s.Str.ContainsVar(s.Var));
+        Add(new StrEq(env.MkString(s.Var), s.Str));
+    }
+
     public SimplifyResult Add(Subst s) {
-        //if (Substitutions.Any(o => o.EqualKeys(s)))
-        //    return SimplifyResult.Restart;
-        //Substitutions.Add(s);
-        if (Substitution is not null)
+        if (Substitution is not null && !Substitution.Equals(s))
+            return SimplifyResult.Restart;
+        if (SubstitutionC is not null)
             return SimplifyResult.Restart;
         Substitution = s;
         return SimplifyResult.Proceed;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
-        Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null);
-        Debug.Assert(node.Outgoing.Count == 0);
-        node.MkChild(node, 
-            CollectionExtension.EmptyOrUnit(Substitution),
+    public SimplifyResult Add(CharSubst s) {
+        if (SubstitutionC is not null && !SubstitutionC.Equals(s))
+            return SimplifyResult.Restart;
+        if (Substitution is not null)
+            return SimplifyResult.Restart;
+        SubstitutionC = s;
+        return SimplifyResult.Proceed;
+    }
+
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
+        Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null || SubstitutionC is not null);
+        Debug.Assert(info.CurrentNode.Outgoing.Count == 0);
+        info.CurrentNode.MkChild(info, 
+            CollectionExtension.EmptyOrUnit(Substitution), CollectionExtension.EmptyOrUnit(SubstitutionC),
             SideConstraints, [],
             true);
-        Debug.Assert(node.Outgoing.Count == 1);
-        yield return node.Outgoing[0];
+        Debug.Assert(info.CurrentNode.Outgoing.Count == 1);
+        yield return info.CurrentNode.Outgoing[0];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 0;
 
-    public override string ToString() =>
-        string.Join(" && ", (Substitution is null
-            ? Array.Empty<string>()
-            : [Substitution.Value.ToString()]).Concat(SideConstraints.Select(o => o.ToString())));
+    public override string ToString() {
+        List<string> parts = [];
+        if (Substitution is not null)
+            parts.Add(Substitution.Value.ToString());
+        if (SubstitutionC is not null)
+            parts.Add(SubstitutionC.Value.ToString());
+        parts.AddRange(SideConstraints.Select(o => o.ToString()));
+        return string.Join(" && ", parts);
+    }
 }

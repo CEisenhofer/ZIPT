@@ -22,11 +22,11 @@ public sealed class NotToken : StrToken {
     public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) => 
         throw new NotSupportedException();
 
-    public override Expr ToExpr(NielsenGraph graph) =>
-        graph.Env.CompFct.Apply(Base.ToExpr(graph));
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
+        env.CompFct.Apply(Base.ToExpr(env, currentModificationCnt));
 
     protected override int CompareToInternal(StrToken other) => 
-        Base.CompareTo(((KleeneToken)other).Base);
+        Base.CompareTo(((NotToken)other).Base);
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
         Base.CollectSymbols(nonTermSet, alphabet);

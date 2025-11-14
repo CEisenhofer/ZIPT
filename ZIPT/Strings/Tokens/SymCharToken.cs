@@ -22,8 +22,8 @@ public class SymCharToken : UnitToken {
     public override bool RegexFree => true;
     public override bool Derivable => false;
 
-    public override Expr ToExpr(NielsenGraph graph) => 
-        graph.Ctx.MkConst(Name, graph.Ctx.CharSort);
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        env.Ctx.MkConst(Name, env.Ctx.CharSort);
 
     protected override int CompareToInternal(StrToken other) {
         Debug.Assert(other is SymCharToken);

@@ -22,16 +22,10 @@ public class NielsenGraph {
     public StringPropagator InnerStringPropagator { get; }
     public Solver SubSolver { get; } // Solver for assumption based integer reasoning
     public NielsenNode? InitRoot { get; private set; }
-    public NielsenNode? CurrentRoot { get; private set; }
-
-    public Dictionary<NamedStrToken, int> CurrentModificationCnt { get; } = [];
-    public int ModCnt { get; set; }
 
     // "The number of times" we checked consistency before the last rest (on reset, we have to reset the indices of all nodes)
     public uint RunIdx { get; private set; }
 
-    // the path to the model for sat
-    public List<NielsenEdge> CurrentPath { get; } = [];
 
     // all nodes
     readonly HashSet<NielsenNode> nodes = [];
@@ -53,19 +47,12 @@ public class NielsenGraph {
         }
     }
 
-    public void ResetIndices() {
-        CurrentPath.Clear();
-        CurrentModificationCnt.Clear();
-        ModCnt = 0;
-    }
-
     public void ResetAll() {
-        ResetIndices();
         SubSolver.Pop();
         SubSolver.Push();
     }
 
-    public bool Check(NielsenNode root, NielsenNode.LocalInfo info) {
+    public bool Check(LocalInfo info) {
         ResetAll();
         if (RunIdx == uint.MaxValue) {
             ResetCounter();
@@ -77,50 +64,51 @@ public class NielsenGraph {
         if (OuterPropagator.Cancel)
             throw new SolverTimeoutException();
 
-        NielsenNode? existing = FindExisting(root);
+        NielsenNode? existing = FindExisting(info.CurrentNode);
         if (existing is null) {
-            CurrentRoot = InitRoot = root.Clone();
-            if (NielsenNode.SimplifyAndInit(CurrentRoot, null) != BacktrackReasons.Unevaluated) {
-                Debug.Assert(CurrentRoot.IsCurrentlyConflict);
+            info.CurrentNode = InitRoot = info.CurrentNode.Clone();
+            if (NielsenNode.SimplifyAndInit(info, null) != BacktrackReasons.Unevaluated) {
+                Debug.Assert(info.CurrentNode.IsCurrentlyConflict);
                 return false;
             }
-            existing = FindExisting(CurrentRoot);
+            existing = FindExisting(info.CurrentNode);
             if (existing is not null) {
                 //Debug.Assert(ReferenceEquals(PendingNode, CurrentRoot));
                 //DropPending();
-                CurrentRoot = existing;
+                info.CurrentNode = existing;
             }
         }
         else
-            CurrentRoot = InitRoot = existing;
+            info.CurrentNode = InitRoot = existing;
+        info.RootNode = info.CurrentNode;
 
         Debug.Assert(SubSolver is not null);
 
-        SubSolver.Add(CurrentRoot.ConstraintsIntEq.Select(o => o.ToExpr(this)));
-        SubSolver.Add(CurrentRoot.ConstraintsIntLe.Select(o => o.ToExpr(this)));
-        SubSolver.Add(CurrentRoot.IntBounds.Select(o => 
-            Interval<BigInteger>.ToZ3Constraint(o.Value, o.Key, this)));
+        SubSolver.Add(info.CurrentNode.ConstraintsIntEq.Select(o => o.ToExpr(info)));
+        SubSolver.Add(info.CurrentNode.ConstraintsIntLe.Select(o => o.ToExpr(info)));
+        SubSolver.Add(info.CurrentNode.IntBounds.Select(o => 
+            Interval<BigInteger>.ToZ3Constraint(o.Value, o.Key, info)));
 
         DepthBound = Options.ItDeepDepthStart;
-        int pathCnt = CurrentPath.Count;
-        int modCnt = CurrentModificationCnt.Count;
+        int pathCnt = info.CurrentPath.Count;
+        int modCnt = info.CurrentModificationCnt.Count;
 
         while (true) {
-            Debug.Assert(CurrentPath.Count == pathCnt);
-            Debug.Assert(CurrentModificationCnt.Count == modCnt);
-            var res = CurrentRoot.Check(0, info);
+            Debug.Assert(info.CurrentPath.Count == pathCnt);
+            Debug.Assert(info.CurrentModificationCnt.Count == modCnt);
+            var res = info.CurrentNode.Check(0, info);
             Debug.Assert(res != SolveResult.CYCLIC);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
             if (res == SolveResult.SAT) {
-                Debug.Assert(!CurrentRoot.IsCurrentlyConflict);
+                Debug.Assert(!info.CurrentNode.IsCurrentlyConflict);
                 if (Options.OutputGraph)
-                    Console.WriteLine(ToDot());
+                    Console.WriteLine(ToDot(info));
                 return true;
             }
             if (res == SolveResult.UNSAT) {
                 if (Options.OutputGraph)
-                    Console.WriteLine(ToDot());
+                    Console.WriteLine(ToDot(info));
                 return false;
             }
             // Depth limit encountered - retry with higher bound
@@ -130,13 +118,6 @@ public class NielsenGraph {
 
     public void AddNode(NielsenNode node) {
         nodes.Add(node);
-    }
-
-    public NielsenNode? FindExistingShallowSimplified(NielsenNode node, bool forceRewriteAll) {
-        DetModifier m = new();
-        node.Simplify(new NonTermSet(), m, forceRewriteAll); // we do not do unit step propagation; just one level
-        NielsenNode? existing = FindExisting(node);
-        return existing;
     }
 
     public NielsenNode? FindExisting(NielsenNode node) {
@@ -154,19 +135,19 @@ public class NielsenGraph {
 
     public Str? TryParseStr(Expr e) => Env.TryParseStr(e);
 
-    public string ToDot() {
+    public string ToDot(LocalInfo? info = null) {
         StringBuilder sb = new();
         sb.AppendLine("digraph G {");
         HashSet<NielsenEdge> satEdges = [];
         HashSet<NielsenNode> satNodes = [];
-        foreach (var edge in CurrentPath) {
-            satNodes.Add(edge.Src);
-            satNodes.Add(edge.Tgt);
-            satEdges.Add(edge);
+        foreach (var edge in info?.CurrentPath ?? []) {
+            satNodes.Add(edge.Value.Src);
+            satNodes.Add(edge.Value.Tgt);
+            satEdges.Add(edge.Value);
         }
 
         foreach (var node in nodes) {
-            sb.Append("\t")
+            sb.Append('\t')
                 .Append(node.Id)
                 .Append(" [label=\"")
                 .Append(node.Id)
@@ -187,7 +168,7 @@ public class NielsenGraph {
         }
         foreach (var node in nodes) {
             foreach (var edge in node.Outgoing) {
-                sb.Append("\t")
+                sb.Append('\t')
                     .Append(node.Id)
                     .Append(" -> ")
                     .Append(edge.Tgt.Id)

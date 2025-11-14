@@ -139,7 +139,6 @@ public class Environment : IDisposable {
         if (strVarCache.TryGetValue(var, out StrVarToken? v))
             return v;
         Debug.Assert(!var.Contains('$'));
-        Debug.Assert(!var.Contains('#'));
         Debug.Assert(!var.Contains('?'));
         v = new StrVarToken(var);
         strVarCache.Add(var, v);
@@ -223,17 +222,17 @@ public class Environment : IDisposable {
     public Str MkString(List<StrToken> tokens, bool forward = true) =>
         MkString(CollectionsMarshal.AsSpan(tokens), forward);
 
-    public Expr? GetCachedStrExpr(StrToken t, NielsenGraph graph) => 
-        GetCachedStrExpr(t, t is NamedStrToken n && graph.CurrentModificationCnt.TryGetValue(n, out int mod) ? mod : 0);
+    public Expr? GetCachedStrExpr(StrToken t, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        GetCachedStrExpr(t, t is NamedStrToken n && currentModificationCnt.TryGetValue(n, out int mod) ? mod : 0);
 
     public Expr? GetCachedStrExpr(StrToken t, int mod) => 
         StrTokenToExpr.GetValueOrDefault((t, mod));
 
-    public IntExpr? GetCachedIntExpr(NamedInt t, NielsenGraph graph) => 
-        IntTokenToExpr.GetValueOrDefault((t, t is StrDepIntVar n && graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod) ? mod : 0));
+    public IntExpr? GetCachedIntExpr(NamedInt t, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        IntTokenToExpr.GetValueOrDefault((t, t is StrDepIntVar n && currentModificationCnt.TryGetValue(n.Var, out int mod) ? mod : 0));
 
-    public void SetCachedExpr(StrToken t, Expr e, NielsenGraph graph) {
-        if (t is not NamedStrToken n || !graph.CurrentModificationCnt.TryGetValue(n, out int mod))
+    public void SetCachedExpr(StrToken t, Expr e, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        if (t is not NamedStrToken n || !currentModificationCnt.TryGetValue(n, out int mod))
             mod = 0;
         SetCachedExpr(t, e, mod);
     }
@@ -243,8 +242,8 @@ public class Environment : IDisposable {
         ExprToStrToken.Add(e, t);
     }
 
-    public void SetCachedExpr(NamedInt t, IntExpr e, NielsenGraph graph) {
-        if (t is not StrDepIntVar n || !graph.CurrentModificationCnt.TryGetValue(n.Var, out int mod))
+    public void SetCachedExpr(NamedInt t, IntExpr e, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        if (t is not StrDepIntVar n || !currentModificationCnt.TryGetValue(n.Var, out int mod))
             mod = 0;
         IntTokenToExpr.Add((t, mod), e);
         ExprToIntToken.Add((IntExpr)e.Dup(), t);
@@ -270,77 +269,77 @@ public class Environment : IDisposable {
     }
 
     // Translate Z3's string terms to our custom ones such that the UP gets the callbacks
-    public Expr? TranslateStr(Expr e, NielsenGraph graph) {
+    public Expr? TranslateStr(Expr e, LocalInfo info) {
         if (e.IsVar)
             return null;
         if (e.IsString)
-            return StrManager.ToExpr(MkString(e.String.Select(o => (StrToken)new CharToken(o)).ToArray()), graph);
+            return StrManager.ToExpr(MkString(e.String.Select(StrToken (o) => new CharToken(o)).ToArray()), info.Env, info.CurrentModificationCnt);
 
         var f = e.FuncDecl;
         var kind = f.DeclKind;
         switch (kind) {
             case Z3_decl_kind.Z3_OP_SEQ_AT:
                 return StrAtFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_CONCAT:
                 return ConcatFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_PREFIX:
                 return PrefixOfFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_SUFFIX:
                 return SuffixOfFct.Apply(
                     TranslateStr(
-                        e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                        e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_CONTAINS:
                 return ContainsFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_INDEX:
                 return IndexOfFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1),
-                    TranslateStr(e.Arg(2), graph) ?? e.Arg(2));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1),
+                    TranslateStr(e.Arg(2), info) ?? e.Arg(2));
             case Z3_decl_kind.Z3_OP_SEQ_LENGTH:
-                return MkLen(TranslateStr(e.Arg(0), graph) ?? e.Arg(0));
+                return MkLen(TranslateStr(e.Arg(0), info) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_SEQ_EXTRACT:
                 return SubstringFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1),
-                    TranslateStr(e.Arg(2), graph) ?? e.Arg(2));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1),
+                    TranslateStr(e.Arg(2), info) ?? e.Arg(2));
             case Z3_decl_kind.Z3_OP_UNINTERPRETED when e is SeqExpr:
-                return GetOrCreateStrVar(f.Name.ToString()).ToExpr(graph);
+                return GetOrCreateStrVar(f.Name.ToString()).ToExpr(this, info.CurrentModificationCnt);
             case Z3_decl_kind.Z3_OP_EQ when e.Arg(0) is SeqExpr:
                 return Ctx.MkEq(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_IN_RE when e.Arg(0) is SeqExpr:
                 return ReMemFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_TO_RE:
-                return TranslateStr(e.Arg(0), graph) ?? e.Arg(0);
+                return TranslateStr(e.Arg(0), info) ?? e.Arg(0);
             case Z3_decl_kind.Z3_OP_RE_STAR:
                 return StarFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_RE_UNION:
                 return UnionFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_RANGE:
                 return RgFct.Apply(
-                    TranslateStr(e.Arg(0), graph) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), graph) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             default:
                 var args = new Expr[e.NumArgs];
                 bool mod = false;
                 for (uint i = 0; i < e.NumArgs; i++) {
                     var arg = e.Arg(i);
-                    var n = TranslateStr(arg, graph);
+                    var n = TranslateStr(arg, info);
                     mod |= n is not null;
                     args[i] = n ?? arg;
                 }
@@ -447,7 +446,7 @@ public class Environment : IDisposable {
         var c = TryParseStr(re);
         if (c is null)
             return null;
-        return new StrMem(s, c);
+        return new StrMem(s, c, EmptyStr, 0);
     }
 
     public Str? TryParseStr(Expr expr) {

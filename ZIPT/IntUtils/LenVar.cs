@@ -100,13 +100,13 @@ public sealed class LenVar : StrDepIntVar {
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => nonTermSet.Add(Var);
 
-    public override IntExpr ToExpr(NielsenGraph graph) {
-        IntExpr? e = graph.Env.GetCachedIntExpr(this, graph);
+    public override IntExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        IntExpr? e = env.GetCachedIntExpr(this, currentModificationCnt);
         if (e is not null)
             return e;
 
-        e = (IntExpr)graph.Ctx.MkFreshConst("len_" + Var, graph.Ctx.IntSort);
-        graph.Env.SetCachedExpr(this, e, graph);
+        e = (IntExpr)env.Ctx.MkFreshConst("len_" + Var, env.Ctx.IntSort);
+        env.SetCachedExpr(this, e, currentModificationCnt);
         return e;
     }
 

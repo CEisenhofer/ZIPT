@@ -43,12 +43,12 @@ public sealed class KleeneToken : StrToken {
 #endif
     }
 
-    public override Expr ToExpr(NielsenGraph graph) {
-        var e = Base.ToExpr(graph);
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
+        var e = Base.ToExpr(env, currentModificationCnt);
         /*if (e is ReExpr r)
             return graph.Ctx.MkStar(r);
         return graph.Ctx.MkStar(graph.Ctx.MkToRe((SeqExpr)e));*/
-        return graph.Env.StarFct.Apply(e);
+        return env.StarFct.Apply(e);
     }
 
     protected override int CompareToInternal(StrToken other) => 

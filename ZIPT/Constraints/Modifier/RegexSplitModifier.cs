@@ -1,5 +1,4 @@
-﻿using ZIPT.Constraints.ConstraintElement;
-using ZIPT.MiscUtils;
+﻿using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
@@ -13,26 +12,26 @@ public class RegexSplitModifier : DirectedNielsenModifier {
         Cases = cases;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // V / "" (progress)
         // V / o V & o \in r (no progress)
-        var subst = new Subst(StrVarToken, node.Env.EmptyStr);
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), [], true);
-        yield return node.Outgoing[^1];
+        var subst = new Subst(StrVarToken, info.Env.EmptyStr);
+        info.CurrentNode.MkChild(info, [subst], [], [], [], true);
+        yield return info.CurrentNode.Outgoing[^1];
 
         foreach (var @case in Cases.ToCharacterSets()) {
             if (@case.IsUnit) {
                 subst = new Subst(StrVarToken,
-                    node.Env.MkString(new StrToken[] { Cases.First, StrVarToken }, Forwards));
-                node.MkChild(node, [subst], Array.Empty<Constraint>(), [], false);
-                yield return node.Outgoing[^1];
+                    info.Env.MkString(new StrToken[] { @case.First, StrVarToken }, Forwards));
+                info.CurrentNode.MkChild(info, [subst], [], [], [], false);
+                yield return info.CurrentNode.Outgoing[^1];
                 continue;
             }
             subst = new Subst(StrVarToken,
-                node.Env.MkString(new StrToken[] { StrVarToken.ExtensionChar, StrVarToken }, Forwards));
-            var child = node.MkChild(node, [subst], Array.Empty<Constraint>(), [], false);
+                info.Env.MkString(new StrToken[] { StrVarToken.ExtensionChar, StrVarToken }, Forwards));
+            var child = info.CurrentNode.MkChild(info, [subst], [], [], [], false);
             Log.Verify(child.AddCharConstraints(StrVarToken.ExtensionChar, @case));
-            yield return node.Outgoing[^1];
+            yield return info.CurrentNode.Outgoing[^1];
         }
     }
 

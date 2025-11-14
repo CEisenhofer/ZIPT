@@ -73,7 +73,7 @@ public abstract class StringPropagator : UserPropagator {
                 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                Expr x = GetFreshAuxStr().ToExpr(Graph);
+                Expr x = GetFreshAuxStr().ToExpr(Env, []);
 
                 if (val) {
                     // e := prefixOf(u, v)
@@ -85,7 +85,7 @@ public abstract class StringPropagator : UserPropagator {
                 // e |- |u| > |v| || (v = xy && |x| = |u| && x != u)
                 IntExpr lenU = Env.MkLen(u);
                 IntExpr lenV = Env.MkLen(v);
-                Expr y = GetFreshAuxStr().ToExpr(Graph);
+                Expr y = GetFreshAuxStr().ToExpr(Env, []);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
@@ -102,7 +102,7 @@ public abstract class StringPropagator : UserPropagator {
 
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
-                Expr x = GetFreshAuxStr().ToExpr(Graph);
+                Expr x = GetFreshAuxStr().ToExpr(Env, []);
 
                 if (val) {
                     // e := suffixOf(u, v)
@@ -114,7 +114,7 @@ public abstract class StringPropagator : UserPropagator {
                 // e |- |u| > |v| || (v = yx && |x| = |u| && x != u)
                 IntExpr lenU = Env.MkLen(u);
                 IntExpr lenV = Env.MkLen(v);
-                Expr y = GetFreshAuxStr().ToExpr(Graph);
+                Expr y = GetFreshAuxStr().ToExpr(Env, []);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkGt(lenU, lenV),
@@ -137,8 +137,8 @@ public abstract class StringPropagator : UserPropagator {
                 Expr u = e.Arg(0);
                 Expr v = e.Arg(1);
                 IntExpr lenV = Env.MkLen(v);
-                Expr x = GetFreshAuxStr().ToExpr(Graph);
-                Expr y = GetFreshAuxStr().ToExpr(Graph);
+                Expr x = GetFreshAuxStr().ToExpr(Env, []);
+                Expr y = GetFreshAuxStr().ToExpr(Env, []);
                 Propagate([e],
                     Ctx.MkOr(
                         Ctx.MkEq(lenV, Ctx.MkInt(0)),
@@ -193,8 +193,8 @@ public abstract class StringPropagator : UserPropagator {
                 Ctx.MkLt(i, Ctx.MkInt(0)),
                 Ctx.MkGe(i, lenU)
             );
-            Expr x = GetFreshAuxStr().ToExpr(Graph);
-            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            Expr x = GetFreshAuxStr().ToExpr(Env, []);
+            Expr y = GetFreshAuxStr().ToExpr(Env, []);
             IntExpr lenX = Env.MkLen(x);
             Propagate([], Ctx.MkImplies(outsideBounds, Ctx.MkEq(lenE, zero)));
             Propagate([],
@@ -231,8 +231,8 @@ public abstract class StringPropagator : UserPropagator {
                     Ctx.MkEq(lenE, zero)
                 )
             );
-            Expr x = GetFreshAuxStr().ToExpr(Graph);
-            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            Expr x = GetFreshAuxStr().ToExpr(Env, []);
+            Expr y = GetFreshAuxStr().ToExpr(Env, []);
             IntExpr lenX = Env.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
@@ -280,8 +280,8 @@ public abstract class StringPropagator : UserPropagator {
             IntExpr lenV = Env.MkLen(v);
             IntExpr zero = Ctx.MkInt(0);
             IntExpr negOne = Ctx.MkInt(-1);
-            Expr x = GetFreshAuxStr().ToExpr(Graph);
-            Expr y = GetFreshAuxStr().ToExpr(Graph);
+            Expr x = GetFreshAuxStr().ToExpr(Env, []);
+            Expr y = GetFreshAuxStr().ToExpr(Env, []);
             IntExpr lenX = Env.MkLen(x);
             Propagate([],
                 Ctx.MkImplies(
@@ -365,7 +365,7 @@ public abstract class StringPropagator : UserPropagator {
                     return;
                 }
                 Debug.Assert(s is NamedStrToken);
-                var lenTerm = new LenVar((NamedStrToken)s).ToExpr(Graph);
+                var lenTerm = new LenVar((NamedStrToken)s).ToExpr(Env, []);
                 Propagate([], Ctx.MkEq((IntExpr)e, lenTerm));
                 Propagate([], Ctx.MkGe((IntExpr)e, Ctx.MkInt(0)));
                 
@@ -624,12 +624,12 @@ public abstract class StringPropagator : UserPropagator {
             }
 
             StrVarToken x1 = GetFreshAuxStr();
-            Expr x1e = x1.ToExpr(Graph);
+            Expr x1e = x1.ToExpr(Env, []);
             StrVarToken o1 = GetFreshAuxStr();
             StrVarToken y1 = GetFreshAuxStr();
 
             StrVarToken x2 = GetFreshAuxStr();
-            Expr x2e = x2.ToExpr(Graph);
+            Expr x2e = x2.ToExpr(Env, []);
             StrVarToken o2 = GetFreshAuxStr();
             StrVarToken y2 = GetFreshAuxStr();
 
@@ -642,12 +642,12 @@ public abstract class StringPropagator : UserPropagator {
                     Ctx.MkOr(
                         Ctx.MkNot(Ctx.MkEq(Env.MkLen(e1), Env.MkLen(e2))),
                         Ctx.MkAnd(
-                            Ctx.MkEq(e1, u1.ToExpr(Graph)),
-                            Ctx.MkEq(e2, u2.ToExpr(Graph)),
+                            Ctx.MkEq(e1, u1.ToExpr(Env, [])),
+                            Ctx.MkEq(e2, u2.ToExpr(Env, [])),
                             Ctx.MkEq(Env.MkLen(x1e), Env.MkLen(x2e)),
-                            Ctx.MkEq(Env.MkLen(o1.ToExpr(Graph)), Ctx.MkInt(1)),
-                            Ctx.MkEq(Env.MkLen(o2.ToExpr(Graph)), Ctx.MkInt(1)),
-                            Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Graph), o2.ToExpr(Graph)))
+                            Ctx.MkEq(Env.MkLen(o1.ToExpr(Env)), Ctx.MkInt(1)),
+                            Ctx.MkEq(Env.MkLen(o2.ToExpr(Env)), Ctx.MkInt(1)),
+                            Ctx.MkNot(Ctx.MkEq(o1.ToExpr(Env), o2.ToExpr(Env)))
                         )
                     )
                 )
@@ -676,6 +676,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public override NielsenGraph Graph { get; }
     public NielsenNode Root { get; } // This node is added as cloned to the graph - we can alter the constraints in it
+    public LocalInfo Info { get; set; }
 
     List<(Expr lhs, Expr rhs)> reportedEqs = [];
     List<BoolExpr> reportedMems = [];
@@ -688,6 +689,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     public SaturatingStringPropagator(Solver solver, Environment env) : base(solver, env) {
         Graph = new NielsenGraph(this);
         Root = new NielsenNode(Graph);
+        Info = new LocalInfo(Root);
         Final = FinalCB;
         Decide = DecideCB;
     }
@@ -763,23 +765,20 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public override void MemInternal(Str s1, Str s2, BoolExpr e) {
 
-        var eq = new StrMem(s1, s2);
+        uint id = (uint)Root.ConstraintsStrMem.Count;
+        var mem = new StrMem(s1, s2, Env.EmptyStr, id);
+        Root.ConstraintsStrMem.Add(id, mem);
 
-        if (Root.ConstraintsStrMem.Add(eq)) { // u = v
-            undoStack.Add(() =>
-            {
-                Log.Verify(Root.ConstraintsStrMem.Remove(eq));
-            });
-            if (!newInformation) {
-                newInformation = true;
-                undoStack.Add(() => newInformation = false);
-            }
-        }
         reportedMems.Add(e);
         undoStack.Add(() =>
         {
+            Log.Verify(Root.ConstraintsStrMem.Remove(id));
             reportedMems.Pop();
         });
+        if (!newInformation) {
+            newInformation = true;
+            undoStack.Add(() => newInformation = false);
+        }
     }
 
     protected override void AddNotEpsilonInternal(Str s) {
@@ -807,8 +806,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 #endif
 
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
-            NielsenNode.LocalInfo info = new(forbidden);
-            var res = Graph.Check(Root, info);
+            Info = new(Root, forbidden);
+            var res = Graph.Check(Info);
             if (newInformation) {
                 newInformation = false;
                 undoStack.Add(() => newInformation = true);
@@ -820,24 +819,23 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             }
             if (res) {
                 var prev = selectedPath;
-                selectedPath = new HashSet<BoolExpr>();
+                selectedPath = [];
                 bool madeGuess = false;
-                foreach (var path in Graph.CurrentPath) {
-                    foreach (BoolExpr c in path.Asserted) {
-                        Propagate([], c);
+                foreach (var path in Info.CurrentPath) {
+                    foreach (var r in path.Value.Asserted) {
+                        selectedPath.Add(r);
+                        Register(r);
+                        if (!madeGuess)
+                            madeGuess = NextSplit(r, 0, 1);
                     }
-                    selectedPath.Add(path.Assumption);
-                    Register(path.Assumption);
-                    if (!madeGuess)
-                        madeGuess = NextSplit(path.Assumption, 0, 1);
                 }
                 undoStack.Add(() => selectedPath = prev);
             }
             else {
-                var f = new BoolExpr[usedForbidden.Count + reportedMems.Count + reportedFixed.Count];
-                usedForbidden.CopyTo(f, 0);
-                reportedMems.CopyTo(f, usedForbidden.Count);
-                reportedFixed.CopyTo(f, usedForbidden.Count + reportedMems.Count);
+                var f = new BoolExpr[Info.UsedForbidden.Count + reportedMems.Count + reportedFixed.Count];
+                Info.UsedForbidden.CopyTo(f, 0);
+                reportedMems.CopyTo(f, Info.UsedForbidden.Count);
+                reportedFixed.CopyTo(f, Info.UsedForbidden.Count + reportedMems.Count);
                 Propagate(f, pair, Ctx.MkFalse());
             }
         }
@@ -854,35 +852,27 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             NextSplit(term, 0, 1);
     }
 
-    public bool GetModel(out Interpretation itp) {
+    public bool GetModel(LocalInfo info, out Interpretation itp) {
 
-        var currentPath = Graph.CurrentPath.ToList();
-        var satNode = currentPath.Count == 0 ? Graph.InitRoot : currentPath[^1].Tgt;
+        var currentPath = info.CurrentPath.ToList();
+        var satNode = currentPath.Count == 0 ? Graph.InitRoot : currentPath[^1].Value.Tgt;
         Debug.Assert(satNode is not null);
         Debug.Assert(satNode.ConstraintsStrEq.Count == 0);
-        Debug.Assert(satNode.ConstraintsStrMem.All(o => o.IsPrimitiveRegex()));
-        Debug.Assert(satNode.ConstraintsReSplit.Count == 0);
-
-        Graph.ResetIndices(); // We need the original indices for retrieving the correct root constraints
-
+        Debug.Assert(satNode.ConstraintsStrMem.All(o => o.Value.IsPrimitiveRegex()));
+        
         NonTermSet initNonTermSet = new();
         HashSet<CharToken> initAlphabet = [];
         Root.CollectSymbols(initNonTermSet, initAlphabet);
 
         using var checkSolver = Ctx.MkSimpleSolver();
 
-        foreach (Constraint c in satNode.AllConstraints.Where(o => o is not StrEq)) {
-            if (c is StrEq or StrMem)
-                continue;
-            BoolExpr e = c.ToExpr(Graph);
+        foreach (Constraint c in satNode.AllConstraints.Where(o => o.Shared)) {
+            BoolExpr e = c.ToExpr(info);
             checkSolver.Assert(e);
         }
         // TODO: Do this also in other places
         foreach (var path in currentPath) {
-            foreach (BoolExpr c in path.Asserted) {
-                checkSolver.Assert(c);
-            }
-            checkSolver.Assert(path.Assumption);
+            checkSolver.Assert(Ctx.MkAnd(path.Value.Asserted));
         }
 
         var res = checkSolver.Check();
@@ -902,7 +892,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         Debug.Assert(model is not null);
 
         for (int i = 0; i < currentPath.Count; i++) {
-            foreach (var subst in currentPath[^(i + 1)].Subst) {
+            foreach (var subst in currentPath[^(i + 1)].Value.Subst) {
                 subst.AddToInterpretation(itp);
             }
         }

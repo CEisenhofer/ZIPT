@@ -170,101 +170,52 @@ public class CharacterSet : IEquatable<CharacterSet>, IComparable<CharacterSet> 
         }
         Ranges.Insert(left, newRange);
     }
-
-    public void Add(CharacterRange range) {
-        Debug.Assert(!range.IsEmpty);
-        if (IsEmpty) {
-            Ranges.Add(range);
-            return;
-        }
-        int fromLeft = 0, toLeft = 0;
-        int fromRight = Ranges.Count - 1, toRight = Ranges.Count - 1;
-        bool foundFrom = false, foundTo = false;
-        while (fromLeft <= fromRight) {
-            int mid = fromLeft + (fromRight - fromLeft) / 2;
-            int cmp = Ranges[mid].Find(range.From);
-            switch (cmp) {
-                case 0:
-                    fromLeft = mid;
-                    fromRight = mid;
-                    foundFrom = true;
-                    break;
-                case < 0:
-                    fromRight = mid - 1;
-                    break;
-                default:
-                    fromLeft = mid + 1;
-                    break;
-            }
-        }
-        while (toLeft <= toRight) {
-            int mid = toLeft + (toRight - toLeft) / 2;
-            int cmp = Ranges[mid].Find(range.To - 1);
-            switch (cmp) {
-                case 0:
-                    toLeft = mid;
-                    toRight = mid;
-                    foundTo = true;
-                    break;
-                case < 0:
-                    toRight = mid - 1;
-                    break;
-                default:
-                    toLeft = mid + 1;
-                    break;
-            }
-        }
-        if (foundFrom && foundTo) {
-            // it is already contained
-            if (fromLeft == fromRight)
-                return;
-            Ranges[fromLeft] = new CharacterRange(
-                Ranges[fromLeft].From,
-                Ranges[toLeft].To);
-            Ranges.RemoveRange(fromLeft + 1, toLeft - fromLeft);
-            Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>
-                o.First.From < o.First.To && o.First.To < o.Second.From));
-            return;
-        }
-        if (foundFrom) {
-            Ranges[fromLeft] = new CharacterRange(
-                Ranges[fromLeft].From,
-                Math.Max(Ranges[fromLeft].To, range.To));
-            Ranges.RemoveRange(fromLeft + 1, toLeft - fromLeft);
-            Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>
-                o.First.From < o.First.To && o.First.To < o.Second.From));
-            return;
-        }
-        if (foundTo) {
-            Ranges[toLeft] = new CharacterRange(
-                Math.Min(Ranges[toLeft].From, range.From),
-                Ranges[toLeft].To);
-            Ranges.RemoveRange(fromLeft, toLeft - fromLeft);
-            Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>
-                o.First.From < o.First.To && o.First.To < o.Second.From));
-            return;
-        }
-        uint newFrom = range.From;
-        uint newTo = range.To;
-        if (fromLeft > 0 && fromLeft < Ranges.Count && Ranges[fromLeft - 1].To >= range.From) {
-            newFrom = Ranges[fromLeft - 1].From;
-            fromLeft--;
-        }
-        if (toRight > 0 && toRight < Ranges.Count && Ranges[toRight].From <= range.To) {
-            newTo = Ranges[toRight].To;
-            toRight++;
-        }
-        Ranges.RemoveRange(fromLeft, toRight - fromLeft);
-        Ranges.Insert(fromLeft, new CharacterRange(newFrom, newTo));
-        Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>
-            o.First.From < o.First.To && o.First.To < o.Second.From));
-    }
-
     public void Add(CharacterSet other) {
-        // TODO: Optimise?
-        foreach (var range in other.Ranges) {
-            Add(range);
+        if (other.IsEmpty)
+            return;
+        if (IsEmpty) {
+            Ranges.AddRange(other.Ranges);
+            return;
         }
+        int i = 0;
+        int j = 0;
+        while (j < other.Ranges.Count) {
+            CharacterRange or = other.Ranges[j];
+            // Find the position to insert or
+            while (i < Ranges.Count && Ranges[i].To < or.From) {
+                i++;
+            }
+            if (i == Ranges.Count) {
+                // Just append the rest
+                Ranges.AddRange(other.Ranges.Skip(j));
+                break;
+            }
+            if (Ranges[i].From > or.To) {
+                // No overlap, just insert
+                Ranges.Insert(i, or);
+                i++;
+                j++;
+                continue;
+            }
+            // There is overlap, we need to merge
+            uint newFrom = Math.Min(Ranges[i].From, or.From);
+            uint newTo = Math.Max(Ranges[i].To, or.To);
+            i++;
+            j++;
+            // Merge with subsequent ranges in this.Ranges
+            while (i < Ranges.Count && Ranges[i].From <= newTo) {
+                newTo = Math.Max(newTo, Ranges[i].To);
+                i++;
+            }
+            // Merge with subsequent ranges in other.Ranges
+            while (j < other.Ranges.Count && other.Ranges[j].From <= newTo) {
+                newTo = Math.Max(newTo, other.Ranges[j].To);
+                j++;
+            }
+            // Replace the merged range
+            Ranges.Insert(i - 1, new CharacterRange(newFrom, newTo));
+        }
+
         Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>
             o.First.From < o.First.To && o.First.To < o.Second.From));
     }
@@ -355,63 +306,4 @@ public class CharacterSet : IEquatable<CharacterSet>, IComparable<CharacterSet> 
 
     public override string ToString() => 
         "{ " + string.Join(", ", Ranges) + " }";
-}
-
-// [From, To)
-public readonly struct CharacterRange : IEquatable<CharacterRange>, IComparable<CharacterRange> {
-    public readonly uint From;
-    public readonly uint To; // excluding!
-
-    public bool IsEmpty => From == To;
-    public bool IsFull => From == CharacterSet.MinChar && To == CharacterSet.MaxChar + 1;
-    public bool IsUnit => Length == 1;
-    public uint Length => To - From;
-
-    public CharacterRange(uint c) : this(c, c + 1) { }
-
-    public CharacterRange(uint from, uint to) {
-        From = from;
-        To = to;
-        Debug.Assert(from <= to);
-    }
-
-    public bool Contains(uint c) =>
-        c >= From && c <= To;
-
-    public int Find(uint c) =>
-        c < From ? -1 : c >= To ? 1 : 0;
-
-    public override bool Equals(object? obj) =>
-        obj is CharacterRange other && Equals(other);
-
-    public bool Equals(CharacterRange other) =>
-        From == other.From && To == other.To;
-
-    public override int GetHashCode() =>
-        HashCode.Combine(From, To);
-
-    static string GetChar(uint c) =>
-        c is
-            >= 'a' and <= 'z' or
-            >= 'A' and <= 'Z' or
-            >= '0' and <= '9'
-            ? ((char)c).ToString()
-            : $"#[{c}]";
-
-    public int CompareTo(CharacterRange other) {
-        int cmp = From.CompareTo(other.From);
-        return cmp != 0 ? cmp : To.CompareTo(other.To);
-    }
-
-    public override string ToString() {
-        if (IsEmpty)
-            return "[]";
-        if (IsFull)
-            return "[..]";
-        if (From + 1 == To)
-            return GetChar(From);
-        if (From + 2 == To)
-            return $"[{GetChar(From)}{GetChar(To - 1)}]";
-        return $"[{GetChar(From)}-{GetChar(To - 1)}]";
-    }
 }

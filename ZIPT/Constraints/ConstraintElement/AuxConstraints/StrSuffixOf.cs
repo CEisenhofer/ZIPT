@@ -32,7 +32,7 @@ public class StrSuffixOf : StrConstraint {
     public override StrSuffixOf Apply(Subst subst, NielsenNode node) =>
         new(node.Env.StrManager.Subst(S, subst),
             node.Env.StrManager.Subst(Contained, subst), Negated);
-
+    
     public override StrSuffixOf Apply(CharSubst subst, NielsenNode node) =>
         new(node.Env.StrManager.Subst(node.Env, S, subst),
             node.Env.StrManager.Subst(node.Env, Contained, subst), Negated);
@@ -42,7 +42,7 @@ public class StrSuffixOf : StrConstraint {
             itp.Env.StrManager.Subst(Contained, itp), Negated);
 
     // Just very rudimentary implementation - it will get eliminated anyway...
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr,
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr,
         ref BacktrackReasons reason) {
         if (S.Length < Contained.Length)
             return SimplifyResult.Proceed;
@@ -62,16 +62,15 @@ public class StrSuffixOf : StrConstraint {
         return Negated ? SimplifyResult.Conflict : SimplifyResult.Satisfied;
     }
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        (BoolExpr)graph.Env.SuffixOfFct.Apply(Contained.ToExpr(graph), S.ToExpr(graph));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        (BoolExpr)env.SuffixOfFct.Apply(Contained.ToExpr(env, currentModificationCnt), S.ToExpr(env, currentModificationCnt));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
         S.CollectSymbols(nonTermSet, alphabet);
         Contained.CollectSymbols(nonTermSet, alphabet);
     }
 
-    public override StrSuffixOf Negate() =>
-        new(S, Contained, !Negated);
+    public override StrSuffixOf Negate() => new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);

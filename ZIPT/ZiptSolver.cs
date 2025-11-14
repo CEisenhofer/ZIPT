@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
+using ZIPT.Constraints;
 
 namespace ZIPT;
 
@@ -191,14 +192,14 @@ public static class ZiptSolver {
                         if (Options.SaturateGraph) {
                             try {
                                 Options.SaturateGraph = false;
-                                bool s = propagator.Graph.Check(propagator.Graph.CurrentRoot!, [], []);
+                                bool s = propagator.Graph.Check(propagator.Info!);
                                 Debug.Assert(s);
                             }
                             finally {
                                 Options.SaturateGraph = true;
                             }
                         }
-                        bool success = propagator.GetModel(out var itp);
+                        bool success = propagator.GetModel(propagator.Info!, out var itp);
                         if (Options.OutputModel)
                             Console.WriteLine(itp);
                         propagator.Solver.Pop(propagator.Solver.NumScopes);
@@ -261,11 +262,11 @@ public static class ZiptSolver {
         }
     }
 
-    static void AssertSMTLIB(Context ctx, Solver solver, StringPropagator propagator, string path) {
+    static void AssertSMTLIB(Context ctx, Solver solver, SaturatingStringPropagator propagator, string path) {
         string content = File.ReadAllText(path);
         BoolExpr[]? exprs = ctx.ParseSMTLIB2String(content);
         foreach (var expr in exprs) {
-            solver.Assert((BoolExpr)(propagator.Env.TranslateStr(expr, propagator.Graph) ?? expr));
+            solver.Assert((BoolExpr)(propagator.Env.TranslateStr(expr, propagator.Info) ?? expr));
         }
     }
 }

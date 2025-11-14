@@ -40,7 +40,7 @@ public sealed class UnionToken : StrToken {
     public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) => 
         throw new NotSupportedException();
 
-    public override Expr ToExpr(NielsenGraph graph) {
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
         /*Expr[] exprs = new Expr[Cases.Length];
         for (int i = 0; i < Cases.Length; i++) {
             var e = Cases[i].ToExpr(graph);
@@ -48,10 +48,10 @@ public sealed class UnionToken : StrToken {
         }
         return graph.Ctx.MkUnion(exprs);*/
         Debug.Assert(Cases.Count > 1);
-        Expr expr = Cases[^1].ToExpr(graph);
+        Expr expr = Cases[^1].ToExpr(env, currentModificationCnt);
         for (int i = Cases.Count - 1; i > 0; i--) {
-            var e = Cases[i - 1].ToExpr(graph);
-            expr = graph.Env.UnionFct.Apply(e, expr);
+            var e = Cases[i - 1].ToExpr(env, currentModificationCnt);
+            expr = env.UnionFct.Apply(e, expr);
         }
         return expr;
     }

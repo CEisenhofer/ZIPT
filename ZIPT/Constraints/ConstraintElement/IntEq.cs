@@ -116,9 +116,9 @@ public class IntEq : IntConstraint {
         return SimplifyResult.Proceed;
     }
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(NielsenNode node, DetModifier sConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
         // Simplify
-        var res = Simplify(node);
+        var res = Simplify(info.CurrentNode);
         if (res != SimplifyResult.Proceed) {
             if (res == SimplifyResult.Conflict)
                 reason = BacktrackReasons.Arithmetic;
@@ -150,14 +150,14 @@ public class IntEq : IntConstraint {
             int i0 = i++;
             if (n.Coefficient.IsOne || n.Coefficient == BigInteger.MinusOne)
                 continue;
-            var lb = PDD<BigInteger>.GetBounds(node, monomials.Where((_, j) => i0 != j));
+            var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j));
             if (lb.IsFull)
                 continue;
             if (n.Coefficient.Sign >= 0)
                 lb = lb.Negate();
 
             lb /= BigInteger.Abs(n.Coefficient);
-            switch (node.AddLowerIntBound(r.Var, lb.Min)) {
+            switch (info.CurrentNode.AddLowerIntBound(r.Var, lb.Min)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
@@ -165,7 +165,7 @@ public class IntEq : IntConstraint {
                     restart = true;
                     break;
             }
-            switch (node.AddHigherIntBound(r.Var, lb.Max)) {
+            switch (info.CurrentNode.AddHigherIntBound(r.Var, lb.Max)) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
@@ -213,8 +213,8 @@ public class IntEq : IntConstraint {
     }
 #endif
 
-    public override BoolExpr ToExpr(NielsenGraph graph) => 
-        graph.Ctx.MkEq(Poly.ToExpr(graph), graph.Ctx.MkInt(0));
+    public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        env.Ctx.MkEq(Poly.ToExpr(env, currentModificationCnt), env.Ctx.MkInt(0));
 
     public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
         Poly.CollectSymbols(nonTermSet, alphabet);

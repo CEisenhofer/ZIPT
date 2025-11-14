@@ -14,19 +14,19 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
         T = t;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // V / "" (progress)
         // V / T V (no progress)
-        var subst = new Subst(V, node.Env.EmptyStr);
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), [], true);
-        yield return node.Outgoing[^1];
+        var subst = new Subst(V, info.Env.EmptyStr);
+        info.CurrentNode.MkChild(info, [subst], [], [], [], true);
+        yield return info.CurrentNode.Outgoing[^1];
         
         subst = new Subst(V, Forwards
-            ? node.Env.MkString(T, V)
-            : node.Env.MkString(V, T)
+            ? info.Env.MkString(T, V)
+            : info.Env.MkString(V, T)
         );
-        node.MkChild(node, [subst], Array.Empty<Constraint>(), [], false);
-        yield return node.Outgoing[^1];
+        info.CurrentNode.MkChild(info, [subst], [], [], [], false);
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

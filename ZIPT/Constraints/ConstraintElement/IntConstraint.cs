@@ -2,6 +2,8 @@
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
 
+    public sealed override bool Shared => true;
+
     public abstract int CompareToInternal(IntConstraint other);
     public int CompareTo(IntConstraint? other) {
         if (other is null)
@@ -11,4 +13,5 @@ public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
         int cmp = GetType().TypeHandle.Value.CompareTo(other.GetType().TypeHandle.Value);
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
+
 }

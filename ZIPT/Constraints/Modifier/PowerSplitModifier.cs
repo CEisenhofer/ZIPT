@@ -19,46 +19,46 @@ public class PowerSplitModifier : DirectedNielsenModifier {
         Power = power;
     }
 
-    public override IEnumerable<NielsenEdge> Apply(NielsenNode node) {
+    public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         // V / Base^Power' Base' && Power' < Power
         // V / Base^Power V
 
         IntVar newPow = new();
-        var power = new PowerToken(Power.Base, node.Env.IntPDDManager.MkPDD(newPow));
-        var prefixes = StrManager.GetDecompose(node, Power.Base, Forwards);
+        var power = new PowerToken(Power.Base, info.Env.IntPDDManager.MkPDD(newPow));
+        var prefixes = StrManager.GetDecompose(info.CurrentNode, Power.Base, Forwards);
         Str s;
         foreach (var p in prefixes) {
-            s = node.Env.StrManager.Concat(node.Env.MkString(power), p.Prefix, Forwards);
+            s = info.Env.StrManager.Concat(info.Env.MkString(power), p.Prefix, Forwards);
 #if DEBUG
-            var cmp = StrEqBase.LcpCompression(s, node.Env);
+            var cmp = StrEqBase.LcpCompression(s, info.Env);
             if (cmp is not null)
                 Console.WriteLine("Could have compressed: " + s + " => " + cmp);
 #endif
             //s = StrEqBase.LcpCompression(s) ?? s;
             List<Constraint> cond = [
-                IntLe.MkLe(node.Env.ZeroInt, node.Env.IntPDDManager.MkPDD(newPow)),
-                IntLe.MkLt(node.Env.IntPDDManager.MkPDD(newPow), Power.Power),
+                IntLe.MkLe(info.Env.ZeroInt, info.Env.IntPDDManager.MkPDD(newPow)),
+                IntLe.MkLt(info.Env.IntPDDManager.MkPDD(newPow), Power.Power),
             ];
             cond.AddRange(p.SideConstraints);
             if (p.VarDecomp is null) {
-                node.MkChild(node,
-                    [new Subst(StrVarToken, s)],
+                info.CurrentNode.MkChild(info,
+                    [new Subst(StrVarToken, s)], [],
                     cond, [], true);
-                yield return node.Outgoing[^1];
+                yield return info.CurrentNode.Outgoing[^1];
             }
             else {
                 Debug.Assert(false);
-                node.MkChild(node,
-                    [new Subst(StrVarToken, node.Env.StrManager.Subst(s, p.VarDecomp.Value)), p.VarDecomp.Value],
+                info.CurrentNode.MkChild(info,
+                    [new Subst(StrVarToken, info.Env.StrManager.Subst(s, p.VarDecomp.Value)), p.VarDecomp.Value], [],
                     cond, [], false);
-                yield return node.Outgoing[^1];
+                yield return info.CurrentNode.Outgoing[^1];
             }
         }
-        s = node.Env.MkString(new List<StrToken> {
+        s = info.Env.MkString(new List<StrToken> {
             new PowerToken(Power.Base, Power.Power), StrVarToken,
         }, Forwards);
-        node.MkChild(node, [new Subst(StrVarToken, s)], Array.Empty<Constraint>(), [], false);
-        yield return node.Outgoing[^1];
+        info.CurrentNode.MkChild(info, [new Subst(StrVarToken, s)], [], [], [], false);
+        yield return info.CurrentNode.Outgoing[^1];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {

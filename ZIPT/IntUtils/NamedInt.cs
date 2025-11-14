@@ -18,6 +18,6 @@ public abstract class NamedInt : IComparable<NamedInt> {
         return cmp != 0 ? cmp : CompareToInternal(other);
     }
     public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
-    public abstract IntExpr ToExpr(NielsenGraph graph);
+    public abstract IntExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt);
     public abstract override string ToString();
 }

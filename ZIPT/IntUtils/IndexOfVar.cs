@@ -1,8 +1,7 @@
 ﻿using System.Numerics;
 using Microsoft.Z3;
-using ZIPT.Constraints;
-using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
+using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
 
@@ -20,8 +19,8 @@ public class IndexOfVar : IntVar {
         Start = start;
     }
 
-    public override IntExpr ToExpr(NielsenGraph graph) => 
-        (IntExpr)graph.Env.IndexOfFct.Apply(S.ToExpr(graph), Contained.ToExpr(graph), Start.ToExpr(graph));
+    public override IntExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
+        (IntExpr)env.IndexOfFct.Apply(S.ToExpr(env, currentModificationCnt), Contained.ToExpr(env, currentModificationCnt), Start.ToExpr(env, currentModificationCnt));
 
     public sealed override string ToString() => $"indexOf({S},{Contained},{Start})";
 }

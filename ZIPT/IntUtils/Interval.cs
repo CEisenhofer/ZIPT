@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Microsoft.Z3;
 using ZIPT.Constraints;
 
@@ -113,27 +114,28 @@ public readonly struct Interval<T> where T : INumberBase<T>, IComparable<T> {
         );
     }
 
-    public static IntExpr ToExpr(BigInteger i, NielsenGraph graph) {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IntExpr ToExpr(BigInteger i, Environment env) {
         if (i >= long.MinValue && i <= long.MaxValue)
-            return graph.Ctx.MkInt((long)i);
-        return graph.Ctx.MkInt(i.ToString());
+            return env.Ctx.MkInt((long)i);
+        return env.Ctx.MkInt(i.ToString());
     }
 
-    public static BoolExpr ToZ3Constraint(Interval<BigInteger> interval, NamedInt v, NielsenGraph graph) {
+    public static BoolExpr ToZ3Constraint(Interval<BigInteger> interval, NamedInt v, LocalInfo info) {
         if (interval.IsFull)
-            return graph.Ctx.MkTrue();
-        IntExpr ve = v.ToExpr(graph);
+            return info.Ctx.MkTrue();
+        IntExpr ve = v.ToExpr(info.Env, info.CurrentModificationCnt);
         if (interval.IsUnit) {
             Debug.Assert(!interval.Min.IsInf);
-            return graph.Ctx.MkEq(ve, ToExpr((BigInteger)interval.Min, graph));
+            return info.Ctx.MkEq(ve, ToExpr((BigInteger)interval.Min, info.Env));
         }
         if (interval.Min.IsNegInf)
-            return graph.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, graph));
+            return info.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, info.Env));
         if (interval.Max.IsPosInf)
-            return graph.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, graph));
-        return graph.Ctx.MkAnd(
-            graph.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, graph)),
-            graph.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, graph))
+            return info.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, info.Env));
+        return info.Ctx.MkAnd(
+            info.Ctx.MkLe(ve, ToExpr((BigInteger)interval.Max, info.Env)),
+            info.Ctx.MkGe(ve, ToExpr((BigInteger)interval.Min, info.Env))
         );
     }
 
