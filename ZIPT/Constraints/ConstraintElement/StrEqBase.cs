@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
@@ -150,8 +151,10 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         foreach (var t in s) {
             if (t is UnitToken)
                 return SimplifyResult.Conflict;
-            if (t is StrVarToken v)
-                return constr.Add(new Subst(v, node.Env.EmptyStr));
+            if (t is StrVarToken v) {
+                constr.Add(new Subst(v, node.Env.EmptyStr));
+                return SimplifyResult.Proceed;
+            }
             if (t is PowerToken p) {
                 if (node.IsLt(node.Env.ZeroInt, p.Power))
                     // p.Power > 0
@@ -505,7 +508,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return compressed ? env.MkString(p, fwd) : null;
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         LHS.CollectSymbols(nonTermSet, alphabet);
         RHS.CollectSymbols(nonTermSet, alphabet);
     }

@@ -22,7 +22,7 @@ public sealed class FailToken : StrToken {
 
     protected override int CompareToInternal(StrToken other) => 0;
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) { }
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) { }
 
     public override MinTerms FirstMinTerms() => new();
 

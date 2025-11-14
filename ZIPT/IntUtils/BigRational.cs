@@ -205,6 +205,5 @@ public readonly struct BigRational : INumberBase<BigRational>, IComparable<BigRa
     public override string ToString() =>
         denum.IsOne ? num.ToString() : $"{num} / {denum}";
 
-    public string ToString(string? format, IFormatProvider? formatProvider) =>
-        ToString();
+    public string ToString(string? format, IFormatProvider? formatProvider) => ToString();
 }

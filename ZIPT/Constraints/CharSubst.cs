@@ -2,6 +2,7 @@
 using System.Diagnostics.Contracts;
 using System.Numerics;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -19,7 +20,7 @@ public struct CharSubst {
     }
 
     public void AddToInterpretation(Interpretation itp) => itp.Apply(this);
-    public void CollectValueSymbols(NonTermSet nonTermSet) => Val.CollectSymbols(nonTermSet, []);
+    public void CollectValueSymbols(NonTermSet nonTermSet) => Val.CollectSymbols(nonTermSet, new CharacterSet());
 
     public override string ToString() => $"{Var} / {Val}";
 

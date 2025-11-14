@@ -3,11 +3,11 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
-public class RegexSplitModifier : DirectedNielsenModifier {
+public class RegexVarSplitModifier : DirectedNielsenModifier {
     public NamedStrToken StrVarToken { get; }
     public MinTerms Cases { get; }
 
-    public RegexSplitModifier(NamedStrToken strVar, MinTerms cases, bool forward) : base(forward) {
+    public RegexVarSplitModifier(NamedStrToken strVar, MinTerms cases, bool forward) : base(forward) {
         StrVarToken = strVar;
         Cases = cases;
     }
@@ -27,16 +27,18 @@ public class RegexSplitModifier : DirectedNielsenModifier {
                 yield return info.CurrentNode.Outgoing[^1];
                 continue;
             }
+            SymCharToken sChar = info.Env.GetOrCreateSymChar(
+                info.Env.GetFreshCharName(StrVarToken.Name));
             subst = new Subst(StrVarToken,
-                info.Env.MkString(new StrToken[] { StrVarToken.ExtensionChar, StrVarToken }, Forwards));
+                info.Env.MkString(new StrToken[] { sChar, StrVarToken }, Forwards));
             var child = info.CurrentNode.MkChild(info, [subst], [], [], [], false);
-            Log.Verify(child.AddCharConstraints(StrVarToken.ExtensionChar, @case));
+            Log.Verify(child.AddCharConstraints(sChar, @case));
             yield return info.CurrentNode.Outgoing[^1];
         }
     }
 
     protected override int CompareToInternal(ModifierBase otherM) {
-        RegexSplitModifier other = (RegexSplitModifier)otherM;
+        RegexVarSplitModifier other = (RegexVarSplitModifier)otherM;
         int cmp = Cases.SetCount.CompareTo(other.Cases.SetCount);
         if (cmp != 0)
             return cmp;

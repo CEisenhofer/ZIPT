@@ -106,7 +106,7 @@ public sealed class TupleStr : Str, IEquatable<TupleStr> {
         }
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         Left.CollectSymbols(nonTermSet, alphabet);
         Right.CollectSymbols(nonTermSet, alphabet);
     }

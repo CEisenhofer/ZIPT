@@ -45,9 +45,13 @@ public static class Options {
     public static bool OutputStats { get; set; } = false;
 
     public const uint MaxCharUtf = 196607;
+    public const uint BitsUtf = 18;
     public const uint MaxCharBmp = 65535;
+    public const uint BitsBmp = 16;
     public const uint MaxCharAscii = 255;
+    public const uint BitsAscii = 8;
     public static uint MaxChar { get; set; } = MaxCharUtf;
+    public static uint CharBits { get; set; } = BitsUtf;
 
     public static int TimeOut { get; set; } = 0;
     public static int MaxDegenerationLevel { get; set; } = 10;

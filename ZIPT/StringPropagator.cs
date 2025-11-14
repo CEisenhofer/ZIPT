@@ -11,6 +11,7 @@ using ZIPT.MiscUtils;
 using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
+using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT;
 
@@ -861,19 +862,16 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         Debug.Assert(satNode.ConstraintsStrMem.All(o => o.Value.IsPrimitiveRegex()));
         
         NonTermSet initNonTermSet = new();
-        HashSet<CharToken> initAlphabet = [];
+        CharacterSet initAlphabet = new CharacterSet();
         Root.CollectSymbols(initNonTermSet, initAlphabet);
 
         using var checkSolver = Ctx.MkSimpleSolver();
 
-        foreach (Constraint c in satNode.AllConstraints.Where(o => o.Shared)) {
+        foreach (Constraint c in info.RootNode.AllConstraints.Where(o => o.Shared)) {
             BoolExpr e = c.ToExpr(info);
             checkSolver.Assert(e);
         }
-        // TODO: Do this also in other places
-        foreach (var path in currentPath) {
-            checkSolver.Assert(Ctx.MkAnd(path.Value.Asserted));
-        }
+        info.DelayedAssert(checkSolver, info.RootNode.Id);
 
         var res = checkSolver.Check();
         Debug.Assert(res == Status.SATISFIABLE);
@@ -881,7 +879,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
         itp = new Interpretation(Env);
         foreach (var c in model.Consts) {
-            if (c.Key.Apply() is not IntExpr i)
+            Expr @const = c.Key.Apply();
+            if (@const is not IntExpr i)
                 continue;
             if (!Env.ExprToIntToken.TryGetValue(i, out var vt) || vt is not IntVar v)
                 continue;
@@ -895,6 +894,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             foreach (var subst in currentPath[^(i + 1)].Value.Subst) {
                 subst.AddToInterpretation(itp);
             }
+            foreach (var subst in currentPath[^(i + 1)].Value.SubstC) {
+                subst.AddToInterpretation(itp);
+            }
         }
 
         var witnesses = satNode.WitnessRegex();
@@ -903,7 +905,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         }
 
         if (Options.ModelCompletion)
-            itp.Complete(initAlphabet);
+            itp.Complete(/*initAlphabet, */model, info);
         itp.Simplify();
 
         bool modelCheck = true;

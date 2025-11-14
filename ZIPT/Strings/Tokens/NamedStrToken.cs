@@ -4,6 +4,7 @@ using System.Numerics;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 
 namespace ZIPT.Strings.Tokens;
 
@@ -20,7 +21,6 @@ public abstract class NamedStrToken : StrToken {
     protected NamedStrToken? Extension1 { get; set; } // x' for extension. e.g. x / ax' or x / x'a
     protected NamedStrToken? Extension2 { get; set; } // x'' in this unlikely case we need to split it up. e.g., x = x'x''
     protected SymCharToken? extensionChar; // for unwinding regexes
-    public SymCharToken ExtensionChar => extensionChar ??= new SymCharToken(this);
     IntVar? PowerExtension { get; set; } // The unique power constant n used when eliminating a variable x / u^n u'
 
     public override bool Ground => false;
@@ -69,7 +69,7 @@ public abstract class NamedStrToken : StrToken {
         return cmp != 0 ? cmp : ChildIdx.CompareTo(((NamedStrToken)other).ChildIdx);
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) => 
         nonTermSet.Add(this);
 
     public override bool Equals(StrToken? other) =>

@@ -2,6 +2,7 @@
 using System.Numerics;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
@@ -216,7 +217,7 @@ public class IntEq : IntConstraint {
     public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
         env.Ctx.MkEq(Poly.ToExpr(env, currentModificationCnt), env.Ctx.MkInt(0));
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
         Poly.CollectSymbols(nonTermSet, alphabet);
 
     public override IntConstraint Negate() =>

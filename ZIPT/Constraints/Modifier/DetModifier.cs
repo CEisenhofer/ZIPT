@@ -23,33 +23,22 @@ public class DetModifier : ModifierBase {
             Add(cnstr);
     }
 
-    public void ForceAdd(Subst s, Environment env) {
-        if (!Substitution.HasValue) {
-            Add(s);
-            return;
-        }
-        if (Substitution.Equals(s))
-            return;
-        Debug.Assert(!s.Str.ContainsVar(s.Var));
-        Add(new StrEq(env.MkString(s.Var), s.Str));
-    }
-
-    public SimplifyResult Add(Subst s) {
+    public bool Add(Subst s) {
         if (Substitution is not null && !Substitution.Equals(s))
-            return SimplifyResult.Restart;
+            return false;
         if (SubstitutionC is not null)
-            return SimplifyResult.Restart;
+            return false;
         Substitution = s;
-        return SimplifyResult.Proceed;
+        return true;
     }
 
-    public SimplifyResult Add(CharSubst s) {
+    public bool Add(CharSubst s) {
         if (SubstitutionC is not null && !SubstitutionC.Equals(s))
-            return SimplifyResult.Restart;
+            return false;
         if (Substitution is not null)
-            return SimplifyResult.Restart;
+            return false;
         SubstitutionC = s;
-        return SimplifyResult.Proceed;
+        return true;
     }
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {

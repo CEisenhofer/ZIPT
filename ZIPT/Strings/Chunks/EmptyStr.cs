@@ -22,7 +22,7 @@ public sealed class EmptyStr : Str {
     public override bool ContainsSChar(SymCharToken v) => false;
     public override void CollectVars(HashSet<NamedStrToken> contained) { }
     public override void CollectSChars(HashSet<SymCharToken> contained) { }
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) { }
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) { }
     public override HashSet<NamedStrToken> ContainedVars() => [];
     public override MinTerms FirstMinTerms() => new();
     public override MinTerms LastMinTerms() => new();

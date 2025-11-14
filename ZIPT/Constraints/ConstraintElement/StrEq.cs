@@ -168,9 +168,8 @@ public sealed class StrEq : StrEqBase {
         // TODO: Check the other if it is also a variable
 
         if (s.IsNonEmpty()) {
-            var res = sConstr.Add(new Subst(v1, env.MkString(s)));
-            if (res != SimplifyResult.Proceed)
-                return;
+            sConstr.Add(new Subst(v1, env.MkString(s)));
+            return;
         }
 
         if (t2 is not CharToken || s1.Length <= 1)
@@ -264,10 +263,12 @@ public sealed class StrEq : StrEqBase {
     }
 
     // Try to add the substitution: x / s ==> do an occurrence check. If it fails, we have to add it as an ordinary equation
-    public SimplifyResult AddDefinition(StrVarToken v, Str s, NielsenNode node, DetModifier sConstr) =>
-        s.ContainsVar(v) 
-            ? SimplifyResult.Proceed 
-            : sConstr.Add(new Subst(v, s));
+    public bool AddDefinition(StrVarToken v, Str s, NielsenNode node, DetModifier sConstr) {
+        if (s.ContainsVar(v))
+            return false;
+        sConstr.Add(new Subst(v, s));
+        return true;
+    }
 
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
@@ -286,8 +287,10 @@ public sealed class StrEq : StrEqBase {
             if (t1 is CharToken c1 && t2 is CharToken c2 && !c1.Equals(c2))
                 return SimplifyResult.Conflict;
 
-            if (t1 is SymCharToken sc1 && t2 is UnitToken u)
-                return sConstr.Add(new CharSubst(sc1, u));
+            if (t1 is SymCharToken sc1 && t2 is UnitToken u) {
+                sConstr.Add(new CharSubst(sc1, u));
+                return SimplifyResult.Restart;
+            }
 
             if (t1 is PowerToken p1) {
                 if (info.CurrentNode.IsZero(p1.Power)) {
@@ -319,7 +322,8 @@ public sealed class StrEq : StrEqBase {
 
     static int simplifyCount;
 
-    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
+    protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr,
+        ref BacktrackReasons reason) {
         simplifyCount++;
         Log.WriteLine($"Simplify Eq ({simplifyCount}): {LHS} = {RHS}");
 #if false
@@ -402,10 +406,14 @@ public sealed class StrEq : StrEqBase {
 
         // Propagate assignments
         // important: clone it; otherwise one might into endless recursions when applied to itself
-        if (LHS is { Length: 1, First: StrVarToken s1 })
-            AddDefinition(s1, RHS, info.CurrentNode, sConstr);
-        if (RHS is { Length: 1, First: StrVarToken s2 })
-            AddDefinition(s2, LHS, info.CurrentNode, sConstr);
+        if (LHS is { Length: 1, First: StrVarToken s1 }) {
+            if (AddDefinition(s1, RHS, info.CurrentNode, sConstr))
+                return SimplifyResult.RestartAndSatisfied;
+        }
+        else if (RHS is { Length: 1, First: StrVarToken s2 }) {
+            if (AddDefinition(s2, LHS, info.CurrentNode, sConstr))
+                return SimplifyResult.RestartAndSatisfied;
+        }
         SortStr();
         return SimplifyResult.Proceed;
     }

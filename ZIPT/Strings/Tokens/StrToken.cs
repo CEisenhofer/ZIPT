@@ -53,7 +53,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     }
 
     protected abstract int CompareToInternal(StrToken other);
-    public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet);
 
     [Pure]
     public virtual MinTerms FirstMinTerms() => throw new NotSupportedException();

@@ -166,8 +166,8 @@ public sealed class StrMem : StrEqBase {
 
     protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
         if (IsPrimitiveRegex()) {
-            if (Str[0] is NamedStrToken v && Regex.RegexFree) {
-                if (sConstr.Add(new Subst(v, Regex)) == SimplifyResult.Proceed)
+            if (Str[0] is NamedStrToken v && Regex is { RegexFree: true, Ground: true }) {
+                if (sConstr.Add(new Subst(v, Regex)))
                     return SimplifyResult.RestartAndSatisfied;
                 return SimplifyResult.Restart;
             }
@@ -196,6 +196,9 @@ public sealed class StrMem : StrEqBase {
             reason = BacktrackReasons.SymbolClash;
             return SimplifyResult.Conflict;
         }
+
+        if (!sConstr.Trivial)
+            return SimplifyResult.Proceed;
 
         if (Regex.IsEmpty()) {
             // Remove powers that actually do not exist anymore
@@ -240,13 +243,15 @@ public sealed class StrMem : StrEqBase {
             // Simplify step should have already dealt with everything else!
             throw new NotSupportedException();
         }
-        if (Str.First is not NamedStrToken or PowerToken)
+        if (Str.First is PowerToken)
             return null;
-        Debug.Assert(Str.First is not PowerToken);
-        NamedStrToken v = (NamedStrToken)Str.First;
         var first = Regex.FirstMinTerms();
         Debug.Assert(first.Intervals.Count > 0);
-        return new RegexSplitModifier(v, first, true);
+
+        if (Str.First is NamedStrToken v)
+            return new RegexVarSplitModifier(v, first, true);
+        return new RegexCharSplitModifier((SymCharToken)Str.First, first);
+
     }
 
     public override int CompareToInternal(StrConstraint other) {

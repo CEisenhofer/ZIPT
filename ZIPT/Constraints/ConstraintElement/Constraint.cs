@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics.Contracts;
 using ZIPT.Constraints.Modifier;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
@@ -38,6 +39,6 @@ public abstract class Constraint {
     protected abstract SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason);
     public abstract BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt);
     public BoolExpr ToExpr(LocalInfo info) => ToExpr(info.Env, info.CurrentModificationCnt);
-    public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet);
     public abstract Constraint Negate();
 }

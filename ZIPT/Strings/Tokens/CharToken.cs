@@ -35,8 +35,8 @@ public sealed class CharToken : UnitToken {
         return Value.CompareTo(((CharToken)other).Value);
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
-        alphabet.Add(this);
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
+        alphabet.Add(Value);
 
     public override MinTerms FirstMinTerms() => new(this);
 

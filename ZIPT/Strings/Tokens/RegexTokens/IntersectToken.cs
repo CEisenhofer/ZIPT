@@ -61,7 +61,7 @@ public sealed class IntersectToken : StrToken {
         return 0;
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         foreach (var @case in Cases) {
             @case.CollectSymbols(nonTermSet, alphabet);
         }

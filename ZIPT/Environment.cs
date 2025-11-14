@@ -47,6 +47,8 @@ public class Environment : IDisposable {
     public readonly FuncDecl RgFct;
     public readonly FuncDecl CompFct;
 
+    public readonly FuncDecl ValOf; // gets the "Z3-character" value of a symbolic character
+
     public bool IsStrAt(FuncDecl f) => f.Equals(StrAtFct);
     public bool IsPrefixOf(FuncDecl f) => f.Equals(PrefixOfFct);
     public bool IsSuffixOf(FuncDecl f) => f.Equals(SuffixOfFct);
@@ -66,6 +68,8 @@ public class Environment : IDisposable {
     public bool IsRange(FuncDecl f) => f.Equals(RgFct);
     public bool IsComplement(FuncDecl f) => f.Equals(CompFct);
     public bool IsFail(FuncDecl f) => f.Equals(Fail.FuncDecl);
+
+    public bool IsValOf(FuncDecl f) => f.Equals(ValOf);
 
     public readonly Dictionary<(StrToken v, int modifications), Expr> StrTokenToExpr = [];
     public readonly Dictionary<Expr, StrToken> ExprToStrToken = [];
@@ -120,6 +124,8 @@ public class Environment : IDisposable {
         InterFct = ctx.MkUserPropagatorFuncDecl("reInter", [StringSort, StringSort], StringSort);
         RgFct = ctx.MkUserPropagatorFuncDecl("reRange", [StringSort, StringSort], StringSort);
         CompFct = ctx.MkUserPropagatorFuncDecl("reComp", [StringSort], StringSort);
+
+        ValOf = ctx.MkFuncDecl("valOf", [StringSort], ctx.MkBitVecSort(Options.CharBits)); // no reason to track this
     }
 
     public void Dispose() {
@@ -153,8 +159,6 @@ public class Environment : IDisposable {
         if (charVarCache.TryGetValue(var, out SymCharToken? v))
             return v;
         Debug.Assert(!var.Contains('$'));
-        Debug.Assert(!var.Contains('#'));
-        Debug.Assert(!var.Contains('?'));
         v = new SymCharToken(var);
         charVarCache.Add(var, v);
         return v;

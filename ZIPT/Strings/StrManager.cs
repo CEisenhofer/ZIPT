@@ -561,13 +561,13 @@ public sealed class StrManager {
         if (!constSet.IsEmpty) {
             Debug.Assert(copyIdx < tokens.Count);
             tokens[copyIdx++] = Single(new SetToken(constSet));
-            tokens.Sort(); // TODO: Change ordering such that singleton sets or ordered last anyway
         }
         else if (copyIdx == 0)
             return FailStr;
         if (copyIdx == 1)
             return tokens[0];
         tokens.RemoveRange(copyIdx, tokens.Count - copyIdx);
+        tokens.Sort();
         return Single(new UnionToken(tokens));
     }
 

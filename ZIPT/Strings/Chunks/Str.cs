@@ -52,7 +52,7 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
     public abstract bool ContainsSChar(SymCharToken v);
     public abstract void CollectVars(HashSet<NamedStrToken> contained);
     public abstract void CollectSChars(HashSet<SymCharToken> contained);
-    public abstract void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet);
+    public abstract void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet);
     public abstract HashSet<NamedStrToken> ContainedVars();
     public abstract MinTerms FirstMinTerms();
     public abstract MinTerms LastMinTerms();

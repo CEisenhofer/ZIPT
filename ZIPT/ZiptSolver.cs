@@ -49,13 +49,16 @@ public static class ZiptSolver {
                 switch (name.ToLower()) {
                     case "ascii":
                         Options.MaxChar = Options.MaxCharAscii;
+                        Options.CharBits = Options.BitsAscii;
                         break;
                     case "bmp":
                         Options.MaxChar = Options.MaxCharBmp;
+                        Options.CharBits = Options.BitsBmp;
                         break;
                     case "utf":
                     case "unicode":
                         Options.MaxChar = Options.MaxCharUtf;
+                        Options.CharBits = Options.BitsUtf;
                         break;
                     default:
                         Usage("Unknown character encoding: " + name);

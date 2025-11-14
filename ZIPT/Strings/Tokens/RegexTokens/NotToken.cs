@@ -28,7 +28,7 @@ public sealed class NotToken : StrToken {
     protected override int CompareToInternal(StrToken other) => 
         Base.CompareTo(((NotToken)other).Base);
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) => 
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) => 
         Base.CollectSymbols(nonTermSet, alphabet);
 
     public override MinTerms FirstMinTerms() => Base.FirstMinTerms().Complement();

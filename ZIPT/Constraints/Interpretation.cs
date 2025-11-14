@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using Microsoft.Z3;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
@@ -38,15 +39,20 @@ public class Interpretation {
         CharSubstitution[subst.Var] = new CharSubst(subst.Var, u);
     }
 
-    public void Complete(HashSet<CharToken> alphabet) {
+    public void Complete(/*CharacterSet alphabet, */Model model, LocalInfo info) {
         NonTermSet nonTermSet = new();
-        var ch = alphabet.IsNonEmpty() ? alphabet.First() : new CharToken('a');
+        //var ch = alphabet.IsEmpty ? new CharToken('a') : alphabet.First;
         foreach (var v in Substitution.Values) {
-            v.Str.CollectSymbols(nonTermSet, []);
+            v.Str.CollectSymbols(nonTermSet, new CharacterSet());
         }
         Interpretation clean = new(Env);
         foreach (var v in nonTermSet.IntVars) {
-            clean.Add(v, !IntVal.ContainsKey(v) ? 0 : IntVal[v]);
+            clean.Add(v, IntVal.GetValueOrDefault(v, BigInteger.Zero));
+        }
+        foreach (var p in nonTermSet.CharVars) {
+            Expr c = model.Eval(Env.ValOf.Apply(p.ToExpr(Env, info.CurrentModificationCnt)), true);
+            Debug.Assert(c is BitVecNum);
+            clean.CharSubstitution.Add(p, new CharSubst(p, new CharToken((char)((BitVecNum)c).UInt)));
         }
         foreach (var p in nonTermSet.StrVars.OfType<StrVarToken>()) {
             clean.Substitution.Add(p, new Subst(p, Env.EmptyStr));

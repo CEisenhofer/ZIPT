@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -64,7 +65,7 @@ public class StrPrefixOf : StrConstraint {
     public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
         (BoolExpr)env.PrefixOfFct.Apply(Contained.ToExpr(env, currentModificationCnt), S.ToExpr(env, currentModificationCnt));
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         S.CollectSymbols(nonTermSet, alphabet);
         Contained.CollectSymbols(nonTermSet, alphabet);
     }

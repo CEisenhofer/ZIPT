@@ -34,7 +34,7 @@ public sealed class SingletonStr : Str, IEquatable<SingletonStr> {
             contained.Add(vc);
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
         StrToken.CollectSymbols(nonTermSet, alphabet);
 
     public override HashSet<NamedStrToken> ContainedVars() {

@@ -2,6 +2,7 @@
 using System.Diagnostics.Contracts;
 using System.Numerics;
 using ZIPT.IntUtils;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -34,7 +35,7 @@ public struct Subst {
         lenVar.ToExpr(env, currentModificationCnt);
     public IntExpr ValueLenExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
         GetLenReplacement(env).newLen.ToExpr(env, currentModificationCnt);
-    public void CollectValueSymbols(NonTermSet nonTermSet) => Str.CollectSymbols(nonTermSet, []);
+    public void CollectValueSymbols(NonTermSet nonTermSet) => Str.CollectSymbols(nonTermSet, new CharacterSet());
 
     public override string ToString() => $"{Var} / {(Str.Length == 0 ? "ε" : Str)}";
 

@@ -23,8 +23,10 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         //TypeOrder.Add(typeof(DecomposeModifier), TypeOrder.Count);
         // x := ax || x := ""
         TypeOrder.Add(typeof(ConstNielsenModifier), TypeOrder.Count);
-        // \/ x := u* prefix(u); u const
-        TypeOrder.Add(typeof(RegexSplitModifier), TypeOrder.Count);
+        // o \in m_1 || ... || o \in m_k
+        TypeOrder.Add(typeof(RegexCharSplitModifier), TypeOrder.Count);
+        // x / "" || (x / ox && (o \in m_1 || ... || o \in m_k))
+        TypeOrder.Add(typeof(RegexVarSplitModifier), TypeOrder.Count);
         // x := b^n' prefix(b) && n' < n || x := b^n x
         TypeOrder.Add(typeof(PowerSplitModifier), TypeOrder.Count);
         // x := "" || (y := "" && |x| > 0) || (x := y && |x| > 0) || (x := yx && |x| > 0 && |y| > 0) ||( y := xy && |x| > 0 && |y| > 0)

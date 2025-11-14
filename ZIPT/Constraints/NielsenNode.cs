@@ -25,6 +25,7 @@ public enum BacktrackReasons {
     Arithmetic,
     Regex,
     RegexWidening,
+    CharacterRange,
     SMT,
     ChildrenFailed,
 }
@@ -42,7 +43,8 @@ public class NielsenNode {
     IEnumerator<NielsenEdge>? extensionEnum;
 
     // Blocking might affect those values so we might recompute them in different runs (because of forbidden edges)
-    public bool IsCurrentlyConflict => IsGeneralConflict || (CurrentReason != BacktrackReasons.Unevaluated && IsExtended);
+    public bool IsCurrentlyConflict =>
+        IsGeneralConflict || (CurrentReason != BacktrackReasons.Unevaluated && IsExtended);
 
     // Reason why the node was a conflict - if it did not fail directly, it mostly says because of its children
     public BacktrackReasons CurrentReason { get; set; } = BacktrackReasons.Unevaluated;
@@ -50,7 +52,9 @@ public class NielsenNode {
     uint evalIdx;
 
     public NList<StrEq> ConstraintsStrEq { get; init; } = [];
+
     public Dictionary<uint, StrMem> ConstraintsStrMem { get; init; } = [];
+
     //public NList<ReSplit> ConstraintsReSplit { get; init; } = [];
     public NList<IntEq> ConstraintsIntEq { get; init; } = [];
     public NList<IntLe> ConstraintsIntLe { get; init; } = [];
@@ -82,25 +86,25 @@ public class NielsenNode {
     // x... = uy... and u ground
     // If multiple x... = vy... then we keep one of them (preferably the shorter one)
     // We just cache it, as both simplify and splitting need this (no need to clone)
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> forwardVarDep = []; // x... = uy... => (x, y) -> u 
-    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>>
+        forwardVarDep = []; // x... = uy... => (x, y) -> u 
 
-    public void ResetCounter() => 
+    public readonly Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>>
+        backwardVarDep = []; // ...x = ...yu => (x, y) -> u 
+
+    public void ResetCounter() =>
         evalIdx = 0;
 
     public NielsenNode(NielsenGraph graph) {
         Graph = graph;
-        // Graph.PersistPending();
         Id = graph.NodeCnt;
         IsProgressNode = true;
         graph.AddNode(this);
-        // graph.AddPending(this);
     }
 
     public NielsenNode(NielsenGraph graph, NielsenNode parent) : this(graph) {
         ConstraintsStrEq = new NList<StrEq>(parent.ConstraintsStrEq.Count);
         ConstraintsStrMem = new Dictionary<uint, StrMem>(parent.ConstraintsStrMem.Count);
-        //ConstraintsReSplit = new NList<ReSplit>(parent.ConstraintsReSplit.Count);
         ConstraintsIntEq = new NList<IntEq>(parent.ConstraintsIntEq.Count);
         ConstraintsIntLe = new NList<IntLe>(parent.ConstraintsIntLe.Count);
         foreach (var e in parent.ConstraintsStrEq) {
@@ -110,9 +114,6 @@ public class NielsenNode {
             Debug.Assert(e.Key == e.Value.Id);
             ConstraintsStrMem.Add(e.Key, new StrMem(e.Value.Str, e.Value.Regex, e.Value.History, e.Value.Id));
         }
-        //foreach (var e in parent.ConstraintsReSplit) {
-        //    ConstraintsReSplit.Add(new ReSplit(e.Regex, e.Prefix, e.Postfix, e.BlockedList.ToList(), e.IsPropagating));
-        //}
         foreach (var e in parent.ConstraintsIntEq) {
             ConstraintsIntEq.Add(new IntEq(e.Poly));
         }
@@ -193,7 +194,41 @@ public class NielsenNode {
         }
     }
 
-    void Update<T>(Dictionary<uint, T> constraints, Subst subst, NielsenNode node) where T : Constraint, IComparable<T> {
+    void Update<T>(Dictionary<uint, T> constraints, Subst subst, NielsenNode node)
+        where T : Constraint, IComparable<T> {
+        List<(uint id, T v)> toChange = [];
+        foreach (var cnstr in constraints) {
+            var res = (T)cnstr.Value.Apply(subst, node);
+            if (!ReferenceEquals(res, cnstr.Value)) {
+                toChange.Add((cnstr.Key, res));
+            }
+        }
+        foreach (var c in toChange) {
+            Debug.Assert(constraints.ContainsKey(c.id));
+            constraints[c.id] = c.v;
+        }
+    }
+
+    void Update<T>(NList<T> constraints, CharSubst subst, NielsenNode node) where T : Constraint, IComparable<T> {
+        List<T> toAdd = [];
+        List<T> toRemove = [];
+        foreach (var cnstr in constraints) {
+            var res = (T)cnstr.Apply(subst, node);
+            if (!ReferenceEquals(res, cnstr)) {
+                toRemove.Add(cnstr);
+                toAdd.Add(res);
+            }
+        }
+        foreach (var old in toRemove) {
+            constraints.Remove(old);
+        }
+        foreach (var @new in toAdd) {
+            constraints.Add(@new);
+        }
+    }
+
+    void Update<T>(Dictionary<uint, T> constraints, CharSubst subst, NielsenNode node)
+        where T : Constraint, IComparable<T> {
         List<(uint id, T v)> toChange = [];
         foreach (var cnstr in constraints) {
             var res = (T)cnstr.Value.Apply(subst, node);
@@ -210,11 +245,11 @@ public class NielsenNode {
     public void Apply(Subst subst, NielsenNode node) {
         Update(ConstraintsStrEq, subst, node);
         Update(ConstraintsStrMem, subst, node);
-        // Update(ConstraintsReSplit, subst, node);
         Update(ConstraintsIntEq, subst, node);
         Update(ConstraintsIntLe, subst, node);
-        if (!VarBoundWatcher.TryGetValue(subst.Var, out var watch)) 
+        if (!VarBoundWatcher.TryGetValue(subst.Var, out var watch))
             return;
+
         foreach (var watched in watch) {
             var bound = IntBounds[watched];
             IntBounds.Remove(watched);
@@ -229,6 +264,39 @@ public class NielsenNode {
                 AddConstraint(IntLe.MkLe(Env.IntPDDManager.MkPDD(watched), n));
         }
         VarBoundWatcher.Remove(subst.Var);
+    }
+
+    public void Apply(CharSubst subst, NielsenNode node) {
+        Update(ConstraintsStrEq, subst, node);
+        Update(ConstraintsStrMem, subst, node);
+
+        if (subst.Val is SymCharToken v) {
+            if (DisEqualities.TryGetValue(subst.Var, out var list)) {
+                foreach (var v2 in list) {
+                    if (v2.Equals(v)) {
+                        CurrentReason = BacktrackReasons.CharacterRange;
+                        IsGeneralConflict = true;
+                        return;
+                    }
+                }
+                Log.Verify(DisEqualities.Remove(subst.Var));
+                CharRanges.Remove(subst.Var);
+            }
+        }
+        else if (subst.Val is CharToken c) {
+            if (CharRanges.TryGetValue(subst.Var, out CharacterSet? s)) {
+                if (!s.Contains(c)) {
+                    CurrentReason = BacktrackReasons.CharacterRange;
+                    IsGeneralConflict = true;
+                    return;
+                }
+                DisEqualities.Remove(subst.Var);
+                Log.Verify(CharRanges.Remove(subst.Var));
+            }
+            else {
+                Debug.Assert(false);
+            }
+        }
     }
 
     public (Str s1, Str s2)[] GetSignature(Environment env, bool fwd) {
@@ -278,7 +346,7 @@ public class NielsenNode {
 
     public bool IsIntFixed(NamedInt v, out InfNum<BigInteger> val) {
         val = default;
-        if (!IntBounds.TryGetValue(v, out var bounds)) 
+        if (!IntBounds.TryGetValue(v, out var bounds))
             return false;
         val = bounds.Min;
         return bounds.IsUnit;
@@ -291,13 +359,13 @@ public class NielsenNode {
     }
 
     public InfNum<BigInteger> GetBoundLower(NamedInt v) {
-        if (!IntBounds.TryGetValue(v, out var bounds)) 
+        if (!IntBounds.TryGetValue(v, out var bounds))
             return v.MinLen;
         return bounds.Min;
     }
 
     public InfNum<BigInteger> GetBoundUpper(NamedInt v) {
-        if (!IntBounds.TryGetValue(v, out var bounds)) 
+        if (!IntBounds.TryGetValue(v, out var bounds))
             return InfNum<BigInteger>.PosInfNum;
         return bounds.Max;
     }
@@ -361,7 +429,7 @@ public class NielsenNode {
         return SimplifyResult.Restart;
     }
 
-    public bool ConsistentIntVal(IntVar var, InfNum<BigInteger> v) => 
+    public bool ConsistentIntVal(IntVar var, InfNum<BigInteger> v) =>
         !IntBounds.TryGetValue(var, out var bounds) || bounds.Contains(v);
 
     // lhs == rhs
@@ -606,7 +674,7 @@ public class NielsenNode {
         }
     }
 
-    public void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         foreach (var cnstr in ConstraintsStrEq) {
             cnstr.CollectSymbols(nonTermSet, alphabet);
         }
@@ -617,7 +685,8 @@ public class NielsenNode {
 
     static int simplifyCnt;
 
-    public BacktrackReasons Simplify(LocalInfo info, NonTermSet modSet, DetModifier outSideCnstr, bool forceRewriteAll) {
+    public BacktrackReasons Simplify(LocalInfo info, NonTermSet modSet, DetModifier outSideCnstr,
+        bool forceRewriteAll) {
         simplifyCnt++;
         Log.WriteLine("Simplify: " + simplifyCnt);
         bool restart = true;
@@ -642,7 +711,7 @@ public class NielsenNode {
                         // Maybe we do not need this anymore... (assertion here just to check)
                         if (c is IntConstraint ic && ignored.Add(ic))
                             restart = true;
-                        else if (c is StrEq) 
+                        else if (c is StrEq)
                             ignored.Clear();
                         continue;
                     case SimplifyResult.RestartAndSatisfied:
@@ -654,6 +723,8 @@ public class NielsenNode {
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+                if (!outSideCnstr.Trivial)
+                    break;
             }
             if (!outSideCnstr.Trivial)
                 // Better we integrate the new information 
@@ -661,8 +732,10 @@ public class NielsenNode {
                 // so either try to unify the substitutions, or just apply every substitution as soon as we get it
                 break;
         }
+        propagate:
 
-        Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>> largerVars = []; // if |x| = |y| + d + ... then x > y [strictly!]
+        Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>>
+            largerVars = []; // if |x| = |y| + d + ... then x > y [strictly!]
         Dictionary<NamedStrToken, uint> lowerBounds = []; // if d <= |x| with x > 0
 
         // TODO: Do this also for inequalities
@@ -734,10 +807,10 @@ public class NielsenNode {
             ).All(o => o.First.CompareTo(o.Second) <= 0)
         );
         Log.Verify(ConstraintsStrEq.Remove(toRemove));
-        while (ConstraintsStrEq.Remove(toRemove)) {}
+        while (ConstraintsStrEq.Remove(toRemove)) { }
     }
 
-    public void RemoveStrMem(StrMem toRemove) => 
+    public void RemoveStrMem(StrMem toRemove) =>
         Log.Verify(ConstraintsStrMem.Remove(toRemove.Id));
 
     /*public void RemoveReSplit(ReSplit toRemove) {
@@ -756,7 +829,7 @@ public class NielsenNode {
             ).All(o => o.First.CompareTo(o.Second) <= 0)
         );
         Log.Verify(ConstraintsIntEq.Remove(toRemove));
-        while (ConstraintsIntEq.Remove(toRemove)) {}
+        while (ConstraintsIntEq.Remove(toRemove)) { }
     }
 
     public void RemoveIntLe(IntLe toRemove) {
@@ -765,7 +838,7 @@ public class NielsenNode {
             ).All(o => o.First.CompareTo(o.Second) <= 0)
         );
         Log.Verify(ConstraintsIntLe.Remove(toRemove));
-        while (ConstraintsIntLe.Remove(toRemove)) {}
+        while (ConstraintsIntLe.Remove(toRemove)) { }
     }
 
     public NielsenNode MkChild(LocalInfo info,
@@ -782,6 +855,9 @@ public class NielsenNode {
         foreach (var s in subst) {
             child.Apply(s, child);
         }
+        foreach (var s in substC) {
+            child.Apply(s, child);
+        }
         // ... then add the new stuff
         foreach (var cond in sideConds) {
             child.AddConstraint(cond);
@@ -789,7 +865,7 @@ public class NielsenNode {
         return child;
     }
 
-    public NielsenNode Clone() => 
+    public NielsenNode Clone() =>
         new(Graph, this);
 
     public List<(Constraint orig, Constraint simpl)> CheckModel(Interpretation itp) {
@@ -836,12 +912,6 @@ public class NielsenNode {
     public override int GetHashCode() =>
         AllConstraints.Aggregate(164304773, (i, v) => i + 366005033 * v.GetHashCode());
 
-    public void AddConstraints(IEnumerable<Constraint> constraints) {
-        foreach (var cond in constraints) {
-            AddConstraint(cond);
-        }
-    }
-
     public bool AddConstraint(Constraint cnstr) {
         switch (cnstr) {
             case StrEq sEq:
@@ -849,7 +919,6 @@ public class NielsenNode {
             case StrMem sMem:
                 ConstraintsStrMem.Add(sMem.Id, sMem);
                 return true;
-            //ReSplit rSplit => ConstraintsReSplit.Add(rSplit),
             case IntEq iEq:
                 return ConstraintsIntEq.Add(iEq);
             case IntLe iLe:
@@ -919,11 +988,12 @@ public class NielsenNode {
         reason is
             BacktrackReasons.SymbolClash or
             BacktrackReasons.ParikhImage or
-            BacktrackReasons.SMT or
+            BacktrackReasons.Subsumption or
             BacktrackReasons.Arithmetic or
             BacktrackReasons.Regex or
             BacktrackReasons.RegexWidening or
-            BacktrackReasons.Subsumption or
+            BacktrackReasons.CharacterRange or
+            BacktrackReasons.SMT or
             BacktrackReasons.ChildrenFailed;
 
     public static bool IsActualConflict(BacktrackReasons reason) =>
@@ -937,13 +1007,14 @@ public class NielsenNode {
         BacktrackReasons.Regex => "Regex",
         BacktrackReasons.RegexWidening => "RegexWidening",
         BacktrackReasons.Subsumption => "Subsumption",
+        BacktrackReasons.CharacterRange => "Character Range",
         BacktrackReasons.SMT => "SMT",
         BacktrackReasons.ChildrenFailed => "Children Failed",
         _ => throw new ArgumentOutOfRangeException(),
     };
 
     void Activate() {
-        if (IsActive) 
+        if (IsActive)
             return;
         evalIdx = Graph.RunIdx;
         CurrentReason = BacktrackReasons.Unevaluated;
@@ -1240,7 +1311,7 @@ public class NielsenNode {
         Str current = Env.StrManager.MkIntersection(regexes);
         if (current.Nullable)
             return true; // witness is null or empty
-        
+
         todo.Push(current);
         visited.Add(current, null);
 
@@ -1254,7 +1325,7 @@ public class NielsenNode {
                 todo.Push(d);
                 if (!d.Nullable)
                     continue;
-                if (witness is null) 
+                if (witness is null)
                     return true;
                 Str it = d;
                 while (true) {
@@ -1283,7 +1354,8 @@ public class NielsenNode {
         if (DisEqualities.IsNonEmpty()) {
             sb.AppendLine("DisEq:");
             foreach (var cnstr in DisEqualities) {
-                sb.Append('\t').AppendLine(cnstr.Key + " != {" + string.Join(", ", cnstr.Value.Select(o => o.ToString())) + "}");
+                sb.Append('\t').AppendLine(cnstr.Key + " != {" +
+                                           string.Join(", ", cnstr.Value.Select(o => o.ToString())) + "}");
             }
         }
         if (CharRanges.IsNonEmpty()) {
@@ -1295,7 +1367,8 @@ public class NielsenNode {
         if (IntBounds.IsNonEmpty()) {
             sb.AppendLine("Bounds:");
             foreach (var (v, i) in IntBounds) {
-                sb.Append('\t').Append(i.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ").AppendLine(i.Max.ToString());
+                sb.Append('\t').Append(i.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ")
+                    .AppendLine(i.Max.ToString());
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();
@@ -1312,10 +1385,24 @@ public class NielsenNode {
                 sb.Append(DotEscapeStr(cnstr.ToString())).Append("\\n");
             }
         }
+        if (DisEqualities.IsNonEmpty()) {
+            sb.Append("DisEq:\\n");
+            foreach (var cnstr in DisEqualities) {
+                sb.Append('\t').Append(cnstr.Key + " &ne; {" +
+                                           string.Join(", ", cnstr.Value.Select(o => DotEscapeStr(o.ToString()))) + "}").Append("\\n");
+            }
+        }
+        if (CharRanges.IsNonEmpty()) {
+            sb.Append("Ranges:\\n");
+            foreach (var cnstr in CharRanges) {
+                sb.Append('\t').Append(DotEscapeStr(cnstr.Key.ToString()) + " &isin; " + DotEscapeStr(cnstr.Value.ToString())).Append("\\n");
+            }
+        }
         if (IntBounds.Count > 0) {
             sb.Append("Bounds:\\n");
             foreach (var (v, i) in IntBounds) {
-                sb.Append(i.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.Max).Append("\\n");
+                sb.Append(i.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.Max)
+                    .Append("\\n");
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();

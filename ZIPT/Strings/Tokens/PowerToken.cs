@@ -69,7 +69,7 @@ public sealed class PowerToken : StrToken {
         return cmp != 0 ? cmp : Power.CompareTo(((PowerToken)other).Power);
     }
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) {
         Base.CollectSymbols(nonTermSet, alphabet);
         Power.CollectSymbols(nonTermSet, alphabet);
     }

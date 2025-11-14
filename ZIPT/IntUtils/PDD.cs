@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using ZIPT.Constraints;
+using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.IntUtils;
@@ -419,10 +420,10 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) =>
+    public void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
         CollectSymbols(this, nonTermSet, alphabet);
 
-    public static void CollectSymbols(PDD<T> p, NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
+    public static void CollectSymbols(PDD<T> p, NonTermSet nonTermSet, CharacterSet alphabet) {
         Stack<PDD<T>> stack = [];
         List<PDD<T>> marked = [];
         Debug.Assert(!p.Marker);

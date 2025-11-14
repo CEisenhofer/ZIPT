@@ -66,11 +66,8 @@ public class CharacterSet : IEquatable<CharacterSet>, IComparable<CharacterSet> 
     public static CharacterSet TakeFromList(List<CharacterRange> ranges) => 
         new(ranges);
 
-    public CharacterSet Clone() {
-        CharacterSet ret = new(Ranges.Count);
-        ret.Ranges.AddRange(ret.Ranges);
-        return ret;
-    }
+    public CharacterSet Clone() => 
+        new(Ranges.ToList());
 
     public CharacterSet Complement() =>
         FromComplement(this);
@@ -170,50 +167,54 @@ public class CharacterSet : IEquatable<CharacterSet>, IComparable<CharacterSet> 
         }
         Ranges.Insert(left, newRange);
     }
+
     public void Add(CharacterSet other) {
         if (other.IsEmpty)
             return;
         if (IsEmpty) {
-            Ranges.AddRange(other.Ranges);
+            for (int k = 0; k < other.Ranges.Count; k++)
+                Ranges.Add(other.Ranges[k]);
             return;
         }
         int i = 0;
         int j = 0;
         while (j < other.Ranges.Count) {
             CharacterRange or = other.Ranges[j];
-            // Find the position to insert or
             while (i < Ranges.Count && Ranges[i].To < or.From) {
                 i++;
             }
             if (i == Ranges.Count) {
-                // Just append the rest
-                Ranges.AddRange(other.Ranges.Skip(j));
+                for (; j < other.Ranges.Count; j++)
+                    Ranges.Add(other.Ranges[j]);
                 break;
             }
             if (Ranges[i].From > or.To) {
-                // No overlap, just insert
                 Ranges.Insert(i, or);
-                i++;
-                j++;
+                i++; j++;
                 continue;
             }
-            // There is overlap, we need to merge
             uint newFrom = Math.Min(Ranges[i].From, or.From);
             uint newTo = Math.Max(Ranges[i].To, or.To);
-            i++;
+            int end = i + 1;
             j++;
-            // Merge with subsequent ranges in this.Ranges
-            while (i < Ranges.Count && Ranges[i].From <= newTo) {
-                newTo = Math.Max(newTo, Ranges[i].To);
-                i++;
+            while (true) {
+                bool expanded = false;
+                while (end < Ranges.Count && Ranges[end].From <= newTo) {
+                    newTo = Math.Max(newTo, Ranges[end].To);
+                    end++;
+                    expanded = true;
+                }
+                while (j < other.Ranges.Count && other.Ranges[j].From <= newTo) {
+                    newTo = Math.Max(newTo, other.Ranges[j].To);
+                    j++;
+                    expanded = true;
+                }
+                if (!expanded)
+                    break;
             }
-            // Merge with subsequent ranges in other.Ranges
-            while (j < other.Ranges.Count && other.Ranges[j].From <= newTo) {
-                newTo = Math.Max(newTo, other.Ranges[j].To);
-                j++;
-            }
-            // Replace the merged range
-            Ranges.Insert(i - 1, new CharacterRange(newFrom, newTo));
+            Ranges.RemoveRange(i, end - i);
+            Ranges.Insert(i, new CharacterRange(newFrom, newTo));
+            i++;
         }
 
         Debug.Assert(Ranges.SkipLast(1).Zip(Ranges.Skip(1)).All(o =>

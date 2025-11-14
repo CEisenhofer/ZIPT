@@ -39,12 +39,24 @@ public sealed class SetToken : UnitToken {
         return expr;
     }
 
+    public BoolExpr ToIntBounds(Environment env, Expr e) {
+        if (Set.IsEmpty)
+            return env.Ctx.MkFalse();
+        BitVecExpr bv = (BitVecExpr)env.ValOf.Apply(e);
+        List<BoolExpr> ranges = [];
+        foreach (var r in Set.Ranges) {
+            Debug.Assert(r.From < r.To);
+            ranges.Add(env.Ctx.MkAnd(
+                env.Ctx.MkBVULE(env.Ctx.MkBV(r.From, Options.CharBits), bv),
+                env.Ctx.MkBVULE(bv, env.Ctx.MkBV(r.To - 1, Options.CharBits))));
+        }
+        return env.Ctx.MkOr(ranges);
+    }
+
     protected override int CompareToInternal(StrToken other) => 
         other is SetToken s ? Set.CompareTo(s.Set) : 0;
 
-    public override void CollectSymbols(NonTermSet nonTermSet, HashSet<CharToken> alphabet) {
-        throw new NotImplementedException();
-    }
+    public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) => alphabet.Add(Set);
 
     public override MinTerms FirstMinTerms() => new(Set);
 
