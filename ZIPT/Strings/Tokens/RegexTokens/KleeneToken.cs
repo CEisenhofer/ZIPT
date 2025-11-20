@@ -8,9 +8,8 @@ using ZIPT.Strings.Chunks;
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
 public sealed class KleeneToken : StrToken {
-
     public Str Base { get; }
-    
+
     public override bool Ground => Base.Ground;
     public override bool RegexFree => false;
     public override bool Derivable => true;
@@ -70,7 +69,7 @@ public sealed class KleeneToken : StrToken {
     public override string ToString(NielsenGraph? graph) {
         StringBuilder sb = new();
         string s = Base.ToString();
-        if (Base.Length > 1)
+        if (s.Length > 1)
             sb.Append('(').Append(s).Append(")*");
         else
             sb.Append(s).Append('*');
@@ -81,4 +80,5 @@ public sealed class KleeneToken : StrToken {
         var der = Base.Derivative(env, set, fwd);
         return env.StrManager.Concat(der, env.MkString(this));
     }
+
 }

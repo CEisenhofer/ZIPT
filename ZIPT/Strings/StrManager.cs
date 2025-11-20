@@ -35,7 +35,7 @@ public sealed class StrManager {
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public static StrToken GetIndex(Str str, uint idx, bool fwd) => 
+    public static StrToken GetIndex(Str str, uint idx, bool fwd) =>
         fwd ? GetIndexFwd(str, idx) : GetIndexBwd(str, idx);
 
     public static StrToken GetIndexFwd(Str str, uint idx) {
@@ -80,10 +80,10 @@ public sealed class StrManager {
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public Str Extract(Str str, uint cnt, bool fwd) => 
+    public Str Extract(Str str, uint cnt, bool fwd) =>
         fwd ? ExtractFwd(str, cnt) : ExtractBwd(str, cnt);
 
-    public Str ExtractFwd(Str str, uint cnt) => 
+    public Str ExtractFwd(Str str, uint cnt) =>
         DropRight(str, str.Length - cnt);
 
     public Str ExtractBwd(Str str, uint cnt) =>
@@ -172,8 +172,8 @@ public sealed class StrManager {
         while (toMerge.Count > 0) {
             var (rest, isLeft) = toMerge.Pop();
             if (isLeft) {
-                ret = TupleStr.IsBalanced(ret, rest) 
-                    ? CreateChunk(ret, rest) 
+                ret = TupleStr.IsBalanced(ret, rest)
+                    ? CreateChunk(ret, rest)
                     // This is a very rare case [double rotation was not enough]
                     : Concat(ret, rest);
                 continue;
@@ -217,7 +217,7 @@ public sealed class StrManager {
                 rep.Normalised = chunk;
                 representative[rep] = chunk;
             }
-            else 
+            else
                 chunk.Normalised = rep;
             return cmp > 0 ? rep : chunk;
         }
@@ -234,7 +234,7 @@ public sealed class StrManager {
     }
 
     [Pure]
-    public Str Drop(Str s, uint cnt, bool fwd) => 
+    public Str Drop(Str s, uint cnt, bool fwd) =>
         fwd ? DropLeft(s, cnt) : DropRight(s, cnt);
 
     [Pure]
@@ -466,7 +466,7 @@ public sealed class StrManager {
         FromList(CollectionsMarshal.AsSpan(tokens), fwd);
 
     [Pure]
-    public Str FromList(StrToken[] tokens, bool fwd = true) => 
+    public Str FromList(StrToken[] tokens, bool fwd = true) =>
         FromList(tokens.AsSpan(), fwd);
 
     [Pure]
@@ -502,7 +502,7 @@ public sealed class StrManager {
         return FromList(list);
     }
 
-
+    [Pure]
     public Str Repeat(Str s, uint rep) {
         Str core = s;
         Str rest = EmptyStr;
@@ -516,20 +516,24 @@ public sealed class StrManager {
         return rest;
     }
 
+    [Pure]
     public Str MkComplement(Str s) {
         if (s.Length == 0)
-            return EmptyStr;
+            return Concat(AllChar, AllStr);
         if (s is { Length: 1, First: NotToken n })
             return n.Base;
         if (s is { Length: 1, IsFull: true })
             return FailStr;
         if (s is { Length: 1, IsFail: true })
             return AllStr;
+        if (s is { Length: 1, First: CharToken c })
+            return Single(new SetToken(new CharacterSet(new CharacterRange(c.Value)).Complement()));
         if (s is { Length: 1, First: SetToken set })
             return Single(new SetToken(set.Set.Complement()));
         return Single(new NotToken(s));
     }
 
+    [Pure]
     public Str MkUnion(List<Str> tokens) {
         var subTokens = new List<Str>(tokens.Count);
         // Merge nested unions
@@ -571,6 +575,7 @@ public sealed class StrManager {
         return Single(new UnionToken(tokens));
     }
 
+    [Pure]
     public Str MkIntersection(List<Str> tokens) {
         if (tokens.IsEmpty())
             return AllStr;
@@ -603,6 +608,7 @@ public sealed class StrManager {
         return Single(new IntersectToken(tokens));
     }
 
+    [Pure]
     public Str MkStar(Str s) {
         if (s.Length == 0)
             return EmptyStr;
@@ -634,6 +640,7 @@ public sealed class StrManager {
         return Single(new KleeneToken(s));
     }
 
+    [Pure]
     public Str MkPlus(Str s) {
         if (s.Length == 0)
             return EmptyStr;
@@ -642,6 +649,23 @@ public sealed class StrManager {
         if (s.IsFail)
             return FailStr;
         return Concat(s, Single(new KleeneToken(s)));
+    }
+
+    [Pure]
+    public Str MkLoop(Str s, uint min, uint max) {
+        Debug.Assert(min <= max);
+        if (s.Length == 0 || max == 0)
+            return EmptyStr;
+        if (s.Nullable)
+            min = 0;
+        if (max == 1) {
+            if (min == 1 || s.Nullable)
+                return s;
+            return MkUnion([EmptyStr, s]);
+        }
+        if (s is { Length: 1, First: KleeneToken })
+            return s;
+        return Single(new LoopToken(s, min, max));
     }
 
     [Pure]

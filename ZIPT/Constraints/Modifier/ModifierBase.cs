@@ -17,6 +17,8 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(ConstNumUnwindingModifier), TypeOrder.Count);
         // lhs = rhs => lhs' = rhs' && lhs'' = rhs''
         TypeOrder.Add(typeof(EqSplitModifier), TypeOrder.Count);
+        // x \in base*
+        TypeOrder.Add(typeof(StarIntrModifier), TypeOrder.Count);
         // \/ x := u^n prefix(u); u const
         TypeOrder.Add(typeof(GPowerIntrModifier), TypeOrder.Count);
         // pr + po = r & t \in pr & s \in po

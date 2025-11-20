@@ -32,13 +32,12 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
         { typeof(CharToken), 2 },
         { typeof(StrVarToken), 3 },
         { typeof(StrAtToken), 4 },
-        // { typeof(PreToken), 5 },
-        // { typeof(PostToken), 6 },
-        { typeof(NotToken), 7 },
-        { typeof(KleeneToken), 8 },
-        { typeof(UnionToken), 9 },
-        { typeof(IntersectToken), 10 },
-        { typeof(SetToken), 11 }, // deliberately last, as for merging those for intersection (MkUnion) can easily add them as last
+        { typeof(NotToken), 5 },
+        { typeof(KleeneToken), 6 },
+        { typeof(UnionToken), 7 },
+        { typeof(IntersectToken), 8 },
+        { typeof(LoopToken), 9 },
+        { typeof(SetToken), 10 }, // deliberately last, as for merging those for intersection (MkUnion) can easily add them as last
     };
 
     public int CompareTo(StrToken? other) {

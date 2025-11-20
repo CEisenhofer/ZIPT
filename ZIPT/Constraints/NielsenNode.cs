@@ -1,5 +1,7 @@
 ﻿using Microsoft.Z3;
+using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -18,6 +20,7 @@ namespace ZIPT.Constraints;
 
 public enum BacktrackReasons {
     Unevaluated,
+    Extended,
     // These are actual conflicts
     SymbolClash,
     ParikhImage,
@@ -36,10 +39,11 @@ public class NielsenNode {
     public NielsenGraph Graph { get; }
 
     public List<NielsenEdge> Outgoing { get; } = [];
+    public NielsenNode? Backedge { get; set; }
 
     // These values are always the same as soon as simplified independent of forbidden edge
     public bool IsGeneralConflict { get; private set; }
-    public bool IsExtended { get; private set; }
+    public bool IsExtended { get; set; }
     IEnumerator<NielsenEdge>? extensionEnum;
 
     // Blocking might affect those values so we might recompute them in different runs (because of forbidden edges)
@@ -558,7 +562,7 @@ public class NielsenNode {
     }
 #endif
 
-    public IEnumerable<NielsenEdge> Extend(LocalInfo info) {
+    public ModifierBase GetExtension(LocalInfo info) {
         Debug.Assert(!IsExtended);
         // get minimal split
         Debug.Assert(ConstraintsStrEq.Count > 0 || ConstraintsStrMem.Count > 0);
@@ -568,14 +572,14 @@ public class NielsenNode {
         //Dictionary<NamedInt, PDD<BigRational>> intSubst = ResolveIntEqs();
 
         foreach (var cnstr in ConstraintsStrEq) {
-            ModifierBase? currentModifier = cnstr.Extend(this, []);
+            ModifierBase? currentModifier = cnstr.Extend(info, []);
             if (currentModifier is null)
                 continue;
             if (bestModifier is null || currentModifier.CompareTo(bestModifier) < 0)
                 bestModifier = currentModifier;
         }
         foreach (var cnstr in ConstraintsStrMem) {
-            ModifierBase? currentModifier = cnstr.Value.Extend(this, []);
+            ModifierBase? currentModifier = cnstr.Value.Extend(info, []);
             if (currentModifier is null)
                 continue;
             if (bestModifier is null || currentModifier.CompareTo(bestModifier) < 0)
@@ -589,7 +593,13 @@ public class NielsenNode {
         }
 #endif
         Debug.Assert(bestModifier is not null);
-        foreach (var child in bestModifier.Apply(info)) {
+        return bestModifier;
+    }
+
+    public IEnumerable<NielsenEdge> ApplyExtension(LocalInfo info, ModifierBase modifier) {
+        Debug.Assert(!IsExtended);
+        
+        foreach (var child in modifier.Apply(info)) {
             int modCnt = info.ModCnt;
             child.IncModCount(info);
             SimplifyAndInit(info, child);
@@ -629,14 +639,14 @@ public class NielsenNode {
             NonTermSet modSet = new();
             DetModifier outSideCnstr = new();
             var reason = info.CurrentNode.Simplify(info, modSet, outSideCnstr, force);
-            if (reason is not BacktrackReasons.Unevaluated) {
+            if (reason is not BacktrackReasons.Unevaluated and not BacktrackReasons.Extended) {
                 info.CurrentNode.IsGeneralConflict = true;
                 info.CurrentNode.CurrentReason = reason;
                 Fail();
                 return reason;
             }
 
-            if (outSideCnstr.Trivial) {
+            if (outSideCnstr.Trivial && reason != BacktrackReasons.Extended) {
 #if true
                 // subsumption check
                 // TODO: Optimize
@@ -656,16 +666,21 @@ public class NielsenNode {
                 return BacktrackReasons.Unevaluated;
 
             }
-            // not subsumed, so we need to keep the node
-            // node.Graph.PersistPending();
-            Debug.Assert(info.CurrentNode.Outgoing.Count == 0);
+            if (reason != BacktrackReasons.Extended) {
+                // not subsumed, so we need to keep the node
+                // node.Graph.PersistPending();
+                Debug.Assert(info.CurrentNode.Outgoing.Count == 0);
 
-            int cnt = 0;
-            foreach (var _ in outSideCnstr.Apply(info)) {
-                cnt++;
+                int cnt = 0;
+                foreach (var _ in outSideCnstr.Apply(info)) {
+                    cnt++;
+                }
+                info.CurrentNode.IsExtended = true;
+                Debug.Assert(info.CurrentNode.Outgoing.Count == 1 && cnt == 1);
             }
-            info.CurrentNode.IsExtended = true;
-            Debug.Assert(info.CurrentNode.Outgoing.Count == 1 && cnt == 1);
+            else {
+                Debug.Assert(info.CurrentNode.Outgoing.Count == 1);
+            }
 
             edge = info.CurrentNode.Outgoing[0];
 
@@ -685,8 +700,7 @@ public class NielsenNode {
 
     static int simplifyCnt;
 
-    public BacktrackReasons Simplify(LocalInfo info, NonTermSet modSet, DetModifier outSideCnstr,
-        bool forceRewriteAll) {
+    public BacktrackReasons Simplify(LocalInfo info, NonTermSet modSet, DetModifier outSideCnstr, bool forceRewriteAll) {
         simplifyCnt++;
         Log.WriteLine("Simplify: " + simplifyCnt);
         bool restart = true;
@@ -694,32 +708,36 @@ public class NielsenNode {
         // Stuff like { 1 + y = x, 1 + x = y } or { 1 + y <= x, 1 + x <= y } will cause divergence on bounds propagation...
         // So let's ignore them unless some string equation has progress (in the end, the SMT solver has to detect unsat)
         HashSet<IntConstraint> ignored = [];
+        BacktrackReasons reason;
         while (restart) {
             restart = false;
             foreach (var c in AllConstraints) {
                 if (c.Satisfied)
                     continue;
-                BacktrackReasons reason = BacktrackReasons.Unevaluated;
+                reason = BacktrackReasons.Unevaluated;
                 switch (c.SimplifyAndPropagate(info, modSet, outSideCnstr, ref reason)) {
                     case SimplifyResult.Conflict:
                         Debug.Assert(IsActualConflict(reason));
                         return reason;
                     case SimplifyResult.Satisfied:
                         toRemove.Add(c);
-                        continue;
+                        break;
                     case SimplifyResult.Restart:
                         // Maybe we do not need this anymore... (assertion here just to check)
                         if (c is IntConstraint ic && ignored.Add(ic))
                             restart = true;
                         else if (c is StrEq)
                             ignored.Clear();
-                        continue;
+                        break;
                     case SimplifyResult.RestartAndSatisfied:
                         restart = true;
                         toRemove.Add(c);
-                        continue;
+                        break;
                     case SimplifyResult.Proceed:
                         break;
+                    case SimplifyResult.Extended:
+                        Debug.Assert(false);
+                        return BacktrackReasons.Extended;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -732,7 +750,6 @@ public class NielsenNode {
                 // so either try to unify the substitutions, or just apply every substitution as soon as we get it
                 break;
         }
-        propagate:
 
         Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>>
             largerVars = []; // if |x| = |y| + d + ... then x > y [strictly!]
@@ -759,8 +776,8 @@ public class NielsenNode {
         foreach (var eq in ConstraintsStrEq) {
             if (eq.Satisfied)
                 continue;
-            eq.SimplifyUnitNielsen(Env, outSideCnstr, forwardVarDep, largerVars, lowerBounds, true);
-            eq.SimplifyUnitNielsen(Env, outSideCnstr, backwardVarDep, largerVars, lowerBounds, false);
+            eq.SimplifyFinal(Env, outSideCnstr, forwardVarDep, largerVars, lowerBounds, true);
+            eq.SimplifyFinal(Env, outSideCnstr, backwardVarDep, largerVars, lowerBounds, false);
         }
         Normalize();
         foreach (var c in toRemove) {
@@ -848,6 +865,7 @@ public class NielsenNode {
         IReadOnlyCollection<Constraint> toRemove, bool progress) {
 
         var child = new NielsenNode(info, subst, substC, sideConds, progress);
+        // FIRST remove (we might add elements with ids we removed)
         foreach (var c in toRemove) {
             child.RemoveConstraint(c);
         }
@@ -929,11 +947,18 @@ public class NielsenNode {
     }
 
     public void AddConstraint(SymCharToken o, CharacterSet set) {
+        if (set.IsFull)
+            return;
         if (!CharRanges.TryGetValue(o, out CharacterSet? value)) {
             CharRanges.Add(o, set);
             return;
         }
-        CharRanges[o] = value.IntersectWith(set);
+        var inter = value.IntersectWith(set);
+        CharRanges[o] = inter;
+        if (inter.IsEmpty) {
+            IsGeneralConflict = true;
+            CurrentReason = BacktrackReasons.CharacterRange;
+        }
     }
 
     public bool AddCharConstraints(SymCharToken c, CharacterSet @case) {
@@ -1001,6 +1026,7 @@ public class NielsenNode {
 
     public static string ReasonToString(BacktrackReasons reason) => reason switch {
         BacktrackReasons.Unevaluated => "Unevaluated",
+        BacktrackReasons.Extended => "Extended",
         BacktrackReasons.SymbolClash => "Symbol Clash",
         BacktrackReasons.ParikhImage => "Parikh Image",
         BacktrackReasons.Arithmetic => "Arithmetic",
@@ -1061,7 +1087,7 @@ public class NielsenNode {
         checkCnt++;
 
 #if DEBUG
-        if (info.CurrentPath.Count > 100)
+        if (info.CurrentPath.Count > 30)
             Console.WriteLine("Suspiciously deep nesting...");
 #endif
 
@@ -1139,7 +1165,16 @@ public class NielsenNode {
             Debug.Assert(IsActive);
             Debug.Assert(!IsCurrentlyConflict);
 
+            // TODO: Set a node contradiction if all of its children are contradictions (no matter if forbidden or not)
+            bool isSat = false;
+            if (!IsExtended && extensionEnum is null) {
+                // we might have breaked out early and not generated all possible edges
+                // Don't merge GetExtension and ApplyExtension, as computing the extension should happen eagerly and ApplyExtension lazily [Enumerator!]
+                extensionEnum = ApplyExtension(info, GetExtension(info)).GetEnumerator();
+            }
+
             // track changed regexes
+            // do this AFTER computing which extension to take
             List<(Str regex, uint id, int prevPos)> changedRegexes = [];
             foreach (var r in ConstraintsStrMem) {
                 int prev = info.RegexOccurrence.GetValueOrDefault((r.Value.Regex, r.Key), -1);
@@ -1155,12 +1190,6 @@ public class NielsenNode {
                 changedRegexes.Add((r.Value.Regex, r.Key, prev));
                 info.RegexOccurrence[(r.Value.Regex, r.Key)] = Id;
             }
-
-            // TODO: Set a node contradiction if all of its children are contradictions (no matter if forbidden or not)
-            bool isSat = false;
-            if (!IsExtended && extensionEnum is null)
-                // we might have breaked out early and not generated all possible edges
-                extensionEnum = Extend(info).GetEnumerator();
 
             for (int i = 0; i < Outgoing.Count || (extensionEnum is not null && extensionEnum.MoveNext()); i++) {
                 Debug.Assert(i < Outgoing.Count);
@@ -1275,6 +1304,7 @@ public class NielsenNode {
     public bool CheckRegexWidending(Str str, Str regex) {
         // overapproximate s by assuming the intersection of all primitive constraints as the value of the variables
         Dictionary<NamedStrToken, List<Str>> regexList = [];
+        // TODO: Compute this only once!
         // Get the primitive regex
         foreach (var cnstr in ConstraintsStrMem) {
             if (!cnstr.Value.IsPrimitiveRegex())
@@ -1303,8 +1333,51 @@ public class NielsenNode {
         return Intersect([strApprox, regex]);
     }
 
+    static string ToDfaDot(Str start, Dictionary<Str, (CharacterSet by, Str from)?> visited) {
+        StringBuilder sb = new();
+        Dictionary<Str, uint> ids = [];
+
+        uint GetId(Str s) {
+            if (!ids.TryGetValue(s, out uint id)) {
+                id = (uint)ids.Count;
+                ids.Add(s, id);
+            }
+            return id;
+        }
+
+        sb.AppendLine("digraph G {");
+        foreach (var v in visited) {
+            if (!v.Value.HasValue)
+                continue;
+            uint src = GetId(v.Value.Value.from);
+            uint tgt = GetId(v.Key);
+            sb.Append('\t')
+                .Append(src)
+                .Append(" -> ")
+                .Append(tgt)
+                .Append(" [label=<")
+                .Append(DotEscapeStr(v.Value.Value.by.ToString()))
+                .AppendLine(">];");
+        }
+        foreach (var q in ids) {
+            sb.Append('\t')
+                .Append(q.Value)
+                .Append(" [label=<")
+                .Append(DotEscapeStr(q.Key.ToString()))
+                .Append('>');
+            if (q.Key.Equals(start))
+                sb.Append(", peripheries=2");
+            sb.AppendLine("];");
+        }
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    static int intersectCnt = 0;
+
     bool Intersect(List<Str> regexes, List<CharToken>? witness = null) {
         // or create the automaton
+        intersectCnt++;
         Debug.Assert(witness is null || witness.Count == 0);
         Dictionary<Str, (CharacterSet by, Str from)?> visited = [];
         Stack<Str> todo = [];
@@ -1312,8 +1385,9 @@ public class NielsenNode {
         if (current.Nullable)
             return true; // witness is null or empty
 
-        todo.Push(current);
-        visited.Add(current, null);
+        Str start = current;
+        todo.Push(start);
+        visited.Add(start, null);
 
         while (todo.Count > 0) {
             current = todo.Pop();
@@ -1375,7 +1449,7 @@ public class NielsenNode {
     }
 
     public static string DotEscapeStr(string s) =>
-        s.Replace("<", "&lt;").Replace(">", "&gt;");
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     public string ToHtmlString() {
         StringBuilder sb = new();

@@ -76,7 +76,7 @@ public class StrPrefixOf : StrConstraint {
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
 
-    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
+    public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

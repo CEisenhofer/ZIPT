@@ -9,7 +9,7 @@ public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
     public sealed override bool Shared => false;
 
     public abstract bool Contains(NamedStrToken namedStrToken);
-    public abstract ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst);
+    public abstract ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst);
     public abstract int CompareToInternal(StrConstraint other);
     public int CompareTo(StrConstraint? other) {
         if (other is null)

@@ -31,9 +31,10 @@ public sealed class NotToken : StrToken {
     public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) => 
         Base.CollectSymbols(nonTermSet, alphabet);
 
-    public override MinTerms FirstMinTerms() => Base.FirstMinTerms().Complement();
+    // THIS IS NOT THE COMPLEMENT OF THE MINTERMS
+    public override MinTerms FirstMinTerms() => Base.FirstMinTerms().Complete();
 
-    public override MinTerms LastMinTerms() => Base.LastMinTerms().Complement();
+    public override MinTerms LastMinTerms() => Base.LastMinTerms().Complete();
 
     public override bool Equals(StrToken? other) => 
         other is NotToken k && Base.Equals(k.Base);
@@ -53,4 +54,6 @@ public sealed class NotToken : StrToken {
 
     public override Str Derivative(Environment env, CharacterSet set, bool fwd) =>
         env.StrManager.MkComplement(Base.Derivative(env, set, fwd));
+
+    // we should not require this
 }

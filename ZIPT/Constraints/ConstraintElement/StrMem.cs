@@ -1,5 +1,4 @@
-﻿using System.ComponentModel;
-using Microsoft.Z3;
+﻿using Microsoft.Z3;
 using System.Diagnostics;
 using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
@@ -65,7 +64,7 @@ public sealed class StrMem : StrEqBase {
     public bool IsPrimitiveRegex() => 
         Str.Length == 1 && Str[0] is NamedStrToken;
 
-    SimplifyResult SimplifyCharRegex(LocalInfo info, DetModifier sConstr, bool fwd) {
+    SimplifyResult SimplifyCharRegex(LocalInfo info, bool fwd) {
         var t = Str[fwd];
         Debug.Assert(Regex.Derivable);
         if (t is CharToken c) {
@@ -73,13 +72,7 @@ public sealed class StrMem : StrEqBase {
             if (fwd)
                 History = info.Env.StrManager.Concat(History, c);
             Str = info.Env.StrManager.Drop(Str, fwd);
-            if (Regex.IsFail)
-                return SimplifyResult.Conflict;
-            if (info.RegexOccurrence.TryGetValue((Regex, Id), out int ex)) {
-                if (ExtractCycle(info, sConstr, info.CurrentPath[ex]))
-                    return SimplifyResult.Proceed;
-            }
-            return SimplifyResult.Restart;
+            return Regex.IsFail ? SimplifyResult.Conflict : SimplifyResult.Restart;
         }
         if (t is not SymCharToken sc)
             return SimplifyResult.Proceed;
@@ -95,44 +88,46 @@ public sealed class StrMem : StrEqBase {
             if (fwd)
                 History = info.Env.StrManager.Concat(History, new SetToken(s));
             Str = info.Env.StrManager.Drop(Str, fwd);
-            if (Regex.IsFail)
-                return SimplifyResult.Conflict;
-            if (info.RegexOccurrence.TryGetValue((Regex, Id), out int ex)) {
-                if (ExtractCycle(info, sConstr, info.CurrentPath[ex]))
-                    return SimplifyResult.Proceed;
-            }
-            return SimplifyResult.Restart;
+            return Regex.IsFail ? SimplifyResult.Conflict : SimplifyResult.Restart;
         }
         // TODO: if all are disjoint we can even report a conflict
         return SimplifyResult.Proceed;
     }
 
-    bool ExtractCycle(LocalInfo info, DetModifier sConstr, NielsenEdge edge) {
+    StarIntrModifier? ExtractCycle(LocalInfo info, NielsenEdge edge) {
         var mem = edge.Src.ConstraintsStrMem[Id];
         if (mem.History.Length == History.Length || Str.IsEmpty())
             // Nothing happened - we would pull out a \epsilon*
-            return false;
-        Debug.Assert(mem.History.Length < History.Length);
-        Debug.Assert(History.GetEnumerator().Take((int)mem.History.Length).SequenceEqual(mem.History.GetEnumerator()));
+            return null;
+        if (mem.History.Length >= History.Length ||
+            !History.GetEnumerator().Take((int)mem.History.Length).SequenceEqual(mem.History.GetEnumerator()))
+            return null;
 
         var first = Str.First;
         if (first is not NamedStrToken and not PowerToken)
-            return false;
-        Str s = info.Env.StrManager.DropLeft(History, mem.History.Length);
-        Debug.Assert(s.GetEnumerator().Any(o => !o.Nullable));
-        var cycle = info.Env.StrManager.MkStar(s);
-        var pr = info.Env.CreateFreshStrVar("X");
-        var po = info.Env.CreateFreshStrVar("X"); // TODO: Make this a substitution to enable subsumption check
-        sConstr.Add(new StrEq(info.Env.MkString(pr, po), info.Env.MkString(first)));
-        sConstr.Add(new StrMem(info.Env.MkString(pr), cycle, info.Env.EmptyStr, info.NextRegexId++));
-        sConstr.Add(new StrMem(info.Env.MkString(po), info.Env.StrManager.MkComplement(info.Env.StrManager.Concat(s, info.Env.StrManager.AllStr)), info.Env.EmptyStr, info.NextRegexId++));
-        Str = info.Env.StrManager.Concat(po, info.Env.StrManager.DropLeft(Str));
-        History = info.Env.StrManager.Concat(History, cycle);
-        return true;
+            return null;
+        Str b = info.Env.StrManager.DropLeft(History, mem.History.Length);
+        if (b is { Length: 1, First: KleeneToken })
+            return null;
+        uint dropCnt;
+        if (mem.History.Length > 0 && mem.History[mem.History.Length - 1] is KleeneToken k) {
+            Debug.Assert(mem.History.Length == 1 || mem.History[mem.History.Length - 2] is not KleeneToken);
+            dropCnt = b.Length + 1;
+            //b = info.Env.StrManager.MkUnion([k.Base, b]);
+            b = info.Env.StrManager.Concat(k, b);
+        }
+        else {
+            dropCnt = b.Length;
+        }
+
+        Debug.Assert(!b.Nullable);
+        //cases.Add(s);
+        //Str cycleBase = info.Env.StrManager.MkUnion(cases);
+        return new StarIntrModifier(Id, edge.Src, b, dropCnt);
     }
 
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
-        while (Str.IsNonEmpty() && Regex.IsNonEmpty()) {
+        while (Str.IsNonEmpty() && Regex.IsNonEmpty() && !IsPrimitiveRegex()) {
             
             var s = Str[fwd];
             var r = Regex[fwd];
@@ -140,7 +135,7 @@ public sealed class StrMem : StrEqBase {
             if (s is CharToken c1 && r is CharToken c2 && !c1.Equals(c2))
                 return SimplifyResult.Conflict;
 
-            var changed = SimplifyCharRegex(info, sConstr, fwd);
+            var changed = SimplifyCharRegex(info, fwd);
             if (changed == SimplifyResult.Restart)
                 continue;
             if (changed == SimplifyResult.Conflict)
@@ -197,8 +192,8 @@ public sealed class StrMem : StrEqBase {
             return SimplifyResult.Conflict;
         }
 
-        if (!sConstr.Trivial)
-            return SimplifyResult.Proceed;
+        if (Regex.IsFull)
+            return SimplifyResult.Satisfied;
 
         if (Regex.IsEmpty()) {
             // Remove powers that actually do not exist anymore
@@ -217,10 +212,9 @@ public sealed class StrMem : StrEqBase {
                 reason = BacktrackReasons.SymbolClash;
                 return SimplifyResult.Conflict;
             }
-            return SimplifyResult.Proceed;
         }
 
-        // check widening for UNSAT
+        // check overapproximation for UNSAT
         if (!IsPrimitiveRegex() && !info.CurrentNode.CheckRegexWidending(Str, Regex)) {
             reason = BacktrackReasons.RegexWidening;
             return SimplifyResult.Conflict;
@@ -230,7 +224,7 @@ public sealed class StrMem : StrEqBase {
 
     static int extendCnt;
 
-    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
+    public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
         extendCnt++;
         // Don't sort -- this should have happened before in simplify!!
         if (IsPrimitiveRegex())
@@ -245,6 +239,14 @@ public sealed class StrMem : StrEqBase {
         }
         if (Str.First is PowerToken)
             return null;
+        // Do this only at the very end - otw. we might loop as we introduce a Kleene star before reporting a conflict
+        // Try loop generalisation
+        if (info.RegexOccurrence.TryGetValue((Regex, Id), out int ex)) {
+            var split = ExtractCycle(info, info.CurrentPath[ex]);
+            if (split is not null)
+                return split;
+        }
+
         var first = Regex.FirstMinTerms();
         Debug.Assert(first.Intervals.Count > 0);
 

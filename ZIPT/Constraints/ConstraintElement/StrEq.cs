@@ -111,7 +111,7 @@ public sealed class StrEq : StrEqBase {
         return false;
     }
 
-    public void SimplifyUnitNielsen(Environment env, DetModifier sConstr,
+    public void SimplifyFinal(Environment env, DetModifier sConstr,
         Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep,
         Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>> largerVars,
         Dictionary<NamedStrToken, uint> lowerBounds, bool fwd) {
@@ -266,8 +266,7 @@ public sealed class StrEq : StrEqBase {
     public bool AddDefinition(StrVarToken v, Str s, NielsenNode node, DetModifier sConstr) {
         if (s.ContainsVar(v))
             return false;
-        sConstr.Add(new Subst(v, s));
-        return true;
+        return sConstr.Add(new Subst(v, s));
     }
 
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
@@ -869,11 +868,11 @@ public sealed class StrEq : StrEqBase {
 
     static int extendCnt;
 
-    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
+    public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
         extendCnt++;
         // Don't sort -- this should have happened before in simplify!!
-        var m1 = ExtendDir(node.forwardVarDep, node.Env, intSubst, true);
-        var m2 = ExtendDir(node.backwardVarDep, node.Env, intSubst, false);
+        var m1 = ExtendDir(info.CurrentNode.forwardVarDep, info.Env, intSubst, true);
+        var m2 = ExtendDir(info.CurrentNode.backwardVarDep, info.Env, intSubst, false);
         return m1.CompareTo(m2) <= 0 ? m1 : m2;
     }
 

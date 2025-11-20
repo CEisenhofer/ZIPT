@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <Reference Include="Microsoft.Z3">
-      <HintPath>..\..\z3\release\Microsoft.Z3\net45\Microsoft.Z3.dll</HintPath>
+      <HintPath>..\..\z3-original\release\Microsoft.Z3\net45\Microsoft.Z3.dll</HintPath>
     </Reference>
   </ItemGroup>
 

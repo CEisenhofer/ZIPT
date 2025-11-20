@@ -64,7 +64,7 @@ public class NielsenGraph {
         if (OuterPropagator.Cancel)
             throw new SolverTimeoutException();
 
-        NielsenNode? existing = FindExisting(info.CurrentNode);
+        /*NielsenNode? existing = FindExisting(info.CurrentNode);
         if (existing is null) {
             info.CurrentNode = InitRoot = info.CurrentNode.Clone();
             if (NielsenNode.SimplifyAndInit(info, null) != BacktrackReasons.Unevaluated) {
@@ -79,7 +79,15 @@ public class NielsenGraph {
             }
         }
         else
-            info.CurrentNode = InitRoot = existing;
+            info.CurrentNode = InitRoot = existing;*/
+        // For now, do not try to cache existing
+        info.CurrentNode = InitRoot = info.CurrentNode.Clone();
+        if (NielsenNode.SimplifyAndInit(info, null) != BacktrackReasons.Unevaluated) {
+            Debug.Assert(info.CurrentNode.IsCurrentlyConflict);
+            return false;
+        }
+        //
+
         info.RootNode = info.CurrentNode;
 
         Debug.Assert(SubSolver is not null);
@@ -182,6 +190,13 @@ public class NielsenGraph {
                 else if (edge.Tgt.IsCurrentlyConflict)
                     sb.Append(", color=red");
                 sb.AppendLine("];");
+            }
+            if (node.Backedge is not null) {
+                sb.Append('\t')
+                    .Append(node.Id)
+                    .Append(" -> ")
+                    .Append(node.Backedge.Id)
+                    .AppendLine(" [style=dotted];");
             }
         }
         sb.AppendLine("}");

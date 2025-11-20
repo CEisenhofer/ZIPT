@@ -20,20 +20,20 @@ public sealed class SetToken : UnitToken {
         Set = set;
     }
 
-    static Expr RangeToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt, CharacterRange range) {
+    static Expr RangeToExpr(Environment env, CharacterRange range) {
         if (range.IsUnit)
-            return new CharToken(range.From).ToExpr(env, currentModificationCnt);
+            return new CharToken(range.From).ToExpr(env);
         Debug.Assert(range.From < range.To);
         return env.RgFct.Apply(
-            new CharToken(range.From).ToExpr(env, currentModificationCnt),
-            new CharToken(range.To).ToExpr(env, currentModificationCnt));
+            new CharToken(range.From).ToExpr(env),
+            new CharToken(range.To - 1).ToExpr(env));
     }
 
     public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
         Debug.Assert(!Set.IsEmpty);
-        Expr expr = RangeToExpr(env, currentModificationCnt, Set.Ranges[^1]);
+        Expr expr = RangeToExpr(env, Set.Ranges[^1]);
         for (int i = Set.Ranges.Count - 1; i > 0; i--) {
-            var e = RangeToExpr(env, currentModificationCnt, Set.Ranges[i - 1]);
+            var e = RangeToExpr(env, Set.Ranges[i - 1]);
             expr = env.UnionFct.Apply(e, expr);
         }
         return expr;
@@ -70,4 +70,5 @@ public sealed class SetToken : UnitToken {
 
     public override Str Derivative(Environment env, CharacterSet set, bool fwd) =>
         !set.IsDisjoint(Set) ? env.EmptyStr : env.FailStr;
+
 }

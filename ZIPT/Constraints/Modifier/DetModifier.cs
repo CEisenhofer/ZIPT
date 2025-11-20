@@ -43,13 +43,17 @@ public class DetModifier : ModifierBase {
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null || SubstitutionC is not null);
+        return [ForceApply(info)];
+    }
+
+    public NielsenEdge ForceApply(LocalInfo info) {
         Debug.Assert(info.CurrentNode.Outgoing.Count == 0);
         info.CurrentNode.MkChild(info, 
             CollectionExtension.EmptyOrUnit(Substitution), CollectionExtension.EmptyOrUnit(SubstitutionC),
             SideConstraints, [],
             true);
         Debug.Assert(info.CurrentNode.Outgoing.Count == 1);
-        yield return info.CurrentNode.Outgoing[0];
+        return info.CurrentNode.Outgoing[0];
     }
 
     protected override int CompareToInternal(ModifierBase otherM) => 0;

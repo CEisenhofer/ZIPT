@@ -1,6 +1,8 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ZIPT.Constraints;
 using ZIPT.Constraints.ConstraintElement;
@@ -42,6 +44,8 @@ public class Environment : IDisposable {
     public readonly FuncDecl SubstringFct;
     public readonly FuncDecl ReMemFct;
     public readonly FuncDecl StarFct;
+    public readonly Dictionary<FuncDecl, (uint min, uint max)> BoundedFcts = [];
+    public readonly Dictionary<(uint, uint), FuncDecl> BoundedInvFcts = [];
     public readonly FuncDecl UnionFct;
     public readonly FuncDecl InterFct;
     public readonly FuncDecl RgFct;
@@ -63,11 +67,21 @@ public class Environment : IDisposable {
     public bool IsIndexOf(FuncDecl f) => f.Equals(IndexOfFct);
     public bool IsRegularMembership(FuncDecl f) => f.Equals(ReMemFct);
     public bool IsStar(FuncDecl f) => f.Equals(StarFct);
+    public bool IsLoop(FuncDecl f, out (uint min, uint max) val) => BoundedFcts.TryGetValue(f, out val);
     public bool IsUnion(FuncDecl f) => f.Equals(UnionFct);
     public bool IsIntersection(FuncDecl f) => f.Equals(InterFct);
     public bool IsRange(FuncDecl f) => f.Equals(RgFct);
     public bool IsComplement(FuncDecl f) => f.Equals(CompFct);
     public bool IsFail(FuncDecl f) => f.Equals(Fail.FuncDecl);
+
+    public Expr MkLoopExpr(Expr re, uint min, uint max) {
+        if (!BoundedInvFcts.TryGetValue((min, max), out var fct)) {
+            fct = Ctx.MkUserPropagatorFuncDecl("reBounded_" + min + ";" + max, [StringSort], StringSort);
+            BoundedInvFcts.Add((min, max), fct);
+            BoundedFcts.Add(fct, (min, max));
+        }
+        return BoundedInvFcts[(min, max)].Apply(re);
+    }
 
     public bool IsValOf(FuncDecl f) => f.Equals(ValOf);
 
@@ -277,7 +291,7 @@ public class Environment : IDisposable {
         if (e.IsVar)
             return null;
         if (e.IsString)
-            return StrManager.ToExpr(MkString(e.String.Select(StrToken (o) => new CharToken(o)).ToArray()), info.Env, info.CurrentModificationCnt);
+            return StrManager.ToExpr(MkString(Unescape(e.String).Select(StrToken (o) => new CharToken(o)).ToArray()), info.Env, info.CurrentModificationCnt);
 
         var f = e.FuncDecl;
         var kind = f.DeclKind;
@@ -327,11 +341,45 @@ public class Environment : IDisposable {
                     TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_TO_RE:
                 return TranslateStr(e.Arg(0), info) ?? e.Arg(0);
+            case Z3_decl_kind.Z3_OP_RE_EMPTY_SET:
+                return Fail;
+            case Z3_decl_kind.Z3_OP_RE_FULL_CHAR_SET:
+                return StrManager.AllChar.ToExpr(this, []);
+            case Z3_decl_kind.Z3_OP_RE_FULL_SET:
+                return StrManager.AllStr.ToExpr(this, []);
             case Z3_decl_kind.Z3_OP_RE_STAR:
                 return StarFct.Apply(
                     TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+            case Z3_decl_kind.Z3_OP_RE_PLUS:
+                return ConcatFct.Apply(
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    StarFct.Apply(
+                        TranslateStr(e.Arg(0), info) ?? e.Arg(0)));
+            case Z3_decl_kind.Z3_OP_RE_LOOP:
+                Debug.Assert(e.FuncDecl.NumParameters ==  2);
+                return MkLoopExpr(
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    (uint)e.FuncDecl.Parameters[0].Int,
+                    (uint)e.FuncDecl.Parameters[1].Int
+                    );
+            case Z3_decl_kind.Z3_OP_RE_COMPLEMENT:
+                return CompFct.Apply(
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+            case Z3_decl_kind.Z3_OP_RE_OPTION:
+                return UnionFct.Apply(Epsilon, TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+            case Z3_decl_kind.Z3_OP_RE_CONCAT:
+                Debug.Assert(e.NumArgs == 2);
+                return ConcatFct.Apply(
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_UNION:
+                Debug.Assert(e.NumArgs == 2);
                 return UnionFct.Apply(
+                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+            case Z3_decl_kind.Z3_OP_RE_INTERSECT:
+                Debug.Assert(e.NumArgs == 2);
+                return InterFct.Apply(
                     TranslateStr(e.Arg(0), info) ?? e.Arg(0),
                     TranslateStr(e.Arg(1), info) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_RANGE:
@@ -504,6 +552,12 @@ public class Environment : IDisposable {
                     return null;
                 return StrManager.MkStar(@base);
             }
+            if (IsLoop(f, out var bounds)) {
+                var @base = TryParseStr(expr.Arg(0));
+                if (@base is null)
+                    return null;
+                return StrManager.MkLoop(@base, bounds.min, bounds.max);
+            }
             if (IsUnion(f)) {
                 Debug.Assert(expr.NumArgs == 2);
                 var s1 = TryParseStr(expr.Arg(0));
@@ -535,9 +589,9 @@ public class Environment : IDisposable {
                 if (s1 is not SingletonStr { StrToken: CharToken c1 } ||
                     s2 is not SingletonStr { StrToken: CharToken c2 })
                     return null;
-                if (c1.Value < c2.Value)
+                if (c1.Value > c2.Value)
                     return null;
-                return StrManager.Single(new SetToken(new CharacterSet(new CharacterRange(c1.Value, c2.Value))));
+                return StrManager.Single(new SetToken(new CharacterSet(new CharacterRange(c1.Value, c2.Value + 1))));
             }
             if (IsComplement(f)) {
                 var c = TryParseStr(expr.Arg(0));
@@ -551,7 +605,7 @@ public class Environment : IDisposable {
         else if (expr.Sort is SeqSort) {
             // Native Z3
             if (expr.IsString)
-                return MkString(expr.String.Select(o => (StrToken)new CharToken(o)).ToList());
+                return MkString(Unescape(expr.String).Select(o => (StrToken)new CharToken(o)).ToList());
             if (expr.IsConst)
                 return StrManager.Single(GetOrCreateStrVar(f.Name.ToString()));
             if (expr.IsConcat) {
@@ -587,6 +641,104 @@ public class Environment : IDisposable {
             }
         }
         throw new NotSupportedException(f.Name.ToString());
+    }
+
+    [Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool IsHex(char c) =>
+        char.ToLower(c) is >= '0' and <= '9' or >= 'a' and <= 'f';
+
+    [Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static bool IsHex(uint c) => 
+        c <= char.MaxValue && IsHex((char)c);
+
+    [Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static uint ToHex(char c) {
+        c = char.ToLower(c);
+        Debug.Assert(IsHex(c));
+        if (c is >= 'a' and <= 'f')
+            return (uint)(c - 'a') + 10;
+        return (uint)c - '0';
+    }
+
+    [Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static uint ToHex(uint c) => ToHex((char)c);
+
+    [Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static uint ToHex(params uint[] chars) {
+        Debug.Assert(chars.Length <= 8);
+        Debug.Assert(chars.All(IsHex));
+        uint res = 0;
+        foreach (var c in chars) {
+            res = res * 16 + ToHex(c);
+        }
+        return res;
+    }
+
+    IEnumerable<uint> Unescape(string s) {
+        int i = 0;
+        while (i < s.Length) {
+            uint c = s[i++];
+            if (c != '\\') {
+                yield return c;
+                continue;
+            }
+            if (i >= s.Length) {
+                // Z3 retranslates \u{5c} to "\"... - actually, Z3 is wrong but thus we cannot crash here
+                //throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+                yield return c;
+                continue;
+            }
+            c = s[i++];
+            if (c != 'u') {
+                yield return '\\';
+                yield return c;
+                continue;
+                //throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            }
+            if (i >= s.Length)
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            uint l0 = s[i++];
+            if (l0 != '{') {
+                if (s.Length - i + 1 < 4)
+                    throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+                uint code = ToHex(l0, s[i++], s[i++], s[i++]);
+                yield return code;
+                continue;
+            }
+            l0 = s[i++];
+            if (l0 is (< '0' or > '9') and (< 'a' or > 'f') || i >= s.Length)
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            uint l1 = s[i++];
+            if (l1 == '}') {
+                yield return ToHex(l0);
+                continue;
+            }
+            if (l1 is (< '0' or > '9') and (< 'a' or > 'f') || i >= s.Length)
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            uint l2 = s[i++];
+            if (l2 == '}') {
+                yield return ToHex(l0, l1);
+                continue;
+            }
+            if (l2 is (< '0' or > '9') and (< 'a' or > 'f') || i >= s.Length)
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            uint l3 = s[i++];
+            if (l3 == '}') {
+                yield return ToHex(l0, l1, l2);
+                continue;
+            }
+            if (l3 is (< '0' or > '9') and (< 'a' or > 'f') || i >= s.Length)
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            uint l4 = s[i++];
+            if (l4 == '}') {
+                yield return ToHex(l0, l1, l2, l3);
+                continue;
+            }
+            uint l5 = s[i++];
+            if (l5 is (< '0' or > '9') and (< 'a' or > 'f') || i >= s.Length || s[i++] != '}')
+                throw new ArgumentException("Invalid escaping in: \"" + s + '"');
+            yield return ToHex(l0, l1, l2, l3, l4); 
+        }
     }
 
     public PDD<BigInteger>? TryParseInt(IntExpr expr) {

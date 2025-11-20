@@ -39,7 +39,7 @@ public class Interpretation {
         CharSubstitution[subst.Var] = new CharSubst(subst.Var, u);
     }
 
-    public void Complete(/*CharacterSet alphabet, */Model model, LocalInfo info) {
+    public void Complete(Model model, LocalInfo info) {
         NonTermSet nonTermSet = new();
         //var ch = alphabet.IsEmpty ? new CharToken('a') : alphabet.First;
         foreach (var v in Substitution.Values) {

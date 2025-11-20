@@ -85,7 +85,7 @@ public sealed class StrNonEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    public override ModifierBase? Extend(NielsenNode node, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
+    public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) => 
         throw new NotSupportedException();
 
     public override int CompareToInternal(StrConstraint other) {

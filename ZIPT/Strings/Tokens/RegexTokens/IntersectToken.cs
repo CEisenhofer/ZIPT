@@ -124,4 +124,5 @@ public sealed class IntersectToken : StrToken {
         }
         return env.StrManager.MkIntersection(derivatives);
     }
+
 }

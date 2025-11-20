@@ -15,6 +15,7 @@ public readonly struct CharacterRange : IEquatable<CharacterRange>, IComparable<
     public CharacterRange(uint c) : this(c, c + 1) { }
 
     public CharacterRange(uint from, uint to) {
+        Debug.Assert(to <= CharacterSet.MaxChar + 1);
         From = from;
         To = to;
         Debug.Assert(from <= to);
@@ -36,7 +37,7 @@ public readonly struct CharacterRange : IEquatable<CharacterRange>, IComparable<
         HashCode.Combine(From, To);
 
     public static string GetChar(uint c) =>
-        c is
+        c is 
             >= 'a' and <= 'z' or
             >= 'A' and <= 'Z' or
             >= '0' and <= '9'

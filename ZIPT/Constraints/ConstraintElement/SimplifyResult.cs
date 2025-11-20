@@ -2,6 +2,7 @@
 
 public enum SimplifyResult {
     Proceed,
+    Extended,
     Conflict,
     Satisfied,
     RestartAndSatisfied,

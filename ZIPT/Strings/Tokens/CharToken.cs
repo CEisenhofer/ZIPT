@@ -20,13 +20,15 @@ public sealed class CharToken : UnitToken {
     public override bool RegexFree => true;
     public override bool Derivable => true;
 
-    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) {
-        Expr? e = env.GetCachedStrExpr(this, currentModificationCnt);
+    public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => ToExpr(env);
+
+    public Expr ToExpr(Environment env) {
+        Expr? e = env.GetCachedStrExpr(this, 0);
         if (e is not null)
             return e;
         FuncDecl f = env.Ctx.MkFreshConstDecl(Value.ToString(), env.StringSort);
         e = env.Ctx.MkUserPropagatorFuncDecl(f.Name.ToString(), [], env.StringSort).Apply();
-        env.SetCachedExpr(this, e, currentModificationCnt);
+        env.SetCachedExpr(this, e, 0);
         return e;
     }
 
@@ -50,7 +52,10 @@ public sealed class CharToken : UnitToken {
 
     public override int GetHashCode() => (int)(21954391 * Value);
 
-    public override string ToString(NielsenGraph? graph) => CharacterRange.GetChar(Value);
+    public override string ToString(NielsenGraph? graph) => 
+        Value <= char.MaxValue && !char.IsControl((char)Value) 
+            ? ((char)Value).ToString() 
+            : CharacterRange.GetChar(Value);
 
     public override Str Derivative(Environment env, CharacterSet set, bool fwd) => 
         set.Contains(this) ? env.EmptyStr : env.FailStr;

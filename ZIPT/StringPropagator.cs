@@ -149,11 +149,6 @@ public abstract class StringPropagator : UserPropagator {
                 return;
             }
             if (Env.IsRegularMembership(f)) {
-                if (!val) {
-                    throw new NotImplementedException();
-                    // TODO: Negate the expression
-                    return;
-                }
                 // In theory, we could now assert the semi-linear length set, but not sure if this is too costly
                 Expr e1 = e.Arg(0);
                 Expr e2 = e.Arg(1);
@@ -161,6 +156,8 @@ public abstract class StringPropagator : UserPropagator {
                 var s2 = Env.TryParseStr(e2);
                 Debug.Assert(s1 is not null);
                 Debug.Assert(s2 is not null);
+                if (!val)
+                    s2 = Env.StrManager.MkComplement(s2);
                 MemInternal(s1, s2, (BoolExpr)e);
                 return;
             }
@@ -757,7 +754,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 }
             }
         }
-        reportedEqs.Add((e1, e2));
+        reportedEqs.Add((e1.Dup(), e2.Dup()));
         undoStack.Add(() =>
         {
             reportedEqs.Pop();
@@ -770,7 +767,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         var mem = new StrMem(s1, s2, Env.EmptyStr, id);
         Root.ConstraintsStrMem.Add(id, mem);
 
-        reportedMems.Add(e);
+        reportedMems.Add((BoolExpr)e.Dup());
         undoStack.Add(() =>
         {
             Log.Verify(Root.ConstraintsStrMem.Remove(id));
@@ -807,7 +804,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 #endif
 
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
-            Info = new(Root, forbidden);
+            Info = new LocalInfo(Root, forbidden);
             var res = Graph.Check(Info);
             if (newInformation) {
                 newInformation = false;
@@ -848,7 +845,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     }
 
     void DecideCB(Expr term, uint idx, bool phase) {
-        if (!phase && term.NumArgs == 0) 
+        if (!phase && selectedPath is not null && selectedPath.Contains(term)) 
             // Path literals are better true
             NextSplit(term, 0, 1);
     }
@@ -856,7 +853,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     public bool GetModel(LocalInfo info, out Interpretation itp) {
 
         var currentPath = info.CurrentPath.ToList();
-        var satNode = currentPath.Count == 0 ? Graph.InitRoot : currentPath[^1].Value.Tgt;
+        var satNode = currentPath.Count == 0 ? info.RootNode : currentPath[^1].Value.Tgt;
         Debug.Assert(satNode is not null);
         Debug.Assert(satNode.ConstraintsStrEq.Count == 0);
         Debug.Assert(satNode.ConstraintsStrMem.All(o => o.Value.IsPrimitiveRegex()));

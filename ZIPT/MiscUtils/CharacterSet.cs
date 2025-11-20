@@ -305,6 +305,9 @@ public class CharacterSet : IEquatable<CharacterSet>, IComparable<CharacterSet> 
         return 0;
     }
 
-    public override string ToString() => 
-        "{ " + string.Join(", ", Ranges) + " }";
+    public override string ToString() {
+        if (IsFull)
+            return "{...}";
+        return "{ " + string.Join(", ", Ranges) + " }";
+    }
 }
