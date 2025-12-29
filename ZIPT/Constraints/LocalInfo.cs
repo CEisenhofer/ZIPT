@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.Z3;
 using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
@@ -14,6 +13,7 @@ public class LocalInfo {
     public NielsenNode RootNode;
     public Environment Env => CurrentNode.Env;
     public Context Ctx => Env.Ctx;
+    public bool OutdatedModel { get; set; } = true;
     public Dictionary<NamedStrToken, int> CurrentModificationCnt = [];
     public int ModCnt;
     public readonly Dictionary<int, NielsenEdge> CurrentPath = []; // the current path taken

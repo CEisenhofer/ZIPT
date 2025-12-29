@@ -935,6 +935,7 @@ public class NielsenNode {
             case StrEq sEq:
                 return ConstraintsStrEq.Add(sEq);
             case StrMem sMem:
+                Debug.Assert(!ConstraintsStrMem.ContainsKey(sMem.Id));
                 ConstraintsStrMem.Add(sMem.Id, sMem);
                 return true;
             case IntEq iEq:
@@ -1087,7 +1088,7 @@ public class NielsenNode {
         checkCnt++;
 
 #if DEBUG
-        if (info.CurrentPath.Count > 30)
+        if (info.CurrentPath.Count > 50)
             Console.WriteLine("Suspiciously deep nesting...");
 #endif
 

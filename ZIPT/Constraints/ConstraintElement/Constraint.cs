@@ -9,6 +9,7 @@ namespace ZIPT.Constraints.ConstraintElement;
 public abstract class Constraint {
 
     public bool Satisfied { get; private set; }
+    public DependencyTracker Dependencies { get; set; }
     public abstract bool Shared { get; }
 
     public abstract override bool Equals(object? obj);

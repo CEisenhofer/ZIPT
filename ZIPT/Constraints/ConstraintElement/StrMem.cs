@@ -24,9 +24,9 @@ public sealed class StrMem : StrEqBase {
         private set => RHS = value;
     }
 
-    public Str History { get; private set; }
-
     public uint Id { get; }
+
+    public Str History { get; private set; }
 
     public override bool Sorted => false;
 

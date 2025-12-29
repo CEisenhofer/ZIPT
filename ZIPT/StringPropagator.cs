@@ -793,7 +793,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     void FinalCB() {
         try {
-            if (!newInformation && selectedPath is not null && selectedPath.All(o => !forbidden.Contains(o)))
+            if (!newInformation && selectedPath is not null && selectedPath.All(o => !forbidden.Contains(o)) && !Info.OutdatedModel)
                 // We made our choice and the solver did not backtrack it/contradict it - we silently agree
                 return;
             finalCnt++;
@@ -852,6 +852,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public bool GetModel(LocalInfo info, out Interpretation itp) {
 
+        Debug.Assert(!info.OutdatedModel);
         var currentPath = info.CurrentPath.ToList();
         var satNode = currentPath.Count == 0 ? info.RootNode : currentPath[^1].Value.Tgt;
         Debug.Assert(satNode is not null);
@@ -887,6 +888,11 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         }
         Debug.Assert(model is not null);
 
+        var witnesses = satNode.WitnessRegex();
+        foreach (var (nt, v) in witnesses) {
+            new Subst(nt, Env.MkString(v.OfType<StrToken>().ToList())).AddToInterpretation(itp);
+        }
+
         for (int i = 0; i < currentPath.Count; i++) {
             foreach (var subst in currentPath[^(i + 1)].Value.Subst) {
                 subst.AddToInterpretation(itp);
@@ -894,11 +900,6 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             foreach (var subst in currentPath[^(i + 1)].Value.SubstC) {
                 subst.AddToInterpretation(itp);
             }
-        }
-
-        var witnesses = satNode.WitnessRegex();
-        foreach (var (nt, v) in witnesses) {
-            new Subst(nt, Env.MkString(v.OfType<StrToken>().ToList())).AddToInterpretation(itp);
         }
 
         if (Options.ModelCompletion)

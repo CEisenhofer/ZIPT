@@ -12,15 +12,17 @@ public struct Subst {
 
     public NamedStrToken Var { get; }
     public Str Str { get; }
+    public DependencyTracker? Reason { get; }
     public bool IsEliminating => 
         !Str.ContainsVar(Var);
 
     readonly LenVar lenVar;
     PDD<BigInteger>? newLen;
 
-    public Subst(NamedStrToken v, Str s) {
+    public Subst(NamedStrToken v, Str s, DependencyTracker? reason = null) {
         Var = v;
         Str = s;
+        Reason = reason;
         lenVar = new LenVar(Var);
     }
 

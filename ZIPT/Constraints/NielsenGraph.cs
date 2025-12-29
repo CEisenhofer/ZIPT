@@ -54,6 +54,7 @@ public class NielsenGraph {
 
     public bool Check(LocalInfo info) {
         ResetAll();
+        info.OutdatedModel = true;
         if (RunIdx == uint.MaxValue) {
             ResetCounter();
             RunIdx = 1;
@@ -89,6 +90,7 @@ public class NielsenGraph {
         //
 
         info.RootNode = info.CurrentNode;
+        info.NextRegexId = (uint)info.CurrentNode.ConstraintsStrMem.Count;
 
         Debug.Assert(SubSolver is not null);
 
@@ -105,10 +107,12 @@ public class NielsenGraph {
             Debug.Assert(info.CurrentPath.Count == pathCnt);
             Debug.Assert(info.CurrentModificationCnt.Count == modCnt);
             var res = info.CurrentNode.Check(0, info);
+            Console.WriteLine(res);
             Debug.Assert(res != SolveResult.CYCLIC);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
             if (res == SolveResult.SAT) {
+                info.OutdatedModel = false;
                 Debug.Assert(!info.CurrentNode.IsCurrentlyConflict);
                 if (Options.OutputGraph)
                     Console.WriteLine(ToDot(info));
@@ -157,13 +161,13 @@ public class NielsenGraph {
         foreach (var node in nodes) {
             sb.Append('\t')
                 .Append(node.Id)
-                .Append(" [label=\"")
+                .Append(" [label=<")
                 .Append(node.Id)
                 .Append(": ")
                 .Append(node.ToHtmlString());
             if (NielsenNode.IsActualConflict(node.CurrentReason))
                 sb.Append("\\n").Append(NielsenNode.ReasonToString(node.CurrentReason));
-            sb.Append('"');
+            sb.Append('>');
             if (satNodes.Contains(node))
                 sb.Append(", color=green");
             else if (node.IsGeneralConflict)
@@ -180,9 +184,9 @@ public class NielsenGraph {
                     .Append(node.Id)
                     .Append(" -> ")
                     .Append(edge.Tgt.Id)
-                    .Append(" [label=\"")
+                    .Append(" [label=<")
                     .Append(NielsenNode.DotEscapeStr(edge.ModStr))
-                    .Append('"');
+                    .Append('>');
                 if (satEdges.Contains(edge))
                     sb.Append(", color=green");
                 else if (!edge.Tgt.IsActive)

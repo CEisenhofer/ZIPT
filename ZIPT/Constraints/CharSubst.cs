@@ -12,11 +12,13 @@ public struct CharSubst {
 
     public SymCharToken Var { get; }
     public UnitToken Val { get; }
+    public DependencyTracker? Reason { get; }
     public bool IsEliminating => Val is CharToken;
 
-    public CharSubst(SymCharToken v, UnitToken s) {
+    public CharSubst(SymCharToken v, UnitToken s, DependencyTracker? reason = null) {
         Var = v;
         Val = s;
+        Reason = reason;
     }
 
     public void AddToInterpretation(Interpretation itp) => itp.Apply(this);

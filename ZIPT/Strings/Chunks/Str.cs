@@ -61,7 +61,7 @@ public abstract class Str : IEquatable<Str>, IComparable<Str> {
     public bool IsNonEmpty() => Level != 0;
     public bool IsTemp => ChunkId == uint.MaxValue;
     public bool IsFail => this is SingletonStr { StrToken: FailToken };
-    public bool IsFull => this is SingletonStr { StrToken: KleeneToken { Base: SingletonStr { StrToken: SetToken { Set.IsFull: true } } } };
+    public bool IsFull => this is SingletonStr { StrToken.IsFull: true };
 
     protected Str(uint chunkId) {
         ChunkId = chunkId;

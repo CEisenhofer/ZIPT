@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using ZIPT.Constraints;
-using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens.AuxTokens;
@@ -17,6 +16,8 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public abstract bool Derivable { get; }
     public abstract bool Nullable { get; }
     public abstract bool BasicRegex { get; }
+
+    public bool IsFull => this is KleeneToken { Base: SingletonStr { StrToken: SetToken { Set.IsFull: true } } };
 
     public abstract List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd);
 

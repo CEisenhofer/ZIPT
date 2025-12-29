@@ -116,15 +116,60 @@ public sealed class StrManager {
 
     [Pure]
     public Str Concat(Str s1, Str s2) {
-        if (s1 is EmptyStr)
-            return s2;
-        if (s2 is EmptyStr)
-            return s1;
-        if (s1.IsFail)
-            return FailStr;
-        if (s2.IsFail)
-            return FailStr;
-        // TODO: if s1 ends with r* and s2 starts with r*, merge
+        while (true) {
+            if (s1 is EmptyStr)
+                return s2;
+            if (s2 is EmptyStr)
+                return s1;
+            if (s1.IsFail)
+                return FailStr;
+            if (s2.IsFail)
+                return FailStr;
+            var last = s1.Last;
+            var first = s2.First;
+            // TODO: We need some more rules here
+            // TODO: if s1 ends with r* and s2 starts with r*, merge
+            if (last.IsFull && first.Nullable) {
+                // u.* + vw = u.*w    if v nullable
+                s2 = DropLeft(s2);
+                continue;
+            }
+            if (last.Nullable && first.IsFull) {
+                // uv + .*w = u.*w    if v nullable
+                s1 = DropRight(s1);
+                continue;
+            }
+            if (last is KleeneToken k1 && first is KleeneToken k2 && k1.Base.Equals(k2.Base)) {
+                // uv* + v*w = uv*w
+                s1 = DropRight(s1);
+                continue;
+            }
+            if (last is LoopToken l1 && first is LoopToken l2 && l1.Base.Equals(l2.Base)) {
+                // uv{l1,h1} + v{l2,h2}w = uv{l1+l2,h1+h2}w
+                Str newLoop = MkLoop(l1.Base, l1.Min + l2.Min, l1.Max + l2.Max);
+                s1 = DropRight(s1);
+                s2 = DropLeft(s2);
+                s2 = Concat(newLoop, s2);
+                continue;
+            }
+            if (last is LoopToken l3 && StartsWith(s2, l3.Base)) {
+                // uv{l,h} + vw = uv{l+1,h+1}w
+                s1 = DropRight(s1);
+                s2 = DropLeft(s2, l3.Base.Length);
+                Str newLoop = MkLoop(l3.Base, l3.Min + 1, l3.Max + 1);
+                s2 = Concat(newLoop, s2);
+                continue;
+            }
+            if (first is LoopToken l4 && EndsWith(s1, l4.Base)) {
+                // uv + v{l,h}w = uv{l+1,h+1}w
+                s1 = DropRight(s1, l4.Base.Length);
+                s2 = DropLeft(s2);
+                Str newLoop = MkLoop(l4.Base, l4.Min + 1, l4.Max + 1);
+                s1 = Concat(s1, newLoop);
+                continue;
+            }
+            break;
+        }
         Debug.Assert(s1.BalancedTrans);
         Debug.Assert(s2.BalancedTrans);
         Debug.Assert(s1 is SingletonStr or TupleStr);
@@ -526,10 +571,11 @@ public sealed class StrManager {
             return FailStr;
         if (s is { Length: 1, IsFail: true })
             return AllStr;
-        if (s is { Length: 1, First: CharToken c })
-            return Single(new SetToken(new CharacterSet(new CharacterRange(c.Value)).Complement()));
-        if (s is { Length: 1, First: SetToken set })
-            return Single(new SetToken(set.Set.Complement()));
+        // these are WRONG:
+        // if (s is { Length: 1, First: CharToken c })
+        //     return Single(new SetToken(new CharacterSet(new CharacterRange(c.Value)).Complement()));
+        // if (s is { Length: 1, First: SetToken set })
+        //     return Single(new SetToken(set.Set.Complement()));
         return Single(new NotToken(s));
     }
 
@@ -559,8 +605,40 @@ public sealed class StrManager {
                 constSet.Add(c.Value);
             else if (tokens[i] is SingletonStr { StrToken: SetToken st })
                 constSet.Add(st.Set);
-            else
+            else {
+                if (copyIdx > 0) {
+                    // TODO: The same for intersection
+                    if (tokens[copyIdx - 1] is { Length: 1, First: LoopToken lt1 } &&
+                        tokens[i] is { Length: 1, First: LoopToken lt2 } && lt1.Base.Equals(lt2.Base)) {
+                        // (...|b{l,h}|b{l',h'}|...) with l <= l' and h >= h'  ==> (...|b{l,h}|...)
+                        if (lt1.Min <= lt2.Min && lt1.Max >= lt2.Max)
+                            continue;
+                        if (lt1.Min >= lt2.Min && lt1.Max <= lt2.Max) {
+                            (tokens[copyIdx - 1], tokens[i]) = (tokens[i], tokens[copyIdx - 1]);
+                            continue;
+                        }
+                    }
+                    else {
+                        // TODO: CommonSuffix as well?
+                        uint len = CommonPrefix(tokens[copyIdx - 1], tokens[i]);
+                        if (len > 0) {
+                            Str s1 = tokens[copyIdx - 1];
+                            Str s2 = tokens[i];
+                            // (...|uv|uv'|...)  ==> (...|(u(v|v'))|...)
+                            // TODO:
+                            // to make this work well we need to change ordering that puts regexes with same prefix near
+                            // (currently it depends on length)
+                            // TODO: Have a better split function
+                            Str prefix = SubStr(s1, 0, len);
+                            Str suffix1 = DropLeft(s1, len);
+                            Str suffix2 = DropLeft(s2, len);
+                            tokens[copyIdx - 1] = Concat(prefix, MkUnion([suffix1, suffix2]));
+                            continue;
+                        }
+                    }
+                }
                 tokens[copyIdx++] = tokens[i];
+            }
         }
         if (!constSet.IsEmpty) {
             Debug.Assert(copyIdx < tokens.Count);
@@ -573,6 +651,48 @@ public sealed class StrManager {
         tokens.RemoveRange(copyIdx, tokens.Count - copyIdx);
         tokens.Sort();
         return Single(new UnionToken(tokens));
+    }
+
+    [Pure]
+    static bool StartsWith(Str b, Str other) {
+        if (b.Length < other.Length)
+            return false;
+        // Don't use indexes; the enumerator is faster
+        using var e1 = b.GetEnumerator().GetEnumerator();
+        using var e2 = other.GetEnumerator().GetEnumerator();
+        while (e2.MoveNext()) {
+            e1.MoveNext();
+            if (!e1.Current.Equals(e2.Current))
+                return false;
+        }
+        return true;
+    }
+
+    [Pure]
+    static bool EndsWith(Str b, Str other) {
+        if (b.Length < other.Length)
+            return false;
+        using var e1 = b.GetRevEnumerator().GetEnumerator();
+        using var e2 = other.GetRevEnumerator().GetEnumerator();
+        while (e2.MoveNext()) {
+            e1.MoveNext();
+            if (!e1.Current.Equals(e2.Current))
+                return false;
+        }
+        return true;
+    }
+
+    [Pure]
+    static uint CommonPrefix(Str s1, Str s2) {
+        using var e1 = s1.GetEnumerator().GetEnumerator();
+        using var e2 = s2.GetEnumerator().GetEnumerator();
+        uint cnt = 0;
+        while (e2.MoveNext()) {
+            if (!e1.MoveNext() || !e1.Current.Equals(e2.Current))
+                return cnt;
+            cnt++;
+        }
+        return cnt;
     }
 
     [Pure]
@@ -618,6 +738,7 @@ public sealed class StrManager {
             if (s is { First: KleeneToken k })
                 return Single(k);
             if (s is { First: UnionToken u }) {
+                // TODO: What about intersection?
                 // pretty helpful rewrite:
                 // (u_1|...|u_k*|...|u_n)* 
                 // => (u_1|...|u_k|...|u_n)*
