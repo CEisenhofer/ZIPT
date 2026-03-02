@@ -12,7 +12,7 @@ public class StarIntrModifier : ModifierBase {
     public Str Base { get; }
     public uint DropCnt { get; }
 
-    public StarIntrModifier(uint id, NielsenNode backEdge, Str @base, uint dropCnt) {
+    public StarIntrModifier(uint id, NielsenNode backEdge, Str @base, uint dropCnt, DependencyTracker reason) : base(reason) {
         Id = id;
         BackEdge = backEdge;
         Base = @base;
@@ -53,8 +53,8 @@ public class StarIntrModifier : ModifierBase {
         Str varDropped = info.Env.StrManager.DropLeft(mem.Str);
 
         Debug.Assert(!mem.IsPrimitiveRegex());
-        toAdd.Add(new StrMem(varDropped, mem.Regex, newHistory, mem.Id));
-        toAdd.Add(new StrMem(info.Env.MkString(t), cycle, info.Env.EmptyStr, info.NextRegexId++));
+        toAdd.Add(new StrMem(varDropped, mem.Regex, newHistory, mem.Id, Reason));
+        toAdd.Add(new StrMem(info.Env.MkString(t), cycle, info.Env.EmptyStr, info.NextRegexId++, Reason));
 
         info.CurrentNode.MkChild(info, [], [], toAdd, toRemove, true);
         yield return info.CurrentNode.Outgoing[^1];
@@ -66,7 +66,7 @@ public class StarIntrModifier : ModifierBase {
         // Would require detecting that "pr" is subsumed by the regex on the RHS
         if (t is not StrVarToken v) {
             pr = info.Env.CreateFreshStrVar("X");
-            toAdd.Add(new StrEq(info.Env.MkString(pr, po), info.Env.MkString(t)));
+            toAdd.Add(new StrEq(info.Env.MkString(pr, po), info.Env.MkString(t), Reason));
         }
         else {
             toSubst.Add(new Subst(v, info.Env.MkString(v, po)));
@@ -86,14 +86,15 @@ public class StarIntrModifier : ModifierBase {
                     info.Env.StrManager.Concat(po, varDroppedSubst),
                     mem.Regex,
                     info.Env.StrManager.Concat(info.Env.StrManager.DropRight(mem.History, DropCnt), cycle),
-                    mem.Id
+                    mem.Id,
+                    Reason
                 )
             );
-        toAdd.Add(new StrMem(info.Env.MkString(pr), cycle, info.Env.EmptyStr, info.NextRegexId++));
+        toAdd.Add(new StrMem(info.Env.MkString(pr), cycle, info.Env.EmptyStr, info.NextRegexId++, Reason));
         Str blocked = info.Env.StrManager.Concat(Base, info.Env.StrManager.AllStr);
         Debug.Assert(!blocked.Nullable);
-        toAdd.Add(new StrMem(info.Env.MkString(po), info.Env.StrManager.MkComplement(blocked), info.Env.EmptyStr, info.NextRegexId++));
-        toAdd.Add(IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly([po], info.Env)));
+        toAdd.Add(new StrMem(info.Env.MkString(po), info.Env.StrManager.MkComplement(blocked), info.Env.EmptyStr, info.NextRegexId++, Reason));
+        toAdd.Add(IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly([po], info.Env), Reason));
 
         info.CurrentNode.MkChild(info, toSubst, [], toAdd, toRemove, false);
         yield return info.CurrentNode.Outgoing[^1];

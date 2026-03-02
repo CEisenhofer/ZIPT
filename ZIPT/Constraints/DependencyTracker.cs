@@ -9,7 +9,16 @@ public class DependencyTracker {
     public DependencyTracker(int cnt) => 
         hasDependency = new uint[cnt];
 
-    public DependencyTracker Merge(DependencyTracker other) {
+    public DependencyTracker(int cnt, int set) : this(cnt) {
+        hasDependency[set / sizeof(uint)] = 1u << (set % sizeof(uint));
+    }
+
+    public static DependencyTracker? Merge(DependencyTracker? o1, DependencyTracker? o2) => 
+        o1 is null ? o2 : o1.Merge(o2);
+
+    public DependencyTracker Merge(DependencyTracker? other) {
+        if (other is null)
+            return this;
         Debug.Assert(hasDependency.Length == other.hasDependency.Length);
         if (IsSuperSet(other))
             return this;

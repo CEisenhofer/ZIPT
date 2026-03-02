@@ -1,6 +1,7 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.Intrinsics.Arm;
 using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
@@ -12,7 +13,7 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public sealed class StrEq : StrEqBase {
 
-    public StrEq(Str lhs, Str rhs) : base(lhs, rhs) {
+    public StrEq(Str lhs, Str rhs, DependencyTracker reason) : base(lhs, rhs, reason) {
         Debug.Assert(lhs.RegexFree);
         Debug.Assert(rhs.RegexFree);
     }
@@ -23,7 +24,7 @@ public sealed class StrEq : StrEqBase {
         SortStr(ref lhs, ref rhs, true);
         if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
             return this;
-        return new StrEq(lhs, rhs);
+        return new StrEq(lhs, rhs, Reason.Merge(subst.Reason));
     }
 
     public override StrEq Apply(CharSubst subst, NielsenNode node) {
@@ -32,7 +33,7 @@ public sealed class StrEq : StrEqBase {
         SortStr(ref lhs, ref rhs, true);
         if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
             return this;
-        return new StrEq(lhs, rhs);
+        return new StrEq(lhs, rhs, Reason.Merge(subst.Reason));
     }
 
     public override StrEq Apply(Interpretation itp) {
@@ -41,7 +42,7 @@ public sealed class StrEq : StrEqBase {
         SortStr(ref lhs, ref rhs, true);
         if (ReferenceEquals(lhs, LHS) && ReferenceEquals(rhs, RHS))
             return this;
-        return new StrEq(lhs, rhs);
+        return new StrEq(lhs, rhs, Reason);
     }
 
 
@@ -292,22 +293,24 @@ public sealed class StrEq : StrEqBase {
             }
 
             if (t1 is PowerToken p1) {
-                if (info.CurrentNode.IsZero(p1.Power)) {
+                if (info.CurrentNode.IsZero(p1.Power, out var dep)) {
                     LHS = info.Env.StrManager.Drop(LHS, fwd);
+                    Reason = Reason.Merge(dep);
                     continue;
                 }
                 if (!IsPrefixConsistent(info.CurrentNode, p1.Base, RHS, fwd)) {
-                    sConstr.Add(new IntEq(info.Env.ZeroInt, p1.Power));
+                    sConstr.Add(new IntEq(info.Env.ZeroInt, p1.Power, Reason));
                     return SimplifyResult.Proceed;
                 }
             }
             if (t2 is PowerToken p2) {
-                if (info.CurrentNode.IsZero(p2.Power)) {
+                if (info.CurrentNode.IsZero(p2.Power, out var dep)) {
                     RHS = info.Env.StrManager.Drop(RHS, fwd);
+                    Reason = Reason.Merge(dep);
                     continue;
                 }
                 if (!IsPrefixConsistent(info.CurrentNode, p2.Base, LHS, fwd)) {
-                    sConstr.Add(new IntEq(info.Env.ZeroInt, p2.Power));
+                    sConstr.Add(new IntEq(info.Env.ZeroInt, p2.Power, Reason));
                     return SimplifyResult.Proceed;
                 }
             }
@@ -417,15 +420,15 @@ public sealed class StrEq : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
-    static NumCmpModifier? SplitPowerElim(StrToken t, Str s, Environment env, bool fwd) {
+    NumCmpModifier? SplitPowerElim(StrToken t, Str s, Environment env, bool fwd) {
         if (t is not PowerToken p1)
             return null;
         var r = CommPower(p1.Base, s, env, fwd);
-        return r.idx > 0 ? new NumCmpModifier(p1.Power, r.num) : null;
+        return r.idx > 0 ? new NumCmpModifier(p1.Power, r.num, Reason) : null;
     }
 
-    static NumUnwindingModifier? SplitPowerUnwind(StrToken t, bool varInvolved) => 
-        t is not PowerToken p ? null : (varInvolved ? new VarNumUnwindingModifier(p.Power) : new ConstNumUnwindingModifier(p.Power));
+    NumUnwindingModifier? SplitPowerUnwind(StrToken t, bool varInvolved) => 
+        t is not PowerToken p ? null : (varInvolved ? new VarNumUnwindingModifier(p.Power, Reason) : new ConstNumUnwindingModifier(p.Power, Reason));
 
     static List<(NamedStrToken x, Str val)> TryGetPowerSplitBase(StrVarToken v, Str s, Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
         if (s.IsEmpty())
@@ -557,7 +560,7 @@ public sealed class StrEq : StrEqBase {
             best > int.MaxValue ||
             best < int.MinValue
                 ? null
-                : new EqSplitModifier(this, (uint)bestLhs, (uint)bestRhs, (int)best, fwd);
+                : new EqSplitModifier(this, (uint)bestLhs, (uint)bestRhs, (int)best, fwd, Reason);
     }
 
     static int Periodicity(Str s, int from, int to) {
@@ -793,29 +796,29 @@ public sealed class StrEq : StrEqBase {
         return true;
     }
 
-    static ModifierBase? SplitVarVar(Str s1, Str s2, bool fwd) {
+    ModifierBase? SplitVarVar(Str s1, Str s2, bool fwd) {
         if (s1.IsEmpty() || s2.IsEmpty() || s1[fwd] is not StrVarToken v1 || s2[fwd] is not StrVarToken v2)
             return null;
-        return new VarNielsenModifier(v1, v2, fwd);
+        return new VarNielsenModifier(v1, v2, fwd, Reason);
     }
 
     ModifierBase? SplitGroundPower(StrToken t, Str s, Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
         if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is NamedStrToken)
             return null;
         var p = TryGetPowerSplitBase(v, s, env, varDep, fwd);
-        return p.Count == 0 ? null : new GPowerIntrModifier(p, fwd);
+        return p.Count == 0 ? null : new GPowerIntrModifier(p, fwd, Reason);
     }
 
     ModifierBase? SplitVarChar(StrToken t, Str s, bool fwd) {
         if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is not UnitToken)
             return null;
-        return new ConstNielsenModifier(v, s[fwd], fwd);
+        return new ConstNielsenModifier(v, s[fwd], fwd, Reason);
     }
 
     ModifierBase? SplitVarPower(StrToken t, Str s, bool fwd) {
         if (t is not StrVarToken v || s.IsEmpty() || s[fwd] is not PowerToken { Ground: true } p)
             return null;
-        return new PowerSplitModifier(v, p, fwd);
+        return new PowerSplitModifier(v, p, fwd, Reason);
     }
 
     ModifierBase ExtendDir(Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, Environment env, Dictionary<NamedInt, PDD<BigRational>> intSubst, bool fwd) {
@@ -824,7 +827,7 @@ public sealed class StrEq : StrEqBase {
             Debug.Assert(!RHS.IsEmpty());
             var t = RHS[true];
             if (t is PowerToken p)
-                return new PowerEpsilonModifier(p);
+                return new PowerEpsilonModifier(p, Reason);
             // Simplify step should have already dealt with everything else!
             throw new NotSupportedException();
         }
@@ -887,8 +890,6 @@ public sealed class StrEq : StrEqBase {
         cmp = LHS.CompareTo(otherEq.LHS);
         return cmp != 0 ? cmp : RHS.CompareTo(otherEq.RHS);
     }
-
-    public override StrNonEq Negate() => new(LHS, RHS);
 
     public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
         env.Ctx.MkEq(LHS.ToExpr(env, currentModificationCnt), RHS.ToExpr(env, currentModificationCnt));

@@ -287,60 +287,69 @@ public class Environment : IDisposable {
     }
 
     // Translate Z3's string terms to our custom ones such that the UP gets the callbacks
-    public Expr? TranslateStr(Expr e, LocalInfo info) {
+    public Expr? TranslateStr(Expr e) {
         if (e.IsVar)
             return null;
-        if (e.IsString)
-            return StrManager.ToExpr(MkString(Unescape(e.String).Select(StrToken (o) => new CharToken(o)).ToArray()), info.Env, info.CurrentModificationCnt);
+        if (e.IsString) {
+            if (e.String.Length == 0)
+                return Epsilon;
+            using var en = Unescape(e.String).GetEnumerator();
+            en.MoveNext();
+            Expr o = new CharToken(en.Current).ToExpr(this);
+            while (en.MoveNext()) {
+                o = MkConcat(o, new CharToken(en.Current).ToExpr(this));
+            }
+            return o;
+        }
 
         var f = e.FuncDecl;
         var kind = f.DeclKind;
         switch (kind) {
             case Z3_decl_kind.Z3_OP_SEQ_AT:
                 return StrAtFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_CONCAT:
                 return ConcatFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_PREFIX:
                 return PrefixOfFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_SUFFIX:
                 return SuffixOfFct.Apply(
                     TranslateStr(
-                        e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                        e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_CONTAINS:
                 return ContainsFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_INDEX:
                 return IndexOfFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1),
-                    TranslateStr(e.Arg(2), info) ?? e.Arg(2));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1),
+                    TranslateStr(e.Arg(2)) ?? e.Arg(2));
             case Z3_decl_kind.Z3_OP_SEQ_LENGTH:
-                return MkLen(TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+                return MkLen(TranslateStr(e.Arg(0)) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_SEQ_EXTRACT:
                 return SubstringFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1),
-                    TranslateStr(e.Arg(2), info) ?? e.Arg(2));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1),
+                    TranslateStr(e.Arg(2)) ?? e.Arg(2));
             case Z3_decl_kind.Z3_OP_UNINTERPRETED when e is SeqExpr:
-                return GetOrCreateStrVar(f.Name.ToString()).ToExpr(this, info.CurrentModificationCnt);
+                return GetOrCreateStrVar(f.Name.ToString()).ToExpr(this);
             case Z3_decl_kind.Z3_OP_EQ when e.Arg(0) is SeqExpr:
                 return Ctx.MkEq(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_IN_RE when e.Arg(0) is SeqExpr:
                 return ReMemFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_SEQ_TO_RE:
-                return TranslateStr(e.Arg(0), info) ?? e.Arg(0);
+                return TranslateStr(e.Arg(0)) ?? e.Arg(0);
             case Z3_decl_kind.Z3_OP_RE_EMPTY_SET:
                 return Fail;
             case Z3_decl_kind.Z3_OP_RE_FULL_CHAR_SET:
@@ -349,49 +358,49 @@ public class Environment : IDisposable {
                 return StrManager.AllStr.ToExpr(this, []);
             case Z3_decl_kind.Z3_OP_RE_STAR:
                 return StarFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_RE_PLUS:
                 return ConcatFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
                     StarFct.Apply(
-                        TranslateStr(e.Arg(0), info) ?? e.Arg(0)));
+                        TranslateStr(e.Arg(0)) ?? e.Arg(0)));
             case Z3_decl_kind.Z3_OP_RE_LOOP:
                 Debug.Assert(e.FuncDecl.NumParameters ==  2);
                 return MkLoopExpr(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
                     (uint)e.FuncDecl.Parameters[0].Int,
                     (uint)e.FuncDecl.Parameters[1].Int
                     );
             case Z3_decl_kind.Z3_OP_RE_COMPLEMENT:
                 return CompFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_RE_OPTION:
-                return UnionFct.Apply(Epsilon, TranslateStr(e.Arg(0), info) ?? e.Arg(0));
+                return UnionFct.Apply(Epsilon, TranslateStr(e.Arg(0)) ?? e.Arg(0));
             case Z3_decl_kind.Z3_OP_RE_CONCAT:
                 Debug.Assert(e.NumArgs == 2);
                 return ConcatFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_UNION:
                 Debug.Assert(e.NumArgs == 2);
                 return UnionFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_INTERSECT:
                 Debug.Assert(e.NumArgs == 2);
                 return InterFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             case Z3_decl_kind.Z3_OP_RE_RANGE:
                 return RgFct.Apply(
-                    TranslateStr(e.Arg(0), info) ?? e.Arg(0),
-                    TranslateStr(e.Arg(1), info) ?? e.Arg(1));
+                    TranslateStr(e.Arg(0)) ?? e.Arg(0),
+                    TranslateStr(e.Arg(1)) ?? e.Arg(1));
             default:
                 var args = new Expr[e.NumArgs];
                 bool mod = false;
                 for (uint i = 0; i < e.NumArgs; i++) {
                     var arg = e.Arg(i);
-                    var n = TranslateStr(arg, info);
+                    var n = TranslateStr(arg);
                     mod |= n is not null;
                     args[i] = n ?? arg;
                 }
@@ -416,7 +425,6 @@ public class Environment : IDisposable {
             Z3_decl_kind.Z3_OP_EQ => expr.Arg(0) is IntExpr
                 ? ParseIntEq((IntExpr)expr.Args[0], (IntExpr)expr.Args[1])
                 : ParseStrEq(expr.Args[0], expr.Args[1]),
-            Z3_decl_kind.Z3_OP_NOT => TryParse((BoolExpr)expr.Args[0])?.Negate(),
             Z3_decl_kind.Z3_OP_LE => ParseLe((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]),
             Z3_decl_kind.Z3_OP_GE => ParseLe((IntExpr)expr.Args[1], (IntExpr)expr.Args[0]),
             Z3_decl_kind.Z3_OP_LT => ParseLt((IntExpr)expr.Args[0], (IntExpr)expr.Args[1]),
@@ -434,7 +442,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseStr(right);
-        return rhs is null ? null : new StrEq(lhs, rhs);
+        return rhs is null ? null : new StrEq(lhs, rhs, new DependencyTracker(0));
     }
 
     public IntEq? ParseIntEq(IntExpr left, IntExpr right) {
@@ -442,7 +450,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseInt(right);
-        return rhs is null ? null : new IntEq(lhs, rhs);
+        return rhs is null ? null : new IntEq(lhs, rhs, new DependencyTracker(0));
     }
 
     public IntLe? ParseLe(IntExpr left, IntExpr right) {
@@ -450,7 +458,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseInt(right);
-        return rhs is null ? null : IntLe.MkLe(lhs, rhs);
+        return rhs is null ? null : IntLe.MkLe(lhs, rhs, new DependencyTracker(0));
     }
 
     public IntLe? ParseLt(IntExpr left, IntExpr right) {
@@ -458,7 +466,7 @@ public class Environment : IDisposable {
         if (lhs is null)
             return null;
         var rhs = TryParseInt(right);
-        return rhs is null ? null : IntLe.MkLt(lhs, rhs);
+        return rhs is null ? null : IntLe.MkLt(lhs, rhs, new DependencyTracker(0));
     }
 
     public StrPrefixOf? ParsePrefix(Expr contained, Expr str) {
@@ -498,7 +506,7 @@ public class Environment : IDisposable {
         var c = TryParseStr(re);
         if (c is null)
             return null;
-        return new StrMem(s, c, EmptyStr, 0);
+        return new StrMem(s, c, EmptyStr, 0, new DependencyTracker(0));
     }
 
     public Str? TryParseStr(Expr expr) {

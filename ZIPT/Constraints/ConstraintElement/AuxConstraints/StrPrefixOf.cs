@@ -13,7 +13,7 @@ public class StrPrefixOf : StrConstraint {
     public Str S { get; set; }
     public Str Contained { get; set; }
 
-    public StrPrefixOf(Str s, Str contained, bool negated) {
+    public StrPrefixOf(Str s, Str contained, bool negated) : base(new DependencyTracker(0)) {
         Negated = negated;
         S = s;
         Contained = contained;
@@ -69,9 +69,6 @@ public class StrPrefixOf : StrConstraint {
         S.CollectSymbols(nonTermSet, alphabet);
         Contained.CollectSymbols(nonTermSet, alphabet);
     }
-
-    public override StrPrefixOf Negate() =>
-        new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);

@@ -583,7 +583,7 @@ public abstract class StringPropagator : UserPropagator {
         }
     }
 
-    protected virtual void AddNotEpsilonInternal(Str s) {}
+    protected virtual void AddNotEpsilonInternal(Expr s) {}
 
     void DisEqCB(Expr e1, Expr e2) {
         try {
@@ -605,9 +605,7 @@ public abstract class StringPropagator : UserPropagator {
                         Ctx.MkGt(Env.MkLen(e2), Ctx.MkInt(0))
                     )
                 );
-                var s = Env.TryParseStr(e1);
-                Debug.Assert(s is not null);
-                AddNotEpsilonInternal(s);
+                AddNotEpsilonInternal(e1);
                 return;
             }
 
@@ -673,10 +671,10 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     public bool Cancel { get; set; }
 
     public override NielsenGraph Graph { get; }
-    public NielsenNode Root { get; } // This node is added as cloned to the graph - we can alter the constraints in it
     public LocalInfo Info { get; set; }
 
     List<(Expr lhs, Expr rhs)> reportedEqs = [];
+    List<Expr> reportedNonEmpty = [];
     List<BoolExpr> reportedMems = [];
     List<BoolExpr> reportedFixed = [];
 
@@ -686,8 +684,6 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public SaturatingStringPropagator(Solver solver, Environment env) : base(solver, env) {
         Graph = new NielsenGraph(this);
-        Root = new NielsenNode(Graph);
-        Info = new LocalInfo(Root);
         Final = FinalCB;
         Decide = DecideCB;
     }
@@ -723,36 +719,11 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     }
 
-    public void DisEqInternal(Str s1, Expr e1, Str s2, Expr e2) {
-
-        var diseq = new StrNonEq(s1, s2);
-        // add s1 != s2
-        // as well as |s1| != |s2| if both are regex-free
-    }
-
     public override void EqInternal(Str s1, Expr e1, Str s2, Expr e2) {
 
-        var eq = new StrEq(s1, s2);
-
-        if (Root.ConstraintsStrEq.Add(eq)) { // u = v
-            undoStack.Add(() =>
-            {
-                Log.Verify(Root.ConstraintsStrEq.Remove(eq));
-            });
-            if (!newInformation) {
-                newInformation = true;
-                undoStack.Add(() => newInformation = false);
-            }
-        }
-        if (s1.RegexFree && s2.RegexFree) {
-            var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env));
-            if (!la.Poly.IsZero && Root.ConstraintsIntEq.Add(la)) { // u = v => |u| = |v|
-                undoStack.Add(() => { Log.Verify(Root.ConstraintsIntEq.Remove(la)); });
-                if (!newInformation) {
-                    newInformation = true;
-                    undoStack.Add(() => newInformation = false);
-                }
-            }
+        if (!newInformation) {
+            newInformation = true;
+            undoStack.Add(() => newInformation = false);
         }
         reportedEqs.Add((e1.Dup(), e2.Dup()));
         undoStack.Add(() =>
@@ -763,14 +734,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public override void MemInternal(Str s1, Str s2, BoolExpr e) {
 
-        uint id = (uint)Root.ConstraintsStrMem.Count;
-        var mem = new StrMem(s1, s2, Env.EmptyStr, id);
-        Root.ConstraintsStrMem.Add(id, mem);
-
         reportedMems.Add((BoolExpr)e.Dup());
         undoStack.Add(() =>
         {
-            Log.Verify(Root.ConstraintsStrMem.Remove(id));
             reportedMems.Pop();
         });
         if (!newInformation) {
@@ -779,14 +745,50 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         }
     }
 
-    protected override void AddNotEpsilonInternal(Str s) {
-        var c = IntLe.MkLt(Env.ZeroInt, LenVar.MkLenPoly(s, Env));
-        if (!Root.ConstraintsIntLe.Add(c)) 
-            return;
-        undoStack.Add(() =>
-        { 
-            Log.Verify(Root.ConstraintsIntLe.Remove(c));
-        });
+    protected override void AddNotEpsilonInternal(Expr s) {
+        reportedNonEmpty.Add(s.Dup());
+        if (!newInformation) {
+            newInformation = true;
+            undoStack.Add(() => newInformation = false);
+        }
+    }
+
+    NielsenNode CreateRoot() {
+        var root = new NielsenNode(Graph);
+        int constraintCnt = reportedEqs.Count + reportedNonEmpty.Count + reportedMems.Count;
+        int id = 0;
+        for (int i = 0; i < reportedEqs.Count; i++) {
+            var (lhs, rhs) = reportedEqs[i];
+            var s1 = Env.TryParseStr(lhs);
+            if (s1 is null)
+                throw new NotSupportedException("Could not parse " + lhs);
+            var s2 = Env.TryParseStr(rhs);
+            if (s2 is null)
+                throw new NotSupportedException("Could not parse " + rhs);
+            var dep = new DependencyTracker(constraintCnt, id++);
+            root.ConstraintsStrEq.Add(new StrEq(s1, s2, dep));
+            var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env), dep);
+            if (!la.Poly.IsZero) // u = v => |u| = |v|
+                root.ConstraintsIntEq.Add(la);
+        }
+        for (int i = 0; i < reportedNonEmpty.Count; i++) {
+            var s = Env.TryParseStr(reportedNonEmpty[i]);
+            if (s is null)
+                throw new NotSupportedException("Could not parse " + reportedNonEmpty[i]);
+            var c = IntLe.MkLt(Env.ZeroInt, LenVar.MkLenPoly(s, Env), new DependencyTracker(constraintCnt, id++));
+            root.ConstraintsIntLe.Add(c);
+        }
+        for (int i = 0; i < reportedMems.Count; i++) {
+            var e = reportedMems[i];
+            var s1 = Env.TryParseStr(e.Arg(0));
+            if (s1 is null)
+                throw new NotSupportedException("Could not parse " + e.Arg(0));
+            var s2 = Env.TryParseStr(e.Arg(1));
+            if (s2 is null)
+                throw new NotSupportedException("Could not parse " + e.Arg(1));
+            root.ConstraintsStrMem.Add((uint)i, new StrMem(s1, s2, Env.EmptyStr, (uint)i, new DependencyTracker(constraintCnt, id++)));
+        }
+        return root;
     }
 
     int finalCnt;
@@ -799,12 +801,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             finalCnt++;
             Log.WriteLine("Final (" + finalCnt + ")");
 
-#if DEBUG
-            // Console.WriteLine(Root);
-#endif
-
+            var root = CreateRoot();
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
-            Info = new LocalInfo(Root, forbidden);
+            Info = new LocalInfo(root, forbidden);
             var res = Graph.Check(Info);
             if (newInformation) {
                 newInformation = false;
@@ -861,7 +860,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         
         NonTermSet initNonTermSet = new();
         CharacterSet initAlphabet = new CharacterSet();
-        Root.CollectSymbols(initNonTermSet, initAlphabet);
+        info.RootNode.CollectSymbols(initNonTermSet, initAlphabet);
 
         using var checkSolver = Ctx.MkSimpleSolver();
 
@@ -909,7 +908,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         bool modelCheck = true;
 
         if (Options.CheckModel) {
-            List<(Constraint orig, Constraint simpl)> failed = Root.CheckModel(itp);
+            List<(Constraint orig, Constraint simpl)> failed = info.RootNode.CheckModel(itp);
             foreach (var fail in failed) {
                 Console.WriteLine("Constraint " + fail.orig + " not satisfied: " + fail.simpl);
             }

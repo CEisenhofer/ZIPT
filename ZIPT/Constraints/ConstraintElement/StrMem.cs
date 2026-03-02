@@ -1,6 +1,5 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
-using ZIPT.Constraints.ConstraintElement.AuxConstraints;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
@@ -30,7 +29,7 @@ public sealed class StrMem : StrEqBase {
 
     public override bool Sorted => false;
 
-    public StrMem(Str str, Str regex, Str history, uint id) : base(str, regex) {
+    public StrMem(Str str, Str regex, Str history, uint id, DependencyTracker reason) : base(str, regex, reason) {
         Debug.Assert(LHS.RegexFree);
         // Debug.Assert(RHS.Ground);
         Id = id;
@@ -42,7 +41,7 @@ public sealed class StrMem : StrEqBase {
         Debug.Assert(Regex.Ground);
         if (ReferenceEquals(str, Str))
             return this;
-        return new StrMem(str, Regex, History, Id);
+        return new StrMem(str, Regex, History, Id, Reason.Merge(subst.Reason));
     }
 
     public override StrMem Apply(CharSubst subst, NielsenNode node) {
@@ -50,7 +49,7 @@ public sealed class StrMem : StrEqBase {
         var regex = node.Env.StrManager.Subst(node.Env, Regex, subst);
         if (ReferenceEquals(str, Str) && ReferenceEquals(regex, Regex))
             return this;
-        return new StrMem(str, regex, History, Id);
+        return new StrMem(str, regex, History, Id, Reason.Merge(subst.Reason));
     }
 
     public override StrMem Apply(Interpretation itp) {
@@ -58,7 +57,7 @@ public sealed class StrMem : StrEqBase {
         var regex = itp.Env.StrManager.Subst(Regex, itp);
         if (ReferenceEquals(str, Str) && ReferenceEquals(regex, Regex))
             return this;
-        return new StrMem(str, regex, History, Id);
+        return new StrMem(str, regex, History, Id, Reason);
     }
 
     public bool IsPrimitiveRegex() => 
@@ -116,14 +115,13 @@ public sealed class StrMem : StrEqBase {
             //b = info.Env.StrManager.MkUnion([k.Base, b]);
             b = info.Env.StrManager.Concat(k, b);
         }
-        else {
+        else
             dropCnt = b.Length;
-        }
 
         Debug.Assert(!b.Nullable);
         //cases.Add(s);
         //Str cycleBase = info.Env.StrManager.MkUnion(cases);
-        return new StarIntrModifier(Id, edge.Src, b, dropCnt);
+        return new StarIntrModifier(Id, edge.Src, b, dropCnt, Reason);
     }
 
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
@@ -142,12 +140,13 @@ public sealed class StrMem : StrEqBase {
                 return SimplifyResult.Conflict;
             
             if (s is PowerToken p1) {
-                if (info.CurrentNode.IsZero(p1.Power)) {
+                if (info.CurrentNode.IsZero(p1.Power, out var dep)) {
+                    Reason = Reason.Merge(dep);
                     Str = info.Env.StrManager.Drop(Str, fwd);
                     continue;
                 }
                 if (!IsPrefixConsistent(info.CurrentNode, p1.Base, RHS, fwd)) {
-                    sConstr.Add(new IntEq(info.CurrentNode.Env.ZeroInt, p1.Power));
+                    sConstr.Add(new IntEq(info.CurrentNode.Env.ZeroInt, p1.Power, Reason));
                     return SimplifyResult.Proceed;
                 }
             }
@@ -233,7 +232,7 @@ public sealed class StrMem : StrEqBase {
             Debug.Assert(!Str.IsEmpty());
             var t = Str[true];
             if (t is PowerToken p)
-                return new PowerEpsilonModifier(p);
+                return new PowerEpsilonModifier(p, Reason);
             // Simplify step should have already dealt with everything else!
             throw new NotSupportedException();
         }
@@ -251,8 +250,8 @@ public sealed class StrMem : StrEqBase {
         Debug.Assert(first.Intervals.Count > 0);
 
         if (Str.First is NamedStrToken v)
-            return new RegexVarSplitModifier(v, first, true);
-        return new RegexCharSplitModifier((SymCharToken)Str.First, first);
+            return new RegexVarSplitModifier(v, first, true, Reason);
+        return new RegexCharSplitModifier((SymCharToken)Str.First, first, Reason);
 
     }
 
@@ -278,9 +277,6 @@ public sealed class StrMem : StrEqBase {
             return cmp;
         return History.CompareTo(otherMem.History);
     }
-
-    public override StrConstraint Negate() => 
-        new StrNonEq(LHS, RHS);
 
     public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
         (BoolExpr)env.ReMemFct.Apply(LHS.ToExpr(env, currentModificationCnt), RHS.ToExpr(env, currentModificationCnt));

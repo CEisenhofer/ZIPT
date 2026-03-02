@@ -7,7 +7,7 @@ public class CombinedModifier : ModifierBase {
     
     public ModifierBase[] Modifier { get; }
 
-    public CombinedModifier(params ModifierBase[] modifier) {
+    public CombinedModifier(DependencyTracker reason, params ModifierBase[] modifier) : base(reason) {
         Debug.Assert(modifier.IsNonEmpty());
         Debug.Assert(modifier.All(o => o is not CombinedModifier));
         Modifier = modifier;

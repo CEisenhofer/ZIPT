@@ -1,7 +1,5 @@
-﻿using System.Numerics;
-using ZIPT.Constraints.ConstraintElement;
+﻿using ZIPT.Constraints.ConstraintElement;
 using ZIPT.IntUtils;
-using ZIPT.Strings;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 
@@ -12,7 +10,7 @@ public class VarNielsenModifier : DirectedNielsenModifier {
     public StrVarToken V1 { get; }
     public StrVarToken V2 { get; }
 
-    public VarNielsenModifier(StrVarToken v1, StrVarToken v2, bool forward) : base(forward) {
+    public VarNielsenModifier(StrVarToken v1, StrVarToken v2, bool forward, DependencyTracker reason) : base(forward, reason) {
         V1 = v1;
         V2 = v2;
     }
@@ -78,14 +76,14 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         s = Forwards ? info.Env.MkString(V2, V1) : info.Env.MkString(V1, V2);
         info.CurrentNode.MkChild(info,
             [new Subst(V1, s)], [],
-            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V1, info.Env))], [], // 0 < |V1|
+            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V1, info.Env), Reason)], [], // 0 < |V1|
             false);
         yield return info.CurrentNode.Outgoing[^1];
 
         s = Forwards ? info.Env.MkString(V1, V2) : info.Env.MkString(V2, V1);
         info.CurrentNode.MkChild(info,
             [new Subst(V2, s)], [],
-            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V2, info.Env))], [], // 0 < |V2|
+            [IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly(V2, info.Env), Reason)], [], // 0 < |V2|
             false);
         yield return info.CurrentNode.Outgoing[^1];
 #endif

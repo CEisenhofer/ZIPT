@@ -46,8 +46,8 @@ public sealed class PowerToken : StrToken {
         var newExponent = node.Env.IntPDDManager.MkPDD(m);
         PowerToken newPowerToken = new PowerToken(Base, newExponent);
         Str newStr = node.Env.MkString(newPowerToken);
-        IntLe leastZero = new IntLe(node.Env.ZeroInt, newExponent);
-        IntLe lessThanPower = IntLe.MkLt(newExponent, Power);
+        IntLe leastZero = new IntLe(node.Env.ZeroInt, newExponent, new DependencyTracker(0));
+        IntLe lessThanPower = IntLe.MkLt(newExponent, Power, new DependencyTracker(0));
 
         var decompositions = StrManager.GetDecompose(node, Base, fwd);
 

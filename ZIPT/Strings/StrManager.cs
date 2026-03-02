@@ -467,7 +467,7 @@ public sealed class StrManager {
         return res;
     }
 
-    public static bool IsNullable(NielsenNode node, Str s) {
+    public static bool IsNullable(Str s) {
         Stack<Str> todo = new();
         while (true) {
             while (s is TupleStr lts) {

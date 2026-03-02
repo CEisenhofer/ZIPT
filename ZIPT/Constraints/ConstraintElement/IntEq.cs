@@ -12,17 +12,17 @@ public class IntEq : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }
 
-    public IntEq(IntEq eq) {
+    public IntEq(IntEq eq) : base(eq.Reason) {
         Poly = eq.Poly;
     }
 
-    public IntEq(PDD<BigInteger> poly) {
+    public IntEq(PDD<BigInteger> poly, DependencyTracker reason) : base(reason) {
         Poly = poly;
         if (!Poly.IsNormal)
             Poly = Poly.Negate();
     }
 
-    public IntEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+    public IntEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs, DependencyTracker reason) : base(reason) {
         Poly = lhs;
         Poly = Poly.Sub(rhs);
         if (!Poly.IsNormal)
@@ -32,7 +32,7 @@ public class IntEq : IntConstraint {
     public override IntEq Apply(Subst subst, NielsenNode node) {
         var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
         var n = Poly.Substitute(oldLen, newLen);
-        return ReferenceEquals(Poly, n) ? this : new IntEq(n);
+        return ReferenceEquals(Poly, n) ? this : new IntEq(n, Reason.Merge(subst.Reason));
     }
 
     public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
@@ -46,7 +46,7 @@ public class IntEq : IntConstraint {
             var (lenVar, newLen) = kv.Value.GetLenReplacement(itp.Env);
             n = n.Substitute(lenVar, newLen);
         }
-        return ReferenceEquals(Poly, n) ? this : new IntEq(n);
+        return ReferenceEquals(Poly, n) ? this : new IntEq(n, Reason);
     }
 
     public override bool Equals(object? obj) => 
@@ -86,11 +86,15 @@ public class IntEq : IntConstraint {
         simplifyCnt++;
         if (Poly.TryGetConst(out BigInteger val))
             return val.IsZero ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
-        var bounds = Poly.GetBounds(node);
-        if (!bounds.Contains(0))
+        var bounds = Poly.GetBounds(node, out var dep);
+        if (!bounds.Contains(0)) {
+            Reason = Reason.Merge(dep);
             return SimplifyResult.Conflict;
-        if (bounds.IsUnit)
+        }
+        if (bounds.IsUnit) {
+            Reason = Reason.Merge(dep);
             return SimplifyResult.Satisfied;
+        }
 #if false
         // Normalization by division
         var (monomials, offset) = Poly.MonomialDecomposition();
@@ -151,26 +155,30 @@ public class IntEq : IntConstraint {
             int i0 = i++;
             if (n.Coefficient.IsOne || n.Coefficient == BigInteger.MinusOne)
                 continue;
-            var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j));
+            var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j), out var dep);
             if (lb.IsFull)
                 continue;
             if (n.Coefficient.Sign >= 0)
                 lb = lb.Negate();
 
             lb /= BigInteger.Abs(n.Coefficient);
-            switch (info.CurrentNode.AddLowerIntBound(r.Var, lb.Min)) {
+            switch (info.CurrentNode.AddLowerIntBound(r.Var, lb.Min, Reason)) {
                 case SimplifyResult.Conflict:
+                    Reason = Reason.Merge(dep);
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
                 case SimplifyResult.Restart:
+                    Reason = Reason.Merge(dep);
                     restart = true;
                     break;
             }
-            switch (info.CurrentNode.AddHigherIntBound(r.Var, lb.Max)) {
+            switch (info.CurrentNode.AddHigherIntBound(r.Var, lb.Max, Reason)) {
                 case SimplifyResult.Conflict:
+                    Reason = Reason.Merge(dep);
                     reason = BacktrackReasons.Arithmetic;
                     return SimplifyResult.Conflict;
                 case SimplifyResult.Restart:
+                    Reason = Reason.Merge(dep);
                     restart = true;
                     break;
             }
@@ -220,6 +228,4 @@ public class IntEq : IntConstraint {
     public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
         Poly.CollectSymbols(nonTermSet, alphabet);
 
-    public override IntConstraint Negate() =>
-        new IntNonEq(Poly);
 }

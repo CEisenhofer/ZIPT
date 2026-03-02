@@ -11,6 +11,8 @@ public class DetModifier : ModifierBase {
     public HashSet<Constraint> SideConstraints { get; } = [];
     public bool Trivial => Substitution is null && SubstitutionC is null && SideConstraints.IsEmpty();
 
+    public DetModifier() : base(new DependencyTracker(0)) { }
+
     public void Add(Constraint cnstr) =>
         SideConstraints.Add(cnstr);
 

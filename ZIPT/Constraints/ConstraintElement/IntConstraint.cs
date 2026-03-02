@@ -2,6 +2,8 @@
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
 
+    protected IntConstraint(DependencyTracker reason) : base(reason) { }
+
     public sealed override bool Shared => true;
 
     public abstract int CompareToInternal(IntConstraint other);

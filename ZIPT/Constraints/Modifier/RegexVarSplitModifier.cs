@@ -7,7 +7,7 @@ public class RegexCharSplitModifier : ModifierBase {
     public SymCharToken SCharToken { get; }
     public MinTerms Cases { get; }
 
-    public RegexCharSplitModifier(SymCharToken sChar, MinTerms cases) {
+    public RegexCharSplitModifier(SymCharToken sChar, MinTerms cases, DependencyTracker reason) : base(reason) {
         SCharToken = sChar;
         Cases = cases;
     }

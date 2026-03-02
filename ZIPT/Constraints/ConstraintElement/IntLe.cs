@@ -13,26 +13,26 @@ public class IntLe : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }
 
-    public IntLe(PDD<BigInteger> poly) => Poly = poly;
+    public IntLe(PDD<BigInteger> poly, DependencyTracker reason) : base(reason) => Poly = poly;
 
     // rhs does not need to be cloned
-    public IntLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) => 
+    public IntLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs, DependencyTracker reason) : base(reason) => 
         Poly = lhs.Sub(rhs);
 
     // rhs does not need to be cloned
-    public static IntLe MkLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        var ret = new IntLe(lhs, rhs);
+    public static IntLe MkLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs, DependencyTracker reason) {
+        var ret = new IntLe(lhs, rhs, reason);
         ret.Poly = ret.Poly.Add(lhs.One);
         return ret;
     }
 
     // rhs does not need to be cloned
-    public static IntLe MkLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) => new(lhs, rhs);
+    public static IntLe MkLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs, DependencyTracker reason) => new(lhs, rhs, reason);
 
     public override IntLe Apply(Subst subst, NielsenNode node) {
         var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
         var n = Poly.Substitute(oldLen, newLen);
-        return ReferenceEquals(Poly, n) ? this : new IntLe(n);
+        return ReferenceEquals(Poly, n) ? this : new IntLe(n, Reason.Merge(subst.Reason));
     }
 
     public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
@@ -42,7 +42,7 @@ public class IntLe : IntConstraint {
         foreach (var kv in itp.IntVal) {
             n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
         }
-        return ReferenceEquals(Poly, n) ? this : new IntLe(n);
+        return ReferenceEquals(Poly, n) ? this : new IntLe(n, Reason);
     }
 
     public override bool Equals(object? obj) =>
@@ -62,11 +62,15 @@ public class IntLe : IntConstraint {
     public SimplifyResult Simplify(NielsenNode node) {
         if (Poly.TryGetConst(out BigInteger val))
             return val <= 0 ? SimplifyResult.Satisfied : SimplifyResult.Conflict;
-        var bounds = Poly.GetBounds(node);
-        if (!bounds.Max.IsPos)
+        var bounds = Poly.GetBounds(node, out var dep);
+        if (!bounds.Max.IsPos) {
+            Reason = Reason.Merge(dep);
             return SimplifyResult.Satisfied;
-        if (bounds.Min.IsPos)
+        }
+        if (bounds.Min.IsPos) {
+            Reason = Reason.Merge(dep);
             return SimplifyResult.Conflict;
+        }
         var (monomials, offset) = Poly.MonomialDecomposition();
         BigInteger gcd = BigInteger.Abs(monomials.First().Coefficient);
         Debug.Assert(gcd.Sign > 0);
@@ -133,18 +137,20 @@ public class IntLe : IntConstraint {
                 continue;
             }
             int i0 = i++;
-            var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j));
+            var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j), out var dep);
             bool isHigh = n.Coefficient.Sign > 0;
             if (isHigh)
                 lb = lb.Negate();
             lb /= BigInteger.Abs(n.Coefficient);
             switch (isHigh
-                        ? info.CurrentNode.AddHigherIntBound(r.Var, lb.Max)
-                        : info.CurrentNode.AddLowerIntBound(r.Var, lb.Min)) {
+                        ? info.CurrentNode.AddHigherIntBound(r.Var, lb.Max, Reason.Merge(dep))
+                        : info.CurrentNode.AddLowerIntBound(r.Var, lb.Min, Reason.Merge(dep))) {
                 case SimplifyResult.Conflict:
                     reason = BacktrackReasons.Arithmetic;
+                    Reason = Reason.Merge(dep);
                     return SimplifyResult.Conflict;
                 case SimplifyResult.Restart:
+                    Reason = Reason.Merge(dep);
                     restart = true;
                     break;
             }
@@ -157,9 +163,6 @@ public class IntLe : IntConstraint {
     
     public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) =>
         Poly.CollectSymbols(nonTermSet, alphabet);
-
-    public override IntConstraint Negate() =>
-        MkLt(Poly.Zero, Poly);
 
     public override int CompareToInternal(IntConstraint other) =>
         Poly.CompareTo(((IntLe)other).Poly);

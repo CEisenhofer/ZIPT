@@ -37,8 +37,12 @@ public abstract class ModifierBase : IComparable<ModifierBase> {
         TypeOrder.Add(typeof(VarNumUnwindingModifier), TypeOrder.Count);
     }
 
-    protected ModifierBase() => 
+    public DependencyTracker Reason { get; }
+
+    protected ModifierBase(DependencyTracker reason) {
         Debug.Assert(TypeOrder.ContainsKey(GetType()));
+        Reason = reason;
+    }
 
     public abstract IEnumerable<NielsenEdge> Apply(LocalInfo info);
     protected abstract int CompareToInternal(ModifierBase otherM);

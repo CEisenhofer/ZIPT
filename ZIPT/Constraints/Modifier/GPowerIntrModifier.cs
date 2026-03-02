@@ -10,7 +10,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
 
     public List<(NamedStrToken x, Str val)> Cases { get; }
 
-    public GPowerIntrModifier(List<(NamedStrToken x, Str val)> cases, bool forward) : base(forward) {
+    public GPowerIntrModifier(List<(NamedStrToken x, Str val)> cases, bool forward, DependencyTracker reason) : base(forward, reason) {
         Debug.Assert(cases.Count > 0);
         Cases = cases;
     }
@@ -37,7 +37,7 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
                 for (int i = 0; i < p.SideConstraints.Count; i++) {
                     cnstr[i] = p.SideConstraints[i];
                 }
-                cnstr[^1] = IntLe.MkLe(info.Env.ZeroInt, powerConstant);
+                cnstr[^1] = IntLe.MkLe(info.Env.ZeroInt, powerConstant, Reason);
                 info.CurrentNode.MkChild(info, [subst], [], cnstr, [], true);
                 yield return info.CurrentNode.Outgoing[^1];
             }

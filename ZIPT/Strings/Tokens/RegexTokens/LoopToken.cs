@@ -84,5 +84,4 @@ public sealed class LoopToken : StrToken {
             return env.StrManager.Concat(der, env.StrManager.MkLoop(Base, 0, Max - 1));
         return env.StrManager.Concat(der, env.StrManager.MkLoop(Base, Min - 1, Max - 1));
     }
-
 }

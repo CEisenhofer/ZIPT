@@ -8,6 +8,8 @@ public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
 
     public sealed override bool Shared => false;
 
+    protected StrConstraint(DependencyTracker reason) : base(reason) { }
+
     public abstract bool Contains(NamedStrToken namedStrToken);
     public abstract ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst);
     public abstract int CompareToInternal(StrConstraint other);

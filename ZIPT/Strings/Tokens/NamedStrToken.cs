@@ -59,8 +59,8 @@ public abstract class NamedStrToken : StrToken {
         var xl = LenVar.MkLenPoly(this, node.Env);
         yl = yl.Add(BigInteger.One);
         if (fwd)
-            return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(y, z)))];
-        return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl)], new Subst(this, node.Env.MkString(z, y)))];
+            return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl, new DependencyTracker(0))], new Subst(this, node.Env.MkString(y, z)))];
+        return [new StrDecomposition(node.Env.MkString(y), node.Env.MkString(z), [new IntLe(yl, xl, new DependencyTracker(0))], new Subst(this, node.Env.MkString(z, y)))];
     }
 
     protected sealed override int CompareToInternal(StrToken other) {

@@ -32,7 +32,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
     public virtual bool Sorted => true;
 
-    protected StrEqBase(Str lhs, Str rhs) {
+    protected StrEqBase(Str lhs, Str rhs, DependencyTracker reason) : base(reason) {
         this.lhs = lhs;
         this.rhs = rhs;
         SortStr();
@@ -147,7 +147,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return true;
     }
 
-    protected static SimplifyResult SimplifyEmpty(IEnumerable<StrToken> s, NielsenNode node, DetModifier constr) {
+    protected SimplifyResult SimplifyEmpty(IEnumerable<StrToken> s, NielsenNode node, DetModifier constr) {
         foreach (var t in s) {
             if (t is UnitToken)
                 return SimplifyResult.Conflict;
@@ -156,12 +156,12 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
                 return SimplifyResult.Proceed;
             }
             if (t is PowerToken p) {
-                if (node.IsLt(node.Env.ZeroInt, p.Power))
+                if (node.IsLt(node.Env.ZeroInt, p.Power, out var reason))
                     // p.Power > 0
-                    constr.Add(new StrEq(p.Base, node.Graph.Env.EmptyStr));
-                else if (!StrManager.IsNullable(node, p.Base))
+                    constr.Add(new StrEq(p.Base, node.Graph.Env.EmptyStr, Reason.Merge(reason)));
+                else if (!StrManager.IsNullable(p.Base))
                     // p.Base != ""
-                    constr.Add(new IntEq(p.Power));
+                    constr.Add(new IntEq(p.Power, Reason));
             }
             else
                 throw new NotSupportedException();
@@ -202,21 +202,23 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         var r = CommPower(p.Base, rhs, node.Env, fwd);
         if (r.idx <= 0)
             return false;
-        if (node.IsLe(r.num, p.Power) || node.IsLt(r.num, p.Power)) {
+        if (node.IsLe(r.num, p.Power, out var reason) || node.IsLt(r.num, p.Power, out reason)) {
             // r.num < p.Power
             lhs = node.Env.StrManager.Drop(lhs, fwd);
             rhs = node.Env.StrManager.Drop(rhs, (uint)r.idx, fwd);
             var sub = p.Power.Sub(r.num);
             lhs = node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), lhs, fwd);
+            Reason = Reason.Merge(reason);
             Log.WriteLine("Simplify: power-elim " + p);
             return true;
         }
-        if (node.IsLe(p.Power, r.num) || node.IsLt(p.Power, r.num)) {
+        if (node.IsLe(p.Power, r.num, out reason) || node.IsLt(p.Power, r.num, out reason)) {
             // p.Power <= r.num
             lhs = node.Env.StrManager.Drop(lhs, fwd);
             rhs = node.Env.StrManager.Drop(rhs, (uint)r.idx, fwd);
             var sub = r.num.Sub(p.Power);
             rhs = node.Env.StrManager.Concat(PowerToken.MkPower(p.Base, sub, node.Env), rhs, fwd);
+            Reason = Reason.Merge(reason);
             Log.WriteLine("Simplify: power-elim " + p);
             return true;
         }
@@ -224,7 +226,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     }
 
     bool SimplifyPowerUnwind(NielsenNode node, PowerToken p, bool fwd) {
-        if (!node.IsLt(node.Env.ZeroInt, p.Power))
+        if (!node.IsLt(node.Env.ZeroInt, p.Power, out var reason))
             return false;
 
         Log.WriteLine("Simplify: >0-unwinding power " + p);
@@ -232,6 +234,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         lhs = node.Env.StrManager.Drop(lhs, fwd);
         var sub = p.Power.Sub(node.Env.OneInt);
         lhs = node.Env.StrManager.Concat(node.Env.StrManager.Concat(p.Base, PowerToken.MkPower(p.Base, sub, node.Env), fwd), lhs, fwd);
+        Reason = Reason.Merge(reason);
         return true;
     }
 
@@ -246,7 +249,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
     // u^i => u...u [l times, where l is the lower bound of i] - maybe not a good idea, but not sure [option?]
     // The direction is there to decide in which direction to unwind
     // u^n => uu^{n - 1} vs u^{n - 1}u
-    protected static Str? SimplifyPowerSingle(LocalInfo info, PowerToken p) {
+    protected Str? SimplifyPowerSingle(LocalInfo info, PowerToken p) {
         // This can be locally violated e.g., if some integer constraint simplified to 1 <= 0 so IsLt(1, 0) evaluates to true
         // Debug.Assert(!p.Power.IsConst(out var dl) || !dl.IsNeg);
         if (p.Power.TryGetConst(out var dl) && dl.Sign < 0)
@@ -259,7 +262,7 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             var ret = PowerToken.MkPower(p2.Base, 
                 PDD<BigInteger>.MulByDefinitions(p.Power, p2.Power, definitions), info.Env);
             foreach (var def in definitions) {
-                info.CurrentNode.AddConstraint(new IntEq(info.Env.IntPDDManager.MkPDD(def.Key), def.Value));
+                info.CurrentNode.AddConstraint(new IntEq(info.Env.IntPDDManager.MkPDD(def.Key), def.Value, Reason));
             }
             return ret;
         }
@@ -270,12 +273,14 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
             return info.Env.EmptyStr;
         }
         // u^0 => ""
-        if (info.CurrentNode.IsPowerElim(p.Power)) {
+        if (info.CurrentNode.IsPowerElim(p.Power, out var reason)) {
+            Reason = Reason.Merge(reason);
             Log.WriteLine("Simplify: Drop 0-power " + p);
             return info.Env.EmptyStr;
         }
         // u^1 => u
-        if (info.CurrentNode.IsOne(p.Power)) {
+        if (info.CurrentNode.IsOne(p.Power, out reason)) {
+            Reason = Reason.Merge(reason);
             Log.WriteLine("Simplify: Resolve 1-power " + p);
             return p.Base;
         }
@@ -285,10 +290,11 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
 
         if (Options.ReasoningUnwindingBound > 1) {
             // Unwind based on options...
-            var bounds = p.Power.GetBounds(info.CurrentNode);
+            var bounds = p.Power.GetBounds(info.CurrentNode, out var dep);
             if (bounds.IsUnit) {
                 Debug.Assert((BigInteger)bounds.Min > 1);
                 Log.WriteLine("Simplify: Resolve " + bounds.Min + "-power " + p);
+                Reason = Reason.Merge(dep);
                 return info.Env.StrManager.Repeat(p.Base, (uint)(BigInteger)bounds.Min);
             }
         }

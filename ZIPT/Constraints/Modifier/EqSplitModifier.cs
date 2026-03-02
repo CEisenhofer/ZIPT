@@ -12,7 +12,7 @@ public class EqSplitModifier : DirectedNielsenModifier {
     public uint RhsIdx { get; }
     public int Padding { get; }
 
-    public EqSplitModifier(StrEq eq, uint lhsIdx, uint rhsIdx, int padding, bool forward) : base(forward) {
+    public EqSplitModifier(StrEq eq, uint lhsIdx, uint rhsIdx, int padding, bool forward, DependencyTracker reason) : base(forward, reason) {
         Debug.Assert(lhsIdx <= eq.LHS.Length);
         Debug.Assert(rhsIdx <= eq.RHS.Length);
         Debug.Assert(lhsIdx < eq.LHS.Length || rhsIdx < eq.RHS.Length);
@@ -44,11 +44,11 @@ public class EqSplitModifier : DirectedNielsenModifier {
             rhs2 = info.Env.StrManager.Concat(padVar, rhs2, Forwards);
         }
 
-        var eq1 = new StrEq(lhs1, rhs1);
-        var eq2 = new StrEq(lhs2, rhs2);
-        IntEq fixedEq = new IntEq(LenVar.MkLenPoly(padVar, info.Env), info.Env.IntPDDManager.MkPDD(Math.Abs(Padding)));
-        IntEq iEq1 = new IntEq(LenVar.MkLenPoly(lhs1, info.Env), LenVar.MkLenPoly(rhs1, info.Env));
-        IntEq iEq2 = new IntEq(LenVar.MkLenPoly(lhs2, info.Env), LenVar.MkLenPoly(rhs2, info.Env));
+        var eq1 = new StrEq(lhs1, rhs1, Reason);
+        var eq2 = new StrEq(lhs2, rhs2, Reason);
+        IntEq fixedEq = new IntEq(LenVar.MkLenPoly(padVar, info.Env), info.Env.IntPDDManager.MkPDD(Math.Abs(Padding)), Reason);
+        IntEq iEq1 = new IntEq(LenVar.MkLenPoly(lhs1, info.Env), LenVar.MkLenPoly(rhs1, info.Env), Reason);
+        IntEq iEq2 = new IntEq(LenVar.MkLenPoly(lhs2, info.Env), LenVar.MkLenPoly(rhs2, info.Env), Reason);
         List<Constraint> cnstr = [eq1, eq2, fixedEq];
         if (!iEq1.Poly.IsZero)
             cnstr.Add(iEq1);

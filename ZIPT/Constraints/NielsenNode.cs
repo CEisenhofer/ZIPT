@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -82,7 +83,7 @@ public class NielsenNode {
     public bool IsProgressNode { get; }
 
     // x \in [i, j] with i, j const
-    public Dictionary<NamedInt, Interval<BigInteger>> IntBounds { get; init; } = [];
+    public Dictionary<NamedInt, (Interval<BigInteger> bound, DependencyTracker reason)> IntBounds { get; init; } = [];
 
     // Bounds for e.g., |x| might change when substituting x - we associate x with relevant integer variables depending on it
     public Dictionary<NamedStrToken, HashSet<NamedInt>> VarBoundWatcher { get; init; } = [];
@@ -112,17 +113,17 @@ public class NielsenNode {
         ConstraintsIntEq = new NList<IntEq>(parent.ConstraintsIntEq.Count);
         ConstraintsIntLe = new NList<IntLe>(parent.ConstraintsIntLe.Count);
         foreach (var e in parent.ConstraintsStrEq) {
-            ConstraintsStrEq.Add(new StrEq(e.LHS, e.RHS));
+            ConstraintsStrEq.Add(new StrEq(e.LHS, e.RHS, e.Reason));
         }
         foreach (var e in parent.ConstraintsStrMem) {
             Debug.Assert(e.Key == e.Value.Id);
-            ConstraintsStrMem.Add(e.Key, new StrMem(e.Value.Str, e.Value.Regex, e.Value.History, e.Value.Id));
+            ConstraintsStrMem.Add(e.Key, new StrMem(e.Value.Str, e.Value.Regex, e.Value.History, e.Value.Id, e.Value.Reason));
         }
         foreach (var e in parent.ConstraintsIntEq) {
-            ConstraintsIntEq.Add(new IntEq(e.Poly));
+            ConstraintsIntEq.Add(new IntEq(e.Poly, e.Reason));
         }
         foreach (var e in parent.ConstraintsIntLe) {
-            ConstraintsIntLe.Add(new IntLe(e.Poly));
+            ConstraintsIntLe.Add(new IntLe(e.Poly, e.Reason));
         }
         foreach (var e in parent.DisEqualities) {
             DisEqualities.Add(e.Key, e.Value.ToList());
@@ -131,7 +132,7 @@ public class NielsenNode {
             CharRanges.Add(e.Key, e.Value.Clone());
         }
 
-        IntBounds = new Dictionary<NamedInt, Interval<BigInteger>>(parent.IntBounds);
+        IntBounds = new Dictionary<NamedInt, (Interval<BigInteger> bound, DependencyTracker reason)>(parent.IntBounds);
         VarBoundWatcher = new Dictionary<NamedStrToken, HashSet<NamedInt>>();
         foreach (var e in parent.VarBoundWatcher) {
             VarBoundWatcher.Add(e.Key, [..e.Value]);
@@ -262,10 +263,10 @@ public class NielsenNode {
                 continue;
             }
             var n = subst.GetLenReplacement(Env).newLen;
-            if (bound.HasLow)
-                AddConstraint(IntLe.MkLe(Env.IntPDDManager.MkPDD((BigInteger)bound.Min), n));
-            else if (bound.HasHigh)
-                AddConstraint(IntLe.MkLe(Env.IntPDDManager.MkPDD(watched), n));
+            if (bound.bound.HasLow)
+                AddConstraint(IntLe.MkLe(Env.IntPDDManager.MkPDD((BigInteger)bound.bound.Min), n, bound.reason.Merge(subst.Reason)));
+            else if (bound.bound.HasHigh)
+                AddConstraint(IntLe.MkLe(Env.IntPDDManager.MkPDD(watched), n, bound.reason.Merge(subst.Reason)));
         }
         VarBoundWatcher.Remove(subst.Var);
     }
@@ -352,26 +353,16 @@ public class NielsenNode {
         val = default;
         if (!IntBounds.TryGetValue(v, out var bounds))
             return false;
-        val = bounds.Min;
-        return bounds.IsUnit;
+        val = bounds.bound.Min;
+        return bounds.bound.IsUnit;
     }
 
-    public Interval<BigInteger> GetBounds(NamedInt v) {
+    public Interval<BigInteger> GetBounds(NamedInt v, out DependencyTracker? reason) {
+        reason = null;
         if (!IntBounds.TryGetValue(v, out var bounds))
             return new Interval<BigInteger>(v.MinLen, InfNum<BigInteger>.PosInfNum);
-        return bounds;
-    }
-
-    public InfNum<BigInteger> GetBoundLower(NamedInt v) {
-        if (!IntBounds.TryGetValue(v, out var bounds))
-            return v.MinLen;
-        return bounds.Min;
-    }
-
-    public InfNum<BigInteger> GetBoundUpper(NamedInt v) {
-        if (!IntBounds.TryGetValue(v, out var bounds))
-            return InfNum<BigInteger>.PosInfNum;
-        return bounds.Max;
+        reason = bounds.reason;
+        return bounds.bound;
     }
 
     void WatchVarBound(NamedInt v) {
@@ -384,7 +375,7 @@ public class NielsenNode {
         }
     }
 
-    public SimplifyResult AddLowerIntBound(NamedInt v, InfNum<BigInteger> val) {
+    public SimplifyResult AddLowerIntBound(NamedInt v, InfNum<BigInteger> val, DependencyTracker reason) {
         Debug.Assert(val != InfNum<BigInteger>.PosInfNum);
         val = InfNum<BigInteger>.Max(val, v.MinLen);
         Interval<BigInteger> i;
@@ -394,21 +385,21 @@ public class NielsenNode {
         if (!IntBounds.TryGetValue(v, out var bounds)) {
             WatchVarBound(v);
             i = new Interval<BigInteger>(val, InfNum<BigInteger>.PosInfNum);
-            IntBounds.Add(v, i);
+            IntBounds.Add(v, (i, reason));
             //AssertToZ3(i.ToZ3Constraint(v, Graph));
             return SimplifyResult.Restart;
         }
-        if (val > bounds.Max)
+        if (val > bounds.bound.Max)
             return SimplifyResult.Conflict;
-        if (val <= bounds.Min)
+        if (val <= bounds.bound.Min)
             return SimplifyResult.Proceed;
-        i = new Interval<BigInteger>(val, bounds.Max);
-        IntBounds[v] = i;
+        i = new Interval<BigInteger>(val, bounds.bound.Max);
+        IntBounds[v] = (i, reason);
         //AssertToZ3(i.ToZ3Constraint(v, Graph));
         return SimplifyResult.Restart;
     }
 
-    public SimplifyResult AddHigherIntBound(NamedInt v, InfNum<BigInteger> val) {
+    public SimplifyResult AddHigherIntBound(NamedInt v, InfNum<BigInteger> val, DependencyTracker reason) {
         Debug.Assert(val != InfNum<BigInteger>.NegInfNum);
         if (val < v.MinLen)
             return SimplifyResult.Conflict;
@@ -419,56 +410,72 @@ public class NielsenNode {
         if (!IntBounds.TryGetValue(v, out var bounds)) {
             WatchVarBound(v);
             i = new Interval<BigInteger>(v is LenVar ? InfNum<BigInteger>.Zero : InfNum<BigInteger>.NegInfNum, val);
-            IntBounds.Add(v, i);
+            IntBounds.Add(v, (i, reason));
             //AssertToZ3(i.ToZ3Constraint(v, Graph));
             return SimplifyResult.Restart;
         }
-        if (val < bounds.Min)
+        if (val < bounds.bound.Min)
             return SimplifyResult.Conflict;
-        if (val >= bounds.Max)
+        if (val >= bounds.bound.Max)
             return SimplifyResult.Proceed;
-        i = new Interval<BigInteger>(bounds.Min, val);
-        IntBounds[v] = i;
+        i = new Interval<BigInteger>(bounds.bound.Min, val);
+        IntBounds[v] = (i, reason);
         //AssertToZ3(i.ToZ3Constraint(v, Graph));
         return SimplifyResult.Restart;
     }
 
     public bool ConsistentIntVal(IntVar var, InfNum<BigInteger> v) =>
-        !IntBounds.TryGetValue(var, out var bounds) || bounds.Contains(v);
+        !IntBounds.TryGetValue(var, out var bounds) || bounds.bound.Contains(v);
 
     // lhs == rhs
     // No need to copy anything!
-    public bool IsEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        IntEq eq = new(lhs, rhs);
-        return eq.Simplify(this) switch {
-            SimplifyResult.Satisfied => true,
-            SimplifyResult.Conflict => false,
-            _ => ConstraintsIntEq.Contains(eq),
-        };
+    public bool IsEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs, out DependencyTracker? reason) {
+        reason = null;
+        IntEq eq = new(lhs, rhs, new DependencyTracker(0));
+        switch (eq.Simplify(this)) {
+            case SimplifyResult.Satisfied:
+                reason = eq.Reason;
+                return true;
+            case SimplifyResult.Conflict:
+                return false;
+            default:
+                if (!ConstraintsIntEq.TryGet(eq, out var res))
+                    return false;
+                reason = eq.Reason.Merge(res.Reason);
+                return true;
+        }
     }
 
     // p == 0 || p <= 0 [for implementation syntactic reasons, p == 0 can be true and p <= 0 can be false]
     // No need to copy anything!
-    public bool IsPowerElim(PDD<BigInteger> p) => IsZero(p) || IsNonPos(p);
+    public bool IsPowerElim(PDD<BigInteger> p, out DependencyTracker? reason) => IsZero(p, out reason) || IsNonPos(p, out reason);
 
     // p == 0
     // No need to copy anything!
-    public bool IsZero(PDD<BigInteger> p) => IsEq(p, Env.ZeroInt);
+    public bool IsZero(PDD<BigInteger> p, out DependencyTracker? reason) => IsEq(p, Env.ZeroInt, out reason);
 
     // p == 1
     // No need to copy anything!
-    public bool IsOne(PDD<BigInteger> p) => IsEq(p, Env.OneInt);
+    public bool IsOne(PDD<BigInteger> p, out DependencyTracker? reason) => IsEq(p, Env.OneInt, out reason);
 
     // lhs <= rhs
     // lhs - rhs <= 0
     // No need to copy anything!
-    public bool IsLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        IntLe le = IntLe.MkLe(lhs, rhs);
-        return le.Simplify(this) switch {
-            SimplifyResult.Satisfied => true,
-            SimplifyResult.Conflict => false,
-            _ => ConstraintsIntLe.Contains(le),
-        };
+    public bool IsLe(PDD<BigInteger> lhs, PDD<BigInteger> rhs, out DependencyTracker? reason) {
+        reason = null;
+        IntLe le = IntLe.MkLe(lhs, rhs, new DependencyTracker(0));
+        switch (le.Simplify(this)) {
+            case SimplifyResult.Satisfied:
+                reason = le.Reason;
+                return true;
+            case SimplifyResult.Conflict:
+                return false;
+            default:
+                if (!ConstraintsIntLe.TryGet(le, out var res))
+                    return false;
+                reason = le.Reason.Merge(res.Reason);
+                return true;
+        }
     }
 
     // lhs < rhs
@@ -476,30 +483,38 @@ public class NielsenNode {
     // lhs - rhs < 0
     // lhs - rhs + 1 <= 0
     // No need to copy anything!
-    public bool IsLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
-        IntLe le = IntLe.MkLt(lhs, rhs);
-        return le.Simplify(this) switch {
-            SimplifyResult.Satisfied => true,
-            SimplifyResult.Conflict => false,
-            _ => ConstraintsIntLe.Contains(le),
-        };
+    public bool IsLt(PDD<BigInteger> lhs, PDD<BigInteger> rhs, out DependencyTracker? reason) {
+        reason = null;
+        IntLe le = IntLe.MkLt(lhs, rhs, new DependencyTracker(0)); 
+        switch (le.Simplify(this)) {
+            case SimplifyResult.Satisfied:
+                reason = le.Reason;
+                return true;
+            case SimplifyResult.Conflict:
+                return false;
+            default:
+                if (!ConstraintsIntLe.TryGet(le, out var res))
+                    return false;
+                reason = le.Reason.Merge(res.Reason);
+                return true;
+        }
     }
 
     // p < 0
     // No need to copy anything!
-    public bool IsNeg(PDD<BigInteger> p) => IsLt(p, Env.ZeroInt);
+    public bool IsNeg(PDD<BigInteger> p, out DependencyTracker? reason) => IsLt(p, Env.ZeroInt, out reason);
 
     // p <= 0
     // No need to copy anything!
-    public bool IsNonPos(PDD<BigInteger> p) => IsLe(p, Env.ZeroInt);
+    public bool IsNonPos(PDD<BigInteger> p, out DependencyTracker? reason) => IsLe(p, Env.ZeroInt, out reason);
 
     // p > 0
     // No need to copy anything!
-    public bool IsPos(PDD<BigInteger> p) => IsLt(Env.ZeroInt, p);
+    public bool IsPos(PDD<BigInteger> p, out DependencyTracker? reason) => IsLt(Env.ZeroInt, p, out reason);
 
     // p >= 0
     // No need to copy anything!
-    public bool IsNonNeg(PDD<BigInteger> p) => IsLe(Env.ZeroInt, p);
+    public bool IsNonNeg(PDD<BigInteger> p, out DependencyTracker? reason) => IsLe(Env.ZeroInt, p, out reason);
 
 #if false
     // Just express one variable in each equation and substitute it everywhere
@@ -1442,8 +1457,8 @@ public class NielsenNode {
         if (IntBounds.IsNonEmpty()) {
             sb.AppendLine("Bounds:");
             foreach (var (v, i) in IntBounds) {
-                sb.Append('\t').Append(i.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ")
-                    .AppendLine(i.Max.ToString());
+                sb.Append('\t').Append(i.bound.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ")
+                    .AppendLine(i.bound.Max.ToString());
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();
@@ -1476,7 +1491,7 @@ public class NielsenNode {
         if (IntBounds.Count > 0) {
             sb.Append("Bounds:\\n");
             foreach (var (v, i) in IntBounds) {
-                sb.Append(i.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.Max)
+                sb.Append(i.bound.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.bound.Max)
                     .Append("\\n");
             }
         }

@@ -482,12 +482,16 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
                 p.Manager.MkPDD(p.Var, neg1, neg2));
     }
 
-    public static Interval<BigInteger> GetBounds(NielsenNode node, IEnumerable<PDD<BigInteger>.Monomial> p) {
+    public static Interval<BigInteger> GetBounds(NielsenNode node, IEnumerable<PDD<BigInteger>.Monomial> p, out DependencyTracker? reason) {
+        reason = null;
         var interval = new Interval<BigInteger>();
         foreach (var m in p) {
             Interval<BigInteger> subInterval = new(new InfNum<BigInteger>(m.Coefficient));
             foreach (var vt in m.Variables) {
-                var varBounds = node.GetBounds(vt.Var);
+                var varBounds = node.GetBounds(vt.Var, out var boundReason);
+                reason = DependencyTracker.Merge(reason, boundReason);;
+                if (varBounds.IsFull)
+                    return varBounds;
                 for (int i = 0; i < vt.Pow; i++) {
                     subInterval = subInterval.MergeMultiplication(varBounds);
                 }
@@ -646,8 +650,8 @@ static class PDDExtension {
         PDD<BigInteger>.ToExpr(env, currentModificationCnt, p);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
-    public static Interval<BigInteger> GetBounds(this PDD<BigInteger> p, NielsenNode node) {
+    public static Interval<BigInteger> GetBounds(this PDD<BigInteger> p, NielsenNode node, out DependencyTracker? reason) {
         var monomials = p.Monomials();
-        return PDD<BigInteger>.GetBounds(node, monomials);
+        return PDD<BigInteger>.GetBounds(node, monomials, out reason);
     }
 }

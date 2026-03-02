@@ -12,17 +12,17 @@ public class IntNonEq : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }
 
-    public IntNonEq(IntNonEq eq) {
+    public IntNonEq(IntNonEq eq) : base(eq.Reason) {
         Poly = eq.Poly;
     }
 
-    public IntNonEq(PDD<BigInteger> poly) {
+    public IntNonEq(PDD<BigInteger> poly, DependencyTracker reason) : base(reason) {
         Poly = poly;
         if (!Poly.IsNormal)
             Poly = Poly.Negate();
     }
 
-    public IntNonEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs) {
+    public IntNonEq(PDD<BigInteger> lhs, PDD<BigInteger> rhs, DependencyTracker reason) : base(reason) {
         Poly = lhs.Sub(rhs);
         if (!Poly.IsNormal)
             Poly = Poly.Negate();
@@ -31,7 +31,7 @@ public class IntNonEq : IntConstraint {
     public override IntNonEq Apply(Subst subst, NielsenNode node) {
         var (oldLen, newLen) = subst.GetLenReplacement(node.Env);
         var n = Poly.Substitute(oldLen, newLen);
-        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n);
+        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n, Reason.Merge(subst.Reason));
     }
 
     public override Constraint Apply(CharSubst subst, NielsenNode node) => this;
@@ -41,7 +41,7 @@ public class IntNonEq : IntConstraint {
         foreach (var kv in itp.IntVal) {
             n = n.Substitute(kv.Key, itp.Env.IntPDDManager.MkPDD(kv.Value));
         }
-        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n);
+        return ReferenceEquals(Poly, n) ? this : new IntNonEq(n, Reason);
     }
 
     public override bool Equals(object? obj) =>
@@ -75,10 +75,13 @@ public class IntNonEq : IntConstraint {
     }
 
     protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
-        var bounds = Poly.GetBounds(info.CurrentNode);
-        if (!bounds.Contains(0))
+        var bounds = Poly.GetBounds(info.CurrentNode, out var dep);
+        if (!bounds.Contains(0)) {
+            Reason = Reason.Merge(dep);
             return SimplifyResult.Satisfied;
+        }
         if (bounds.IsUnit) {
+            Reason = Reason.Merge(dep);
             reason = BacktrackReasons.Arithmetic;
             return SimplifyResult.Conflict;
         }
@@ -97,6 +100,4 @@ public class IntNonEq : IntConstraint {
     public override void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet) => 
         Poly.CollectSymbols(nonTermSet, alphabet);
 
-    public override IntConstraint Negate() =>
-        new IntEq(Poly);
 }

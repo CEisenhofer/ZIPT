@@ -97,7 +97,7 @@ public class NielsenGraph {
         SubSolver.Add(info.CurrentNode.ConstraintsIntEq.Select(o => o.ToExpr(info)));
         SubSolver.Add(info.CurrentNode.ConstraintsIntLe.Select(o => o.ToExpr(info)));
         SubSolver.Add(info.CurrentNode.IntBounds.Select(o => 
-            Interval<BigInteger>.ToZ3Constraint(o.Value, o.Key, info)));
+            Interval<BigInteger>.ToZ3Constraint(o.Value.bound, o.Key, info)));
 
         DepthBound = Options.ItDeepDepthStart;
         int pathCnt = info.CurrentPath.Count;

@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ZIPT.MiscUtils;
 
@@ -29,6 +30,15 @@ public class NList<T> : IEquatable<NList<T>>, IEnumerable<T> where T : IComparab
 
     public bool Contains(T item) => 
         items.BinarySearch(item) >= 0;
+
+    public bool TryGet(T item, [NotNullWhen(true)] out T? res) {
+        res = default;
+        int idx = items.BinarySearch(item);
+        if (idx < 0) 
+            return false;
+        res = items[idx];
+        return true;
+    }
 
     // Only apply when normalized
     public bool Remove(T item) {

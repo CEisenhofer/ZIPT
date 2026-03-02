@@ -9,7 +9,7 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     public StrVarToken V { get; }
     public StrToken T { get; }
 
-    public ConstNielsenModifier(StrVarToken v, StrToken t, bool forward) : base(forward) {
+    public ConstNielsenModifier(StrVarToken v, StrToken t, bool forward, DependencyTracker reason) : base(forward, reason) {
         V = v;
         T = t;
     }

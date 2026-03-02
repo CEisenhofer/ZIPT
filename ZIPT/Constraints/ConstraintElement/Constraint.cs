@@ -9,8 +9,12 @@ namespace ZIPT.Constraints.ConstraintElement;
 public abstract class Constraint {
 
     public bool Satisfied { get; private set; }
-    public DependencyTracker Dependencies { get; set; }
+    public DependencyTracker Reason { get; protected set; }
     public abstract bool Shared { get; }
+
+    protected Constraint(DependencyTracker reason) {
+        Reason = reason;
+    }
 
     public abstract override bool Equals(object? obj);
     public abstract override int GetHashCode();
@@ -41,5 +45,4 @@ public abstract class Constraint {
     public abstract BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt);
     public BoolExpr ToExpr(LocalInfo info) => ToExpr(info.Env, info.CurrentModificationCnt);
     public abstract void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet);
-    public abstract Constraint Negate();
 }

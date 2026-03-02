@@ -7,7 +7,7 @@ public class RegexVarSplitModifier : DirectedNielsenModifier {
     public NamedStrToken StrVarToken { get; }
     public MinTerms Cases { get; }
 
-    public RegexVarSplitModifier(NamedStrToken strVar, MinTerms cases, bool forward) : base(forward) {
+    public RegexVarSplitModifier(NamedStrToken strVar, MinTerms cases, bool forward, DependencyTracker reason) : base(forward, reason) {
         StrVarToken = strVar;
         Cases = cases;
     }

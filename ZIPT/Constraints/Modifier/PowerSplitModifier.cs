@@ -14,7 +14,7 @@ public class PowerSplitModifier : DirectedNielsenModifier {
     public StrVarToken StrVarToken { get; }
     public PowerToken Power { get; }
 
-    public PowerSplitModifier(StrVarToken strVar, PowerToken power, bool forward) : base(forward) {
+    public PowerSplitModifier(StrVarToken strVar, PowerToken power, bool forward, DependencyTracker reason) : base(forward, reason) {
         StrVarToken = strVar;
         Power = power;
     }
@@ -36,8 +36,8 @@ public class PowerSplitModifier : DirectedNielsenModifier {
 #endif
             //s = StrEqBase.LcpCompression(s) ?? s;
             List<Constraint> cond = [
-                IntLe.MkLe(info.Env.ZeroInt, info.Env.IntPDDManager.MkPDD(newPow)),
-                IntLe.MkLt(info.Env.IntPDDManager.MkPDD(newPow), Power.Power),
+                IntLe.MkLe(info.Env.ZeroInt, info.Env.IntPDDManager.MkPDD(newPow), Reason),
+                IntLe.MkLt(info.Env.IntPDDManager.MkPDD(newPow), Power.Power, Reason),
             ];
             cond.AddRange(p.SideConstraints);
             if (p.VarDecomp is null) {

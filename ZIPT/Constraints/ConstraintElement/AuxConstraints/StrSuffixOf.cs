@@ -13,7 +13,7 @@ public class StrSuffixOf : StrConstraint {
     public Str S { get; }
     public Str Contained { get; }
 
-    public StrSuffixOf(Str s, Str contained, bool negated) {
+    public StrSuffixOf(Str s, Str contained, bool negated) : base(new DependencyTracker(0)) {
         Negated = negated;
         S = s;
         Contained = contained;
@@ -70,8 +70,6 @@ public class StrSuffixOf : StrConstraint {
         S.CollectSymbols(nonTermSet, alphabet);
         Contained.CollectSymbols(nonTermSet, alphabet);
     }
-
-    public override StrSuffixOf Negate() => new(S, Contained, !Negated);
 
     public override bool Contains(NamedStrToken namedStrToken) => 
         S.ContainsVar(namedStrToken) || Contained.ContainsVar(namedStrToken);
