@@ -159,8 +159,8 @@ public static class Test {
         using Solver solver = ctx.MkSimpleSolver();
         using Environment env = new(ctx);
         using SaturatingStringPropagator propagator = new(solver, env);
-        var root = propagator.Root;
-        root.AddConstraint(new StrEq(ParseStr(lhs, env), ParseStr(rhs, env)));
+        var root = new NielsenNode(propagator.Graph);
+        root.AddConstraint(new StrEq(ParseStr(lhs, env), ParseStr(rhs, env), new DependencyTracker(0)));
         LocalInfo info = new(root);
         bool res = propagator.Graph.Check(info);
         if (res)
@@ -169,7 +169,7 @@ public static class Test {
     }
 
     static bool CheckMembership(Environment env, string s, Str regex) => 
-        CheckMembership(env, new StrMem(ParseStr(s, env), regex, env.EmptyStr, 0));
+        CheckMembership(env, MkStrMem(ParseStr(s, env), regex, env.EmptyStr, 0));
 
     static bool CheckMembership(Environment env, params StrMem[] cnstrs) {
         Debug.Assert(cnstrs.Length > 0);
@@ -177,7 +177,7 @@ public static class Test {
         Console.WriteLine($"Checking memberships {string.Join(" & ", cnstrs.Select(o => o.Str + " in " + o.Regex))}");
         using Solver solver = env.Ctx.MkSimpleSolver();
         using SaturatingStringPropagator propagator = new(solver, env);
-        var root = propagator.Root;
+        var root = new NielsenNode(propagator.Graph);
         foreach (var cnstr in cnstrs) {
             root.AddConstraint(cnstr);
         }
@@ -419,6 +419,10 @@ public static class Test {
         MemSAT(env, "c", ParseRegex("~(a|b)", env));
     }
 
+    static StrMem MkStrMem(Str str, Str regex, Str history, uint id) {
+        return new StrMem(str, regex, history, id, new DependencyTracker(0));
+    }
+
     static void CheckStrMembership() {
         if (!IsCheckStrMembership)
             return;
@@ -431,23 +435,24 @@ public static class Test {
 
         MemUNSAT(env,
             // x \in a* && x \in b+
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 1)
         );
         MemSAT(env,
             // x \in a*b* && y \in a*b*
-            new StrMem(ParseStr("X", env), ParseRegex("a*b*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("a*b*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*b*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("a*b*", env), env.EmptyStr, 1)
         );
         MemSAT(env,
             // x \in a* && y \in (ab)+
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
         );
         MemUNSAT(env,
             // x \in (ab)+ && x \in a*
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1)
         );
         MemUNSAT(env, "XaX",
             // xax \in (aa)*
@@ -460,19 +465,19 @@ public static class Test {
         );
         MemUNSAT(env,
             // x \in (aa)*a && x \in (aa)*
-            new StrMem(ParseStr("X", env),
+            MkStrMem(ParseStr("X", env),
                 ParseRegex("(aa)*a", env), env.EmptyStr, 0
             ),
-            new StrMem(ParseStr("X", env),
+            MkStrMem(ParseStr("X", env),
                 ParseRegex("(aa)*", env), env.EmptyStr, 1
             )
         );
         MemSAT(env,
             // x \in (aa)*aa && x \in (aa)*
-            new StrMem(ParseStr("X", env),
+            MkStrMem(ParseStr("X", env),
                 ParseRegex("(aa)*aa", env), env.EmptyStr, 0
             ),
-            new StrMem(ParseStr("X", env), ParseRegex("(aa)*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(aa)*", env), env.EmptyStr, 1)
         );
         MemSAT(env, "Xa",
             // xa \in a(a)*
@@ -575,11 +580,11 @@ public static class Test {
             // xabx \in (ab)*
             // xbabx \in a(ba)*
             [
-                new StrMem(
+                MkStrMem(
                     ParseStr("XabX", env),
                     ParseRegex("(ab)*", env), env.EmptyStr, 0
                 ),
-                new StrMem(
+                MkStrMem(
                     ParseStr("XbabX", env),
                     ParseRegex("a(ba)*", env), env.EmptyStr, 1
                 ),
@@ -620,162 +625,162 @@ public static class Test {
 
         MemUNSAT(env,
             // x \in a+ && x \in b+
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 1)
         );
 
         MemUNSAT(env,
             // x \in (a|b) && xx \in (a|b)
-            new StrMem(ParseStr("X", env), ParseRegex("a|b", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("XX", env), ParseRegex("a|b", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a|b", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("XX", env), ParseRegex("a|b", env), env.EmptyStr, 1)
         );
 
         MemUNSAT(env,
             // x \in (ab)+ && xx \in a*
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("XX", env), ParseRegex("a*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("XX", env), ParseRegex("a*", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in a* && y \in b* && xy \in (ab)+
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
         );
 
         MemUNSAT(env,
             // x \in a* && x \in ~(a*)
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("~(a*)", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("~(a*)", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in (ab)* && x \in (ab)+ 
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in ~(a|b) && x \in (c|d)
-            new StrMem(ParseStr("X", env), ParseRegex("~(a|b)", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("(c|d)", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("~(a|b)", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("(c|d)", env), env.EmptyStr, 1)
         );
 
         // x \in (a|b)* && xx \in (ab)+
         MemSAT(env,
-            new StrMem(ParseStr("X", env), ParseRegex("(a|b)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("XX", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(a|b)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("XX", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in a+ && y \in b* && xyyx \in (ab)*(ba)*
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XYYX", env), ParseRegex("(ab)*(ba)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XYYX", env), ParseRegex("(ab)*(ba)*", env), env.EmptyStr, 2)
         );
 
         MemSAT(env,
             // x \in (ab)+ && xx in (ab)+
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("XXX", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("XXX", env), ParseRegex("(ab)+", env), env.EmptyStr, 1)
         );
 
         MemUNSAT(env,
             // x \in (a|b) && x \in ~(a|b)
-            new StrMem(ParseStr("X", env), ParseRegex("(a|b)", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("~(a|b)", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("(a|b)", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("~(a|b)", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in a+ && Y \in b+ && xy in (ab)+
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
         );
 
         MemSAT(env,
             // xbx \in a*b*
-            new StrMem(ParseStr("XbX", env), ParseRegex("a*b*", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XbX", env), ParseRegex("a*b*", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // x \in a+ && xbx \in b*
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("XbX", env), ParseRegex("b*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("XbX", env), ParseRegex("b*", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // axb \in a(a|b)*b
-            new StrMem(ParseStr("aXb", env), ParseRegex("a(a|b)*b", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("aXb", env), ParseRegex("a(a|b)*b", env), env.EmptyStr, 0)
         );
 
         MemSAT(env,
             // xyx && x \in a+, y \in b+ && xyx \in (ab)*(ba)*
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XYX", env), ParseRegex("(ab)*(ba)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XYX", env), ParseRegex("(ab)*(ba)*", env), env.EmptyStr, 2)
         );
 
         MemSAT(env,
             // xx \in (ab|ba)+ && x \in (a|b)+
-            new StrMem(ParseStr("XX", env), ParseRegex("(ab|ba)+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("(a|b)+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("XX", env), ParseRegex("(ab|ba)+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("(a|b)+", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // x \in a* && x \in a+
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 1)
         );
 
         MemUNSAT(env,
             // x \in "" && xbx \in a*baa*
-            new StrMem(ParseStr("X", env), env.EmptyStr, env.EmptyStr, 0),
-            new StrMem(ParseStr("XbX", env), ParseRegex("a*baa*", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), env.EmptyStr, env.EmptyStr, 0),
+            MkStrMem(ParseStr("XbX", env), ParseRegex("a*baa*", env), env.EmptyStr, 1)
         );
 
         MemSAT(env,
             // xxxx \in aaaaa*
-            new StrMem(ParseStr("XXXX", env), ParseRegex("aaaaa*", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("aaaaa*", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xxxx \in aaa(aa)*
-            new StrMem(ParseStr("XXXX", env), ParseRegex("aaa(aa)*", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("aaa(aa)*", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xxxx \in ab
-            new StrMem(ParseStr("XXXX", env), ParseRegex("ab", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("ab", env), env.EmptyStr, 0)
         );
         MemUNSAT(env,
             // xxxx \in abab
-            new StrMem(ParseStr("XXXX", env), ParseRegex("abab", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("abab", env), env.EmptyStr, 0)
         );
         
         MemSAT(env,
             // xxxx \in a(ba)*b
-            new StrMem(ParseStr("XXXX", env), ParseRegex("a(ba)*b", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("a(ba)*b", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xxxx \in a(ab)*b
-            new StrMem(ParseStr("XXXX", env), ParseRegex("a(ab)*b", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XXXX", env), ParseRegex("a(ab)*b", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xyyx \in ab
-            new StrMem(ParseStr("XYYX", env), ParseRegex("ab", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XYYX", env), ParseRegex("ab", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xyyx \in a(ab)*b
-            new StrMem(ParseStr("XYYX", env), ParseRegex("a(ab)*b", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XYYX", env), ParseRegex("a(ab)*b", env), env.EmptyStr, 0)
         );
 
         MemUNSAT(env,
             // xyyx \in a+b+
-            new StrMem(ParseStr("XYYX", env), ParseRegex("a+b+", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("XYYX", env), ParseRegex("a+b+", env), env.EmptyStr, 0)
         );
 
         // xax \in a(a|b)*a
@@ -783,72 +788,72 @@ public static class Test {
 
         // xby \in a+b* && x in a+ && y in b+
         MemSAT(env,
-            new StrMem(ParseStr("XbY", env), ParseRegex("a+b*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("XbY", env), ParseRegex("a+b*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 2)
         );
 
         MemUNSAT(env,
             // xby \in (ab)+ && x \in a+ && y \in b+
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XbY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XbY", env), ParseRegex("(ab)+", env), env.EmptyStr, 2)
         );
 
         MemUNSAT(env,
             // xby \in (ab)* && x \in ((""|a)b)* && y \in (a(""|b))*
-            new StrMem(ParseStr("X", env), ParseRegex("((()|a)b)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("(a(()|b))*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("((()|a)b)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("(a(()|b))*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
         );
 
         MemSAT(env,
             // xby \in (ab)* && x \in (a(""|b))* && y \in (ab)*
-            new StrMem(ParseStr("X", env), ParseRegex("(a(()|b))*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("(ab)*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("(a(()|b))*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("(ab)*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
         );
         MemUNSAT(env,
             // xby \in (ab)* && x \in (ab)* && y \in ((""|a)b)*
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("((()|a)b)*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("((()|a)b)*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
         );
 
         MemUNSAT(env,
             // xby \in (ab)* && x \in (ab)* && y \in (ab)*
-            new StrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("(ab)*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
+            MkStrMem(ParseStr("X", env), ParseRegex("(ab)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("(ab)*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("XbY", env), ParseRegex("(ab)*", env), env.EmptyStr, 2)
         );
 
         // x \in a+ && y \in b+ && z \in c+ && xyz \in (abc)+
         MemSAT(env,
-            new StrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("Z", env), ParseRegex("c+", env), env.EmptyStr, 2),
-            new StrMem(ParseStr("XYZ", env), ParseRegex("(abc)+", env), env.EmptyStr, 3)
+            MkStrMem(ParseStr("X", env), ParseRegex("a+", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b+", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("Z", env), ParseRegex("c+", env), env.EmptyStr, 2),
+            MkStrMem(ParseStr("XYZ", env), ParseRegex("(abc)+", env), env.EmptyStr, 3)
         );
 
         MemSAT(env,
             // xaybz \in a*b*c* && x \in a* && y \in b* && z \in c*
-            new StrMem(ParseStr("XaYbZ", env), ParseRegex("a*b*c*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 2),
-            new StrMem(ParseStr("Z", env), ParseRegex("c*", env), env.EmptyStr, 3)
+            MkStrMem(ParseStr("XaYbZ", env), ParseRegex("a*b*c*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("Y", env), ParseRegex("b*", env), env.EmptyStr, 2),
+            MkStrMem(ParseStr("Z", env), ParseRegex("c*", env), env.EmptyStr, 3)
         );
 
         MemSAT(env,
             // axbyc \in a(a|b|c)*c
-            new StrMem(ParseStr("aXbYc", env), ParseRegex("a(a|b|c)*c", env), env.EmptyStr, 0)
+            MkStrMem(ParseStr("aXbYc", env), ParseRegex("a(a|b|c)*c", env), env.EmptyStr, 0)
         );
 
         MemSAT(env,
             // x \in (a|b)* && y \in (b|c)* && z \in (c|a)* && xyz \in (abc)+
-            new StrMem(ParseStr("X", env), ParseRegex("(a|b)*", env), env.EmptyStr, 0),
-            new StrMem(ParseStr("Y", env), ParseRegex("(b|c)*", env), env.EmptyStr, 1),
-            new StrMem(ParseStr("Z", env), ParseRegex("(c|a)*", env), env.EmptyStr, 2),
-            new StrMem(ParseStr("XYZ", env), ParseRegex("(abc)+", env), env.EmptyStr, 3)
+            MkStrMem(ParseStr("X", env), ParseRegex("(a|b)*", env), env.EmptyStr, 0),
+            MkStrMem(ParseStr("Y", env), ParseRegex("(b|c)*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("Z", env), ParseRegex("(c|a)*", env), env.EmptyStr, 2),
+            MkStrMem(ParseStr("XYZ", env), ParseRegex("(abc)+", env), env.EmptyStr, 3)
         );
     }
 
