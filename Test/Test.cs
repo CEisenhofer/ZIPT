@@ -56,6 +56,9 @@ public static class Test {
         return env.MkString(ret);
     }
 
+    // Small utility parser used by the test harness to convert simple ASCII strings
+    // into internal `Str` representations where uppercase letters denote variables.
+
     public static Str ParseRegex(string input, Environment env) {
         Debug.Assert(!input.Contains(' '));
         if (input is null)
@@ -432,12 +435,11 @@ public static class Test {
 
         // x \in (~(ab))*cab
         MemSAT(env, "X", ParseRegex("(~(ab))*cab", env));
-
         MemUNSAT(env,
             // x \in a* && x \in b+
             MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 0),
-            MkStrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 1)
+            MkStrMem(ParseStr("X", env), ParseRegex("a*", env), env.EmptyStr, 1),
+            MkStrMem(ParseStr("X", env), ParseRegex("b+", env), env.EmptyStr, 2)
         );
         MemSAT(env,
             // x \in a*b* && y \in a*b*

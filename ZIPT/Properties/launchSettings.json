@@ -2,7 +2,7 @@
   "profiles": {
     "ZIPT": {
       "commandName": "Project",
-      "commandLineArgs": "-t:10000 -v -c -m -p \"C:\\Users\\Clemens\\Downloads\\QF_S\\2019-Jiang\\slog\\slog_stranger_1251_sink.smt2\""
+      "commandLineArgs": "-t:10000 -v -c -m -p C:\\Users\\Clemens\\Downloads\\QF_S\\2019-Jiang\\slog"
     }
   }
 }

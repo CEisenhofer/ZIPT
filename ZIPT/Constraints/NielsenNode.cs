@@ -104,12 +104,16 @@ public class NielsenNode {
     public void ResetCounter() =>
         evalIdx = 0;
 
+    // Reset internal evaluation index used for iterative-deepening runs.
+
     public NielsenNode(NielsenGraph graph) {
         Graph = graph;
         Id = graph.NodeCnt;
         IsProgressNode = true;
         graph.AddNode(this);
     }
+
+    // Construct a fresh root node registered with the graph.
 
     // Create a fresh root node in the Nielsen graph and register it with the graph.
     public NielsenNode(NielsenGraph graph, NielsenNode parent) : this(graph) {
@@ -120,6 +124,8 @@ public class NielsenNode {
         foreach (var e in parent.ConstraintsStrEq) {
             ConstraintsStrEq.Add(new StrEq(e.LHS, e.RHS, e.Reason));
         }
+
+    // Create a derived node by cloning `parent` contents. Used for branching in the search.
 
         foreach (var e in parent.ConstraintsStrMem) {
             Debug.Assert(e.Key == e.Value.Id);
@@ -188,6 +194,10 @@ public class NielsenNode {
         Debug.Assert(info.ModCnt == modCnt);
     }
 
+    // Helpers that apply substitutions to collections of constraints and update caches.
+
+    // Apply a string substitution to the node's constraints and update watchers/bounds.
+
     void Update<T>(NList<T> constraints, Subst subst, NielsenNode node) where T : Constraint, IComparable<T> {
         List<T> toAdd = [];
         List<T> toRemove = [];
@@ -197,7 +207,11 @@ public class NielsenNode {
                 toRemove.Add(cnstr);
                 toAdd.Add(res);
             }
+
+    // Helpers for applying substitutions to different collections of constraints.
         }
+
+    // Apply a character-level substitution and update disequalities / ranges accordingly.
         foreach (var old in toRemove) {
             constraints.Remove(old);
         }
@@ -623,6 +637,8 @@ public class NielsenNode {
         return bestModifier;
     }
 
+    // Select the best (minimal) modifier to extend this node in the Nielsen search.
+
     public IEnumerable<NielsenEdge> ApplyExtension(LocalInfo info, ModifierBase modifier) {
         Debug.Assert(!IsExtended);
         
@@ -636,6 +652,8 @@ public class NielsenNode {
         }
         IsExtended = true;
     }
+
+    // Apply a selected modifier and initialize the resulting child edges (simplify their targets).
 
     static int simplifyChainCnt;
 
@@ -657,6 +675,9 @@ public class NielsenNode {
                 edgeChain[i - 1].DecModCount(info);
             }
         }
+
+    // Simplify the current node: run constraint simplifiers, collect Nielsen dependencies and
+    // perform final simplifications before extension. Returns a BacktrackReasons code.
 
         while (true) {
             if (info.CurrentNode.Graph.OuterPropagator.Cancel)

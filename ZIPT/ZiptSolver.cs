@@ -184,13 +184,22 @@ public static class ZiptSolver {
                 Console.WriteLine("Timeout: " + Options.TimeOut + "ms");
             if (Options.TimeOut != 0)
                 Global.SetParameter("timeout", ((ulong)Options.TimeOut).ToString());
-            var res = propagator.Solver.Check();
-            // Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
+            Status res;
+            try {
+                res = propagator.Solver.Check();
+                // Console.WriteLine("Depth Bound: " + propagator.Graph.DepthBound);
 #if DEBUG
-            // Console.WriteLine(propagator.Graph.ToDot());
+                // Console.WriteLine(propagator.Graph.ToDot());
 #endif
-            if (Options.OutputStats)
-                OutputStats();
+                if (Options.OutputStats)
+                    OutputStats();
+            }
+            catch (Z3Exception ex) {
+                Console.WriteLine("Z3 crashed: " + ex.Message);
+                res = Status.UNKNOWN;
+                propagator.Cancel = true;
+            }
+
             if (!propagator.Cancel) {
                 if (res == Status.SATISFIABLE) {
                     Console.WriteLine("SAT");

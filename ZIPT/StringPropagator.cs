@@ -789,11 +789,17 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             // Create the root node and populate it directly from pre-parsed constraints
             var root = new NielsenNode(Graph);
             int constraintCnt = reportedEqs.Count + reportedNonEmpty.Count + reportedMems.Count;
+            Dictionary<NamedStrToken, Str> units = [];
             int id = 0;
             for (int i = 0; i < reportedEqs.Count; i++) {
                 var (s1, s2, _, _) = reportedEqs[i];
                 var dep = new DependencyTracker(constraintCnt, id++);
                 root.ConstraintsStrEq.Add(new StrEq(s1, s2, dep));
+                if (s1.Length == 1 && s1[0] is StrVarToken x1 && s2.Ground)
+                    units.Add(x1, s2);
+                else if (s2.Length == 1 && s2[0] is StrVarToken x2 && s1.Ground)
+                    units.Add(x2, s1);
+
                 var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env), dep);
                 if (!la.Poly.IsZero)
                     root.ConstraintsIntEq.Add(la);
@@ -804,7 +810,13 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 root.ConstraintsIntLe.Add(c);
             }
             for (int i = 0; i < reportedMems.Count; i++) {
+                // Unfortunately Z3 might rewrite some constant strings within the membership constraints to variables...
+                // We rewrite it to the constant
                 var (s1, s2, _) = reportedMems[i];
+                foreach (var x in s2.ContainedVars()) {
+                    Debug.Assert(units.ContainsKey(x));
+                    s2 = Env.StrManager.Subst(s2, x, units[x]);
+                }
                 root.ConstraintsStrMem.Add((uint)i, new StrMem(s1, s2, Env.EmptyStr, (uint)i, new DependencyTracker(constraintCnt, id++)));
             }
 

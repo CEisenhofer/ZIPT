@@ -50,8 +50,13 @@ public class NielsenGraph {
     }
 
     public void ResetAll() {
-        SubSolver.Pop();
-        SubSolver.Push();
+        try {
+            SubSolver.Pop();
+            SubSolver.Push();
+        }
+        catch (Exception) {
+            throw new SolverTimeoutException();
+        }
     }
 
     public bool Check(LocalInfo info) {
@@ -111,7 +116,6 @@ public class NielsenGraph {
             Debug.Assert(info.CurrentPath.Count == pathCnt);
             Debug.Assert(info.CurrentModificationCnt.Count == modCnt);
             var res = info.CurrentNode.GraphExpansion(0, info);
-            Console.WriteLine(res);
             Debug.Assert(res != SolveResult.CYCLIC);
             if (OuterPropagator.Cancel)
                 throw new SolverTimeoutException();
