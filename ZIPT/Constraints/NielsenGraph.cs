@@ -14,6 +14,8 @@ using ZIPT.Strings.Tokens;
 namespace ZIPT.Constraints;
 
 public class NielsenGraph {
+    // Search graph for Nielsen-style splitting/search. Manages nodes, depth-bounded search and
+    // the auxiliary SMT solver used for integer reasoning.
 
     public SaturatingStringPropagator OuterPropagator { get; }
     public Context Ctx => OuterPropagator.Ctx;
@@ -53,6 +55,8 @@ public class NielsenGraph {
     }
 
     public bool Check(LocalInfo info) {
+        // Entry point for solving: resets solvers, initializes the root node and runs iterative-deepening
+        // search over Nielsen expansions until SAT/UNSAT or resource limits.
         ResetAll();
         info.OutdatedModel = true;
         if (RunIdx == uint.MaxValue) {
@@ -106,7 +110,7 @@ public class NielsenGraph {
         while (true) {
             Debug.Assert(info.CurrentPath.Count == pathCnt);
             Debug.Assert(info.CurrentModificationCnt.Count == modCnt);
-            var res = info.CurrentNode.Check(0, info);
+            var res = info.CurrentNode.GraphExpansion(0, info);
             Console.WriteLine(res);
             Debug.Assert(res != SolveResult.CYCLIC);
             if (OuterPropagator.Cancel)
@@ -129,10 +133,12 @@ public class NielsenGraph {
     }
 
     public void AddNode(NielsenNode node) {
+        // Register a newly created node in the graph registry.
         nodes.Add(node);
     }
 
     public NielsenNode? FindExisting(NielsenNode node) {
+        // Attempt to find an existing node that subsumes `node` to avoid duplicate search branches.
         if (!subsumptionCandidates.TryGetValue(node.ConstraintsStrEq, out var list)) {
             subsumptionCandidates.Add(node.ConstraintsStrEq, [node]);
             return null;
@@ -148,6 +154,7 @@ public class NielsenGraph {
     public Str? TryParseStr(Expr e) => Env.TryParseStr(e);
 
     public string ToDot(LocalInfo? info = null) {
+        // Produce a DOT graph visualization of the current Nielsen graph (optionally highlighting a path).
         StringBuilder sb = new();
         sb.AppendLine("digraph G {");
         HashSet<NielsenEdge> satEdges = [];
@@ -166,7 +173,7 @@ public class NielsenGraph {
                 .Append(": ")
                 .Append(node.ToHtmlString());
             if (NielsenNode.IsActualConflict(node.CurrentReason))
-                sb.Append("\\n").Append(NielsenNode.ReasonToString(node.CurrentReason));
+                sb.Append("<br/>").Append(NielsenNode.ReasonToString(node.CurrentReason));
             sb.Append('>');
             if (satNodes.Contains(node))
                 sb.Append(", color=green");

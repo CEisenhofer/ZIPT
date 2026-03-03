@@ -15,6 +15,10 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT;
 
+// Base user-propagator integrating the Nielsen search with Z3's UP interface.
+// Responsible for translating Z3 string terms to internal `Str` representation,
+// reacting to created/fixed/equality/disequality callbacks, and emitting propagation
+// lemmas that drive the Nielsen search.
 public abstract class StringPropagator : UserPropagator {
 
     public readonly Context Ctx;
@@ -63,6 +67,9 @@ public abstract class StringPropagator : UserPropagator {
 
     int fixedCnt;
 
+    // Callback invoked when a (user-propagator) term becomes fixed to true/false.
+    // This emits immediate structural consequences (e.g., decompositions for prefix/suffix/contains)
+    // which the SMT solver can use to prune the search.
     void FixedCB(Expr e, Expr valExpr) {
         try {
             Debug.Assert(valExpr.IsTrue || valExpr.IsFalse);
@@ -169,6 +176,8 @@ public abstract class StringPropagator : UserPropagator {
         }
     }
 
+    // Callback invoked when a new term is created under the UP translation. Used to
+    // rewrite complicated functions (strAt, subStr, indexOf, len, ...) into lemmas.
     void CreatedCB(Expr e) {
 
         // Just rewrite complicated function symbols
@@ -446,6 +455,8 @@ public abstract class StringPropagator : UserPropagator {
 
     static int eqCount;
 
+    // Callback for equalities between translated string expressions. Collects
+    // pairs and delegates to `EqInternal` for solver-specific handling.
     void EqCB(Expr e1, Expr e2) {
         try {
             if (e1.Equals(e2))
@@ -585,6 +596,8 @@ public abstract class StringPropagator : UserPropagator {
 
     protected virtual void AddNotEpsilonInternal(Expr s) {}
 
+    // Callback for disequalities between translated string expressions. Emits
+    // structural disjunctions that witness inequality (length differences or differing chars).
     void DisEqCB(Expr e1, Expr e2) {
         try {
             if (!e1.Sort.Equals(Env.StringSort))
@@ -667,11 +680,13 @@ public abstract class StringPropagator : UserPropagator {
 }
 
 public sealed class SaturatingStringPropagator : StringPropagator {
-
+    // Implementation of the string propagator that drives a full Nielsen search.
+    // Collects equation/membership facts from Z3, builds the root Nielsen node and
+    // runs the search to produce propagation lemmas or a model.
     public bool Cancel { get; set; }
 
     public override NielsenGraph Graph { get; }
-    public LocalInfo Info { get; set; }
+    public LocalInfo? Info { get; set; }
 
     List<(Str s1, Str s2, Expr e1, Expr e2)> reportedEqs = [];
     List<Str> reportedNonEmpty = [];
@@ -694,6 +709,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
         // TODO
         throw new NotImplementedException("!contains");
     }
+
 
     protected override void GotPathLiteral(BoolExpr e, bool val) {
         if (val) {
@@ -759,6 +775,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     int finalCnt;
 
+    // Final callback invoked by Z3 when the current set of assertions is stable.
+    // Builds the search root from collected facts, runs the Nielsen graph check and
+    // emits blocking lemmas or model-based propagations accordingly.
     void FinalCB() {
         try {
             if (!newInformation && selectedPath is not null && selectedPath.All(o => !forbidden.Contains(o)) && !Info.OutdatedModel)
@@ -837,6 +856,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             NextSplit(term, 0, 1);
     }
 
+    // Extract a concrete Interpretation (model) from a completed successful Nielsen search.
     public bool GetModel(LocalInfo info, out Interpretation itp) {
 
         Debug.Assert(!info.OutdatedModel);
@@ -911,7 +931,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 }
 
 public class LemmaStringPropagator : StringPropagator {
-
+    // Lightweight propagator variant that wraps an existing NielsenGraph. Used when
+    // the outer solver only needs lemma-generation support without full saturation.
     public override NielsenGraph Graph { get; }
 
     public LemmaStringPropagator(Solver solver, Environment env, NielsenGraph graph) : base(solver, env) => 

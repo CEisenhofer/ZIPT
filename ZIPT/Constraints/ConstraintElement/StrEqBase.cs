@@ -179,6 +179,10 @@ public abstract class StrEqBase : StrConstraint, IComparable<StrEqBase> {
         return elim;
     }
 
+    // Simplify power tokens present on either side of the equation: try elimination or unwinding
+    // based on known integer properties and structural prefix checks.
+
+    // Handle a single power token on the left or right: try to simplify/eliminate/unwind it.
     public bool SimplifyPowerSide(LocalInfo info, bool fwd) {
         if (lhs[fwd] is not PowerToken p)
             return false;

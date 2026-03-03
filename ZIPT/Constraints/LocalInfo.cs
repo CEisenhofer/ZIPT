@@ -9,6 +9,10 @@ namespace ZIPT.Constraints;
 
 public class LocalInfo {
 
+    // Per-search execution context. Tracks the current node/path, pushed Z3 assertions,
+    // symbolic-character bookkeeping and occurrences used for regex cycle detection.
+
+
     public NielsenNode CurrentNode;
     public NielsenNode RootNode;
     public Environment Env => CurrentNode.Env;

@@ -14,6 +14,8 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings;
 
+// Responsible for building, canonicalizing and manipulating `Str` values.
+// Provides utilities for concatenation, extraction, derivatives and SMT conversion helpers.
 public sealed class StrManager {
 
     readonly Dictionary<(uint, uint), TupleStr> tupleChunks = [];
@@ -37,6 +39,8 @@ public sealed class StrManager {
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public static StrToken GetIndex(Str str, uint idx, bool fwd) =>
         fwd ? GetIndexFwd(str, idx) : GetIndexBwd(str, idx);
+
+    // Get the token at a given logical index (forward or backward) from a composed `Str`.
 
     public static StrToken GetIndexFwd(Str str, uint idx) {
         Debug.Assert(idx < str.Length);
@@ -83,6 +87,8 @@ public sealed class StrManager {
     public Str Extract(Str str, uint cnt, bool fwd) =>
         fwd ? ExtractFwd(str, cnt) : ExtractBwd(str, cnt);
 
+    // Extract the first/last `cnt` tokens from `str` depending on direction.
+
     public Str ExtractFwd(Str str, uint cnt) =>
         DropRight(str, str.Length - cnt);
 
@@ -92,6 +98,9 @@ public sealed class StrManager {
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public Str Concat(StrToken left, StrToken right) =>
         Concat(Single(left), Single(right));
+
+    // Concatenate strings/tokens while applying a set of structural simplifications
+    // (merge adjacent loops, normalize tuple shapes, remove empties and failures).
 
     [MethodImpl(MethodImplOptions.AggressiveInlining), Pure]
     public Str Concat(Str s1, StrToken right) =>
@@ -235,6 +244,7 @@ public sealed class StrManager {
 
     [Pure]
     Str CreateChunk(Str left, Str right) {
+        // Create a balanced tuple chunk representing left+right with caching.
         if (left is EmptyStr)
             return right;
         if (right is EmptyStr)

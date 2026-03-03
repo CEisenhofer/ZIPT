@@ -7,6 +7,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+// Bounded repetition token representing `Base{min,max}`; used in regex reasoning, derivatives and SMT conversion.
 public sealed class LoopToken : StrToken {
 
     public uint Min { get; }
@@ -27,6 +28,8 @@ public sealed class LoopToken : StrToken {
         Debug.Assert(!@base.Nullable || min == 0);
         Debug.Assert(min <= max);
     }
+
+    // Represents a bounded repetition `Base{Min,Max}`; used in parsing, derivatives and SMT encoding.
 
     public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) => 
         throw new NotSupportedException();
@@ -84,4 +87,5 @@ public sealed class LoopToken : StrToken {
             return env.StrManager.Concat(der, env.StrManager.MkLoop(Base, 0, Max - 1));
         return env.StrManager.Concat(der, env.StrManager.MkLoop(Base, Min - 1, Max - 1));
     }
+    // Note: LoopToken derivative delegates to base derivative and re-wraps with the bounded loop.
 }

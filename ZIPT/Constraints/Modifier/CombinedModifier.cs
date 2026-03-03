@@ -3,6 +3,8 @@ using ZIPT.MiscUtils;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Composite modifier that applies a sequence of modifiers in order; used to group several
+// splitting/intro steps into a single logical choice.
 public class CombinedModifier : ModifierBase {
     
     public ModifierBase[] Modifier { get; }
@@ -21,12 +23,16 @@ public class CombinedModifier : ModifierBase {
         Debug.Assert(info.CurrentNode.Outgoing.Count == 1);
     }
 
+    // CombinedModifier applies a sequence of modifiers sequentially producing their child edges.
+
     protected override int CompareToInternal(ModifierBase otherM) => 
         // This is dealt with in the non-internal version
         throw new NotSupportedException();
 
     public override string ToString() => 
         string.Join(" || ", Modifier.Select(o => o.ToString()));
+
+    // Represent the combined modifier as concatenation of the sub-modifiers' string reprs.
 
 
 }

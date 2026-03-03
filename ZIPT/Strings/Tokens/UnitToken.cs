@@ -2,6 +2,8 @@
 
 namespace ZIPT.Strings.Tokens;
 
+// Base class for tokens that represent a single atomic unit (characters, sets, symbolic chars).
+// These tokens are non-nullable and yield a simple decomposition for splitting.
 public abstract class UnitToken : StrToken {
 
     public override bool Nullable => false;

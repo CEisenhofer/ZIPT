@@ -8,6 +8,10 @@ using ZIPT.MiscUtils;
 
 namespace ZIPT.Strings.Tokens;
 
+// Named string variable token (possibly with auxiliary indexed children).
+// Represents program-level string variables and supports extensions used during splitting/unwinding.
+// Named string token base for program-level string variables and derived
+// named tokens (e.g., `strAt`, `subStr`). Supports extensions used by splitting and SMT caching.
 public abstract class NamedStrToken : StrToken {
 
     public uint StrVarId { get; } // TODO: Use for easier containment checks

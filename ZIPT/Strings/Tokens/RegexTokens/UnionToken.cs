@@ -7,6 +7,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+// Union token representing an alternation of `Cases`. Supports derivatives, minterms and SMT conversion.
 public sealed class UnionToken : StrToken {
 
     public IReadOnlyList<Str> Cases { get; }

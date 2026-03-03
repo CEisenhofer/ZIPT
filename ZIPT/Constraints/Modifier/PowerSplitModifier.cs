@@ -10,6 +10,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Modifier that splits a variable by peeling off a bounded number of repetitions of a base (power).
+// Produces choices that either assign a bounded-power prefix or leave the power in place.
 public class PowerSplitModifier : DirectedNielsenModifier {
     public StrVarToken StrVarToken { get; }
     public PowerToken Power { get; }
@@ -20,8 +22,8 @@ public class PowerSplitModifier : DirectedNielsenModifier {
     }
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
-        // V / Base^Power' Base' && Power' < Power
-        // V / Base^Power V
+        // Try splitting a variable into a bounded power prefix `Base^{power'}` with power'<Power
+        // or leave as `Base^{Power}` followed by the variable (unwinding choice).
 
         IntVar newPow = new();
         var power = new PowerToken(Power.Base, info.Env.IntPDDManager.MkPDD(newPow));

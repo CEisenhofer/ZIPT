@@ -11,6 +11,9 @@ public abstract class StrConstraint : Constraint, IComparable<StrConstraint> {
     protected StrConstraint(DependencyTracker reason) : base(reason) { }
 
     public abstract bool Contains(NamedStrToken namedStrToken);
+
+    // Produce a modifier that extends the search (splits, introduces a stabilizer, unwinds powers, etc.), or
+    // return null when no extension is applicable at this time.
     public abstract ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst);
     public abstract int CompareToInternal(StrConstraint other);
     public int CompareTo(StrConstraint? other) {

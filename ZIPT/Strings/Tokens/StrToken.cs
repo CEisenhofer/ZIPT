@@ -9,8 +9,11 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings.Tokens;
 
+// Base class for all string/regex tokens (characters, variables, loops, unions, ...).
+// Provides common properties (ground, nullable, derivable) and ordering used by the e-graph.
 public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
+    // True when the token contains no variables / regex constructs.
     public abstract bool Ground { get; }
     public abstract bool RegexFree { get; }
     public abstract bool Derivable { get; }
@@ -19,8 +22,10 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
 
     public bool IsFull => this is KleeneToken { Base: SingletonStr { StrToken: SetToken { Set.IsFull: true } } };
 
+    // Produce decompositions of this token for Nielsen-style splitting.
     public abstract List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd);
 
+    // Convert token to a Z3 expression (used when translating constraints to SMT queries).
     public abstract Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt);
 
     public override bool Equals(object? other) =>
@@ -55,6 +60,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     protected abstract int CompareToInternal(StrToken other);
     public abstract void CollectSymbols(NonTermSet nonTermSet, CharacterSet alphabet);
 
+    // Default minterm helpers; overridden by tokens that represent character sets.
     [Pure]
     public virtual MinTerms FirstMinTerms() => throw new NotSupportedException();
     [Pure]
@@ -67,6 +73,7 @@ public abstract class StrToken : IEquatable<StrToken>, IComparable<StrToken> {
     public sealed override string ToString() => ToString(null);
     public abstract string ToString(NielsenGraph? graph);
 
+    // Convenience overload: derivative wrt a single char token delegates to CharacterSet derivative.
     public Str Derivative(Environment env, CharToken set, bool fwd) =>
         Derivative(env, new CharacterSet(new CharacterRange(set.Value)), fwd);
 

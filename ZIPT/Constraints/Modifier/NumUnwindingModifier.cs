@@ -11,6 +11,7 @@ public abstract class NumUnwindingModifier : ModifierBase {
     protected NumUnwindingModifier(PDD<BigInteger> num, DependencyTracker reason) : base(reason) => 
         Num = num;
 
+    // Unwinding for numeric variables: either Num == 0 or Num >= 1. Used for power unwinding.
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
 
         info.CurrentNode.MkChild(info,
@@ -33,9 +34,11 @@ public abstract class NumUnwindingModifier : ModifierBase {
 }
 
 class ConstNumUnwindingModifier : NumUnwindingModifier {
+    // Specialized unwinding modifier for constant numerics.
     public ConstNumUnwindingModifier(PDD<BigInteger> num, DependencyTracker reason) : base(num, reason) { }
 }
 
 class VarNumUnwindingModifier : NumUnwindingModifier {
+    // Specialized unwinding modifier for numeric variables.
     public VarNumUnwindingModifier(PDD<BigInteger> num, DependencyTracker reason) : base(num, reason) { }
 }

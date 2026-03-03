@@ -10,6 +10,9 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Strings.Chunks;
 
+// Immutable representation of structured strings/regexes used across the solver.
+// `Str` is the central syntax for tokens, regex constructs and ground strings and
+// provides utilities for decomposition, derivatives and SMT translation.
 public abstract class Str : IEquatable<Str>, IComparable<Str> {
 
     public uint ChunkId { get; }

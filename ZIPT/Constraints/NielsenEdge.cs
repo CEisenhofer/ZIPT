@@ -7,6 +7,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints;
 
+// Edge in the Nielsen graph representing a transition caused by substitutions and side-constraints.
+// Carries the asserted Z3 lemmas for the edge and bookkeeping for modification counts.
 public class NielsenEdge : IEquatable<NielsenEdge> {
     public NielsenNode Src { get; }
     public IReadOnlyList<Subst> Subst { get; }

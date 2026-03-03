@@ -3,6 +3,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Splits a symbolic character token into concrete or new symbolic characters according
+// to regex minterms. Produces one child per minterm case.
 public class RegexCharSplitModifier : ModifierBase {
     public SymCharToken SCharToken { get; }
     public MinTerms Cases { get; }

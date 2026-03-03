@@ -6,6 +6,10 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Generalized power introduction: for each (x,base) case introduce substitutions of x
+// by `base^{n}prefix` with a fresh power variable n and side constraints ensuring n >= 0.
+// Generalized power-introduction modifier: introduces substitutions of a variable
+// by `base^{n}prefix` with a fresh power variable `n` and appropriate side constraints.
 public class GPowerIntrModifier : DirectedNielsenModifier {
 
     public List<(NamedStrToken x, Str val)> Cases { get; }
@@ -16,7 +20,6 @@ public class GPowerIntrModifier : DirectedNielsenModifier {
     }
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
-        // V_i / Base_i^powerConstant Base' with Base' being a syntactic prefix of Base (progress)
         foreach (var (v, @base) in Cases) {
             Debug.Assert(@base.Ground);
             var powerConstant = info.Env.IntPDDManager.MkPDD(v.GetPowerExtension());

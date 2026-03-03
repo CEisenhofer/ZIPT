@@ -12,6 +12,9 @@ namespace ZIPT.Constraints;
 
 public class Interpretation {
 
+    // Concrete interpretation / model: assignments for integer vars and string substitutions
+    // collected from Z3 model extraction and Nielsen witness reconstruction.
+
     public Environment Env { get; }
     public Dictionary<IntVar, BigInteger> IntVal { get; } = [];
     public Dictionary<NamedStrToken, Subst> Substitution { get; } = [];

@@ -6,6 +6,7 @@ using ZIPT.Strings.Chunks;
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
 // TODO: Replace this by an empty character set token
+// Token representing the empty/failing regex (no matches). Used as a sink in derivative computations.
 public sealed class FailToken : StrToken {
     public override bool Ground => true;
     public override bool RegexFree => false;

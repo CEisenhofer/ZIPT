@@ -1,6 +1,8 @@
 ﻿namespace ZIPT;
 
 public static class Options {
+    // Global runtime options used by the solver and propagator. Adjust via command line flags
+    // or programmatically when embedding the solver.
     public static bool ModelCompletion { get; set; }= false;
     
     static uint reasoningUnwindingBound = 1;

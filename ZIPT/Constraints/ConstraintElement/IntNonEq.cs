@@ -6,6 +6,8 @@ using ZIPT.MiscUtils;
 using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
+// Integer non-equality constraint (p != 0) used for arithmetic reasoning over length polynomials.
+// Implemented as a specialized constraint to participate in simplification and bound propagation.
 
 // Poly != 0
 public class IntNonEq : IntConstraint {

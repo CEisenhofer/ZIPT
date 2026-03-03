@@ -81,4 +81,6 @@ public sealed class KleeneToken : StrToken {
         return env.StrManager.Concat(der, env.MkString(this));
     }
 
+    // Derivative of Kleene: D(a, A*) = D(a, A) A*.
+
 }

@@ -2,6 +2,9 @@
 
 public abstract class IntConstraint : Constraint, IComparable<IntConstraint> {
 
+    // Base class for integer constraints (equalities/inequalities) over PDD polynomials.
+    // Provides ordering and integration with the general Constraint API.
+
     protected IntConstraint(DependencyTracker reason) : base(reason) { }
 
     public sealed override bool Shared => true;

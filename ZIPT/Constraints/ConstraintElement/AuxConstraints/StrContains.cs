@@ -1,4 +1,6 @@
 ﻿using Microsoft.Z3;
+// Auxiliary contains constraint used internally for rudimentary propagation; simplified
+// aggressively because more precise handling happens through regex membership constraints.
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;

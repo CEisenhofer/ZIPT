@@ -28,6 +28,8 @@ public class PDD<T> : IComparable<PDD<T>> where T: struct, INumberBase<T>, IComp
             Two = MkPDD(T.One + T.One);
         }
 
+        // Manager for PDDs: constructs and caches canonical PDD nodes and a few helpers.
+
         public PDD<T> MkPDD(T value) {
             if (constPDDCache.TryGetValue(value, out var cached))
                 return cached;

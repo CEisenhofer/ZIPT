@@ -5,6 +5,8 @@ namespace ZIPT.MiscUtils;
 
 public class NList<T> : IEquatable<NList<T>>, IEnumerable<T> where T : IComparable<T> {
 
+    // Sorted list wrapper used for deterministic constraint collections (keeps elements unique).
+
     readonly List<T> items;
 
     public int Count => items.Count;

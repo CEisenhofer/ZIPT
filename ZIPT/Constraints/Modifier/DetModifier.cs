@@ -4,6 +4,8 @@ using ZIPT.MiscUtils;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Deterministic modifier holding an optional substitution (string or char) and side constraints;
+// applying it immediately creates at most one child Nielsen edge.
 public class DetModifier : ModifierBase {
 
     Subst? Substitution { get; set; }
@@ -45,6 +47,7 @@ public class DetModifier : ModifierBase {
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
         Debug.Assert(SideConstraints.IsNonEmpty() || Substitution is not null || SubstitutionC is not null);
+        // Apply returns a single child edge created deterministically by ForceApply.
         return [ForceApply(info)];
     }
 

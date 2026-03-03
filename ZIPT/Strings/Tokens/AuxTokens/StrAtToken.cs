@@ -6,6 +6,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.AuxTokens;
 
+// Named token for `strAt(s, i)` (substring at index); participates in SMT conversion and substitution.
 public sealed class StrAtToken : NamedStrToken {
 
     public Str S { get; }

@@ -21,23 +21,13 @@ public class StarIntrModifier : ModifierBase {
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
 
-        // This split on
-        // x \in base*
-        // drop x
-        // OR
-        // x / x' x'' 
-        // x' \in base*
-        // x'' \notin base.*
-        // |x''| > 0
-        // drop x'
+        // Introduces a star-based decomposition for loop generalisation. This produces
+        // alternative children that either drop a variable or split it into a star-prefixed
+        // part and a remainder that is constrained not to start with the star's base.
 
         info.CurrentNode.Backedge = info.CurrentNode;
 
-        Debug.Assert(!Base.Nullable);
         Str cycle = info.Env.StrManager.MkStar(Base);
-
-        // Self-stabilization: S(cycle) := { cycle }
-        info.Env.AddStabilizer(cycle, cycle);
 
         StrVarToken pr;
         StrVarToken po = info.Env.CreateFreshStrVar("X");
@@ -46,18 +36,7 @@ public class StarIntrModifier : ModifierBase {
 
         var toAdd = new List<Constraint>(4);
         var toRemove = new List<Constraint> { mem };
-        // TODO: Check other mem-constraints with the same history and variable to eliminate both simultaniously
-        Str newHistory = info.Env.StrManager.Concat(info.Env.StrManager.DropRight(mem.History, DropCnt), cycle);
         Str varDropped = info.Env.StrManager.DropLeft(mem.Str);
-
-        Debug.Assert(!mem.IsPrimitiveRegex());
-        toAdd.Add(new StrMem(varDropped, mem.Regex, newHistory, mem.Id, Reason));
-        toAdd.Add(new StrMem(info.Env.MkString(t), cycle, info.Env.EmptyStr, info.NextRegexId++, Reason));
-
-        info.CurrentNode.MkChild(info, [], [], toAdd, toRemove, true);
-        yield return info.CurrentNode.Outgoing[^1];
-
-        toAdd.Clear();
         var toSubst = new List<Subst>(1);
 
         // We can only reuse the prefix and not the postfix, because the substitution will be applied afterwards to the changed "Str"
@@ -83,17 +62,22 @@ public class StarIntrModifier : ModifierBase {
         toAdd.Add(new StrMem(
                     info.Env.StrManager.Concat(po, varDroppedSubst),
                     mem.Regex,
-                    info.Env.StrManager.Concat(info.Env.StrManager.DropRight(mem.History, DropCnt), cycle),
+                    info.Env.StrManager.DropRight(mem.History, DropCnt),
                     mem.Id,
                     Reason
                 )
             );
         toAdd.Add(new StrMem(info.Env.MkString(pr), cycle, info.Env.EmptyStr, info.NextRegexId++, Reason));
-        Str blocked = info.Env.StrManager.Concat(Base, info.Env.StrManager.AllStr);
+        var nonNullableBase = Base;
+        if (nonNullableBase.Nullable) {
+            // Make sure we don't have a nullable regex - otherwise this would be trivially satisfiable
+            nonNullableBase = info.Env.StrManager.MkIntersection([nonNullableBase, info.Env.StrManager.MkComplement(info.Env.EmptyStr)]);
+        }
+
+        Str blocked = info.Env.StrManager.Concat(nonNullableBase, info.Env.StrManager.AllStr);
         Debug.Assert(!blocked.Nullable);
         toAdd.Add(new StrMem(info.Env.MkString(po), info.Env.StrManager.MkComplement(blocked), info.Env.EmptyStr, info.NextRegexId++, Reason));
-        toAdd.Add(IntLe.MkLt(info.Env.ZeroInt, LenVar.MkLenPoly([po], info.Env), Reason));
-
+        
         info.CurrentNode.MkChild(info, toSubst, [], toAdd, toRemove, false);
         yield return info.CurrentNode.Outgoing[^1];
 

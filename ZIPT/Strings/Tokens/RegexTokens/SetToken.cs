@@ -6,6 +6,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+// Token representing a set/range of characters. Used for character-range reasoning and SMT encoding.
 public sealed class SetToken : UnitToken {
 
     public CharacterSet Set { get; }
@@ -70,5 +71,7 @@ public sealed class SetToken : UnitToken {
 
     public override Str Derivative(Environment env, CharacterSet set, bool fwd) =>
         !set.IsDisjoint(Set) ? env.EmptyStr : env.FailStr;
+    // SetToken represents an explicit character set used in regexes; derivative succeeds
+    // only when the consumed set is fully included.
 
 }

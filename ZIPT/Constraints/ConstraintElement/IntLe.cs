@@ -8,7 +8,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
-// Poly <= 0
+// Integer inequality constraint representing polynomial `Poly <= 0` over length variables.
+// Used to propagate bounds and detect arithmetic conflicts during simplification.
 public class IntLe : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }

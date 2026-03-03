@@ -7,6 +7,8 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// DecomposeModifier (disabled): would decompose a membership constraint by splitting
+// the regex into prefix|postfix. Kept here for reference but currently not enabled.
 #if false
 public class DecomposeModifier : ModifierBase {
     public StrMem Mem { get; }

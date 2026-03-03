@@ -3,6 +3,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Offer two progress choices when a power could be epsilon: either set its exponent to 0
+// or equate its base to the empty string (both produce child nodes).
 public class PowerEpsilonModifier : ModifierBase {
 
     public PowerToken Power { get; }
@@ -10,8 +12,6 @@ public class PowerEpsilonModifier : ModifierBase {
     public PowerEpsilonModifier(PowerToken power, DependencyTracker reason) : base(reason) => Power = power;
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
-        // Power.Power = 0 (progress)
-        // Power.Base / "" (progress)
         info.CurrentNode.MkChild(info, 
             [], [],
             [new IntEq(Power.Power, Reason)], [],

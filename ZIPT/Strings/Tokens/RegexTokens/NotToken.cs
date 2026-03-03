@@ -6,6 +6,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+// Complement token for regexes (logical NOT). Used in minterm completion and derivative via complement.
 public sealed class NotToken : StrToken {
 
     public Str Base { get; }

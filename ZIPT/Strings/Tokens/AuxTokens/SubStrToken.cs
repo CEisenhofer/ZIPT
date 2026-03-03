@@ -6,6 +6,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.AuxTokens;
 
+// Named token representing a substring operation `subStr(s, from, len)`; used in expressions and SMT translation.
 public sealed class SubStrToken : NamedStrToken {
 
     public Str S { get; }

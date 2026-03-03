@@ -8,6 +8,8 @@ using ZIPT.Strings.Tokens;
 namespace ZIPT.Constraints.ConstraintElement;
 
 // Poly = R
+// Integer equality constraint representing polynomial `Poly = 0` over length variables.
+// Used during arithmetic simplification and to derive bounds for length variables.
 public class IntEq : IntConstraint {
 
     public PDD<BigInteger> Poly { get; set; }

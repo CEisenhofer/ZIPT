@@ -5,8 +5,9 @@ using ZIPT.MiscUtils;
 
 namespace ZIPT.Strings.Tokens;
 
+// Symbolic character token (a named unknown character). Used in character-range tracking and substitution.
 public class SymCharToken : UnitToken { 
-    
+
     public string Name { get; }
 
     public SymCharToken(NamedStrToken parent) {

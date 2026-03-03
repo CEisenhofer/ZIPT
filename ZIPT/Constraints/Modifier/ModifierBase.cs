@@ -4,6 +4,9 @@ namespace ZIPT.Constraints.Modifier;
 
 public abstract class ModifierBase : IComparable<ModifierBase> {
 
+    // Base class for search modifiers (splits, substitutions, stabilizer introductions).
+    // Modifiers produce one or more Nielsen edges (child nodes) when applied.
+
     // This should be unique!! [whether left or right reduce is saved within the modifier]
     static readonly Dictionary<Type, int> TypeOrder = [];
 

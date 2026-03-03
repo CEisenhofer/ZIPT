@@ -1,4 +1,5 @@
 ﻿using Microsoft.Z3;
+// Auxiliary suffix-of constraint used as an internal helper during propagation and rewriting.
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;

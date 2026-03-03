@@ -3,6 +3,8 @@
 namespace ZIPT.Constraints;
 
 // Tracks if some constraint depends on another constraint
+// Tracks dependencies of derived constraints on original input constraints (bitvector).
+// Used to report minimal unsat cores and to attach reasons to modifiers/constraints.
 public class DependencyTracker {
     uint[] hasDependency; // a bitvector where the i-th bit indicates that constraint i from the input had an effect on the constraint
 

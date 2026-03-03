@@ -9,6 +9,9 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens;
 
+// Token representing a repeated substring `Base^{Power}`; used for compact loops and arithmetic-powered repetition.
+// Token representing repeated substring `Base^{Power}`. Used to compactly encode repetitions
+// and to support power-aware splitting and unwinding during search.
 public sealed class PowerToken : StrToken {
 
     public Str Base { get; }
@@ -40,6 +43,7 @@ public sealed class PowerToken : StrToken {
         return env.MkString(new PowerToken(b, power));
     }
 
+    // Decompose a power token into a bounded repetition `u^m P(u)` for splitting/unwinding.
     public override List<StrDecomposition> GetDecomposition(NielsenNode node, bool fwd) {
         // P(u^n) := u^m P(u) with 0 <= m < n
         IntVar m = new();
@@ -61,6 +65,7 @@ public sealed class PowerToken : StrToken {
         return decompositions;
     }
 
+    // Convert power token to an SMT-level representation using the environment's power constructor.
     public override Expr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) =>
         env.MkPower(Base.ToExpr(env, currentModificationCnt), Power.ToExpr(env, currentModificationCnt));
 

@@ -36,6 +36,10 @@ public enum BacktrackReasons {
 
 public class NielsenNode {
 
+    // Node in the Nielsen search graph. Holds the current set of constraints (string equalities,
+    // membership and integer constraints), pruning information (character ranges, integer bounds)
+    // and bookkeeping used during simplification/extension and model extraction.
+
     public int Id { get; }
     public NielsenGraph Graph { get; }
 
@@ -107,6 +111,7 @@ public class NielsenNode {
         graph.AddNode(this);
     }
 
+    // Create a fresh root node in the Nielsen graph and register it with the graph.
     public NielsenNode(NielsenGraph graph, NielsenNode parent) : this(graph) {
         ConstraintsStrEq = new NList<StrEq>(parent.ConstraintsStrEq.Count);
         ConstraintsStrMem = new Dictionary<uint, StrMem>(parent.ConstraintsStrMem.Count);
@@ -115,6 +120,7 @@ public class NielsenNode {
         foreach (var e in parent.ConstraintsStrEq) {
             ConstraintsStrEq.Add(new StrEq(e.LHS, e.RHS, e.Reason));
         }
+
         foreach (var e in parent.ConstraintsStrMem) {
             Debug.Assert(e.Key == e.Value.Id);
             ConstraintsStrMem.Add(e.Key, new StrMem(e.Value.Str, e.Value.Regex, e.Value.History, e.Value.Id, e.Value.Reason));
@@ -140,6 +146,7 @@ public class NielsenNode {
 
     }
 
+    // Create a child node by cloning parent's constraints; used when applying substitutions.
     public NielsenNode(LocalInfo info,
         IReadOnlyList<Subst> subst,
         IReadOnlyList<CharSubst> substC,
@@ -247,6 +254,7 @@ public class NielsenNode {
         }
     }
 
+    // Apply a string substitution to this node's constraints and adjust watchers/bounds.
     public void Apply(Subst subst, NielsenNode node) {
         Update(ConstraintsStrEq, subst, node);
         Update(ConstraintsStrMem, subst, node);
@@ -348,6 +356,8 @@ public class NielsenNode {
         return res;
     }
 
+    // Produce a signature of current constraints by extracting prefixes up to the first variable occurrences.
+
 
     public bool IsIntFixed(NamedInt v, out InfNum<BigInteger> val) {
         val = default;
@@ -356,6 +366,8 @@ public class NielsenNode {
         val = bounds.bound.Min;
         return bounds.bound.IsUnit;
     }
+
+    // Register integer bounds to be rechecked when related string variables change.
 
     public Interval<BigInteger> GetBounds(NamedInt v, out DependencyTracker? reason) {
         reason = null;
@@ -739,9 +751,9 @@ public class NielsenNode {
                         break;
                     case SimplifyResult.Restart:
                         // Maybe we do not need this anymore... (assertion here just to check)
-                        if (c is IntConstraint ic && ignored.Add(ic))
+                        if ((c is IntConstraint ic && ignored.Add(ic)) || (c is StrEq or StrMem))
                             restart = true;
-                        else if (c is StrEq)
+                        else if (c is StrEq or StrMem)
                             ignored.Clear();
                         break;
                     case SimplifyResult.RestartAndSatisfied:
@@ -1086,7 +1098,7 @@ public class NielsenNode {
     static int checkCnt;
 
     // Unit and progression steps are not countered for depth bound
-    public SolveResult Check(int dep, LocalInfo info) {
+    public SolveResult GraphExpansion(int dep, LocalInfo info) {
         Debug.Assert(Graph.RunIdx > 0);
 
         // We can do this only in case there is no sat node reachable from there
@@ -1218,7 +1230,7 @@ public class NielsenNode {
                 int modCnt = info.ModCnt;
                 // we want to go deep fast if there is no danger of divergence
                 int nextDep = outgoing.Tgt.IsProgressNode ? dep : dep + 1;
-                switch (outgoing.Tgt.Check(nextDep, info)) {
+                switch (outgoing.Tgt.GraphExpansion(nextDep, info)) {
                     case SolveResult.SAT:
                         isSat = true;
                         if (Options.SaturateGraph)
@@ -1441,26 +1453,26 @@ public class NielsenNode {
     public override string ToString() {
         StringBuilder sb = new();
         if (AllConstraints.Any()) {
-            sb.AppendLine("Cnstr:");
+            sb.Append(DotEscapeStr("Cnstr:\n"));
             foreach (var cnstr in AllConstraints) {
                 sb.Append('\t').AppendLine(cnstr.ToString());
             }
         }
         if (DisEqualities.IsNonEmpty()) {
-            sb.AppendLine("DisEq:");
+            sb.Append(DotEscapeStr("DisEq:\n"));
             foreach (var cnstr in DisEqualities) {
                 sb.Append('\t').AppendLine(cnstr.Key + " != {" +
                                            string.Join(", ", cnstr.Value.Select(o => o.ToString())) + "}");
             }
         }
         if (CharRanges.IsNonEmpty()) {
-            sb.AppendLine("Ranges:");
+            sb.Append(DotEscapeStr("Ranges:\n"));
             foreach (var cnstr in CharRanges) {
                 sb.Append('\t').AppendLine(cnstr.Key + " in " + cnstr.Value);
             }
         }
         if (IntBounds.IsNonEmpty()) {
-            sb.AppendLine("Bounds:");
+            sb.Append(DotEscapeStr("Bounds:\n"));
             foreach (var (v, i) in IntBounds) {
                 sb.Append('\t').Append(i.bound.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ")
                     .AppendLine(i.bound.Max.ToString());
@@ -1470,31 +1482,31 @@ public class NielsenNode {
     }
 
     public static string DotEscapeStr(string s) =>
-        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\\n", "<br/>");
 
     public string ToHtmlString() {
         StringBuilder sb = new();
         if (AllConstraints.Any()) {
-            sb.Append("Cnstr:\\n");
+            sb.Append(DotEscapeStr("Cnstr:\\n"));
             foreach (var cnstr in AllConstraints) {
-                sb.Append(DotEscapeStr(cnstr.ToString())).Append("\\n");
+                sb.Append(DotEscapeStr(cnstr.ToString())).Append(DotEscapeStr("\\n"));
             }
         }
         if (DisEqualities.IsNonEmpty()) {
-            sb.Append("DisEq:\\n");
+            sb.Append(DotEscapeStr("DisEq:\\n"));
             foreach (var cnstr in DisEqualities) {
                 sb.Append('\t').Append(cnstr.Key + " &ne; {" +
-                                           string.Join(", ", cnstr.Value.Select(o => DotEscapeStr(o.ToString()))) + "}").Append("\\n");
+                                           string.Join(", ", cnstr.Value.Select(o => DotEscapeStr(o.ToString()))) + "}").Append(DotEscapeStr("\\n"));
             }
         }
         if (CharRanges.IsNonEmpty()) {
-            sb.Append("Ranges:\\n");
+            sb.Append(DotEscapeStr("Ranges:\\n"));
             foreach (var cnstr in CharRanges) {
-                sb.Append('\t').Append(DotEscapeStr(cnstr.Key.ToString()) + " &isin; " + DotEscapeStr(cnstr.Value.ToString())).Append("\\n");
+                sb.Append('\t').Append(DotEscapeStr(cnstr.Key.ToString()) + " &isin; " + DotEscapeStr(cnstr.Value.ToString())).Append(DotEscapeStr("\\n"));
             }
         }
         if (IntBounds.Count > 0) {
-            sb.Append("Bounds:\\n");
+            sb.Append(DotEscapeStr("Bounds:\\n"));
             foreach (var (v, i) in IntBounds) {
                 sb.Append(i.bound.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.bound.Max)
                     .Append("\\n");

@@ -15,8 +15,8 @@ public class ConstNielsenModifier : DirectedNielsenModifier {
     }
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
-        // V / "" (progress)
-        // V / T V (no progress)
+        // Deterministic splitting of a variable into empty or `T+var` branches; used when a
+        // token T (ground) is known to be a possible prefix.
         var subst = new Subst(V, info.Env.EmptyStr);
         info.CurrentNode.MkChild(info, [subst], [], [], [], true);
         yield return info.CurrentNode.Outgoing[^1];

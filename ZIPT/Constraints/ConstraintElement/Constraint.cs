@@ -8,6 +8,10 @@ namespace ZIPT.Constraints.ConstraintElement;
 
 public abstract class Constraint {
 
+    // Base class for all constraints handled by the Nielsen search (string equalities,
+    // membership, integer equalities/inequalities). Provides a common simplify/propagate
+    // entry point and conversion to Z3 expressions.
+
     public bool Satisfied { get; private set; }
     public DependencyTracker Reason { get; protected set; }
     public abstract bool Shared { get; }

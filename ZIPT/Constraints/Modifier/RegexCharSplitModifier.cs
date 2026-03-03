@@ -3,6 +3,7 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Splits a leading symbolic character according to regex minterms, creating child nodes for each case.
 public class RegexVarSplitModifier : DirectedNielsenModifier {
     public NamedStrToken StrVarToken { get; }
     public MinTerms Cases { get; }

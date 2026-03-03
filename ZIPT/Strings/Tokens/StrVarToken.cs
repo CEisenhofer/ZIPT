@@ -4,6 +4,7 @@ using ZIPT.Constraints;
 namespace ZIPT.Strings.Tokens;
 
 public sealed class StrVarToken : NamedStrToken {
+    // Concrete named string variable token used for program-level variables and substitution.
     public override string OriginalName { get; }
 
     StrVarToken(StrVarToken parent) : base(parent) {

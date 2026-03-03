@@ -17,12 +17,25 @@ using ZIPT.Strings.Tokens.RegexTokens;
 
 namespace ZIPT;
 
+// Central environment holding Z3 declarations, translation caches and global solver state
+// (stabilizers, symbol caches, PDD managers). Provides utilities for creating and
+// translating `Str`/token structures into Z3 terms.
 public class Environment : IDisposable {
 
     bool disposed;
 
     public readonly Context Ctx;
     public readonly Sort StringSort;
+
+    public readonly StrManager StrManager;
+    public readonly PDD<BigInteger>.PDDManager IntPDDManager = new();
+    public readonly PDD<BigRational>.PDDManager RatPDDManager = new();
+
+    // Stabilizer; maps regex -> list of known stabilizers
+    // Global and non-backtrackable
+    readonly Dictionary<Str, List<Str>> stabilizers = [];
+
+    readonly HashSet<Str> selfStabilizing = [];
 
     public readonly FuncDecl ConcatFct;
     public readonly FuncDecl PowerFct;
@@ -97,15 +110,6 @@ public class Environment : IDisposable {
     readonly Dictionary<string, StrVarToken> strVarCache = [];
     readonly Dictionary<string, SymCharToken> charVarCache = [];
 
-    public readonly StrManager StrManager;
-    public readonly PDD<BigInteger>.PDDManager IntPDDManager = new();
-    public readonly PDD<BigRational>.PDDManager RatPDDManager = new();
-
-    // Stabilizer; maps regex -> list of known stabilizers
-    // Global and non-backtrackable
-    readonly Dictionary<Str, List<Str>> stabilizers = [];
-
-    readonly HashSet<Str> selfStabilizing = [];
 
     public void AddStabilizer(Str regex, Str stabilizer) {
         if (stabilizer.IsFail || stabilizer.IsEmpty())

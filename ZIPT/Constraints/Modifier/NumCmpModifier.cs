@@ -16,8 +16,8 @@ public class NumCmpModifier : ModifierBase {
     }
 
     public override IEnumerable<NielsenEdge> Apply(LocalInfo info) {
-        // N1 < N2 (progress)
-        // N2 <= N1 (progress)
+        // Numeric comparison branching: produce two child edges corresponding to the two
+        // complementary relations (N1 < N2) or (N2 <= N1).
 
         info.CurrentNode.MkChild(info, 
             [], [],
@@ -37,4 +37,5 @@ public class NumCmpModifier : ModifierBase {
     }
 
     public override string ToString() => $"{N1} < {N2} || {N2} <= {N1}";
+
 }

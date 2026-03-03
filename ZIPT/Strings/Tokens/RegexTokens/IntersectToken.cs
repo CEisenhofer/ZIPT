@@ -8,6 +8,7 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens.RegexTokens;
 
+// Intersection token representing conjunction of regex cases; participates in derivative/minterm computations.
 public sealed class IntersectToken : StrToken {
 
     public IReadOnlyList<Str> Cases { get; }

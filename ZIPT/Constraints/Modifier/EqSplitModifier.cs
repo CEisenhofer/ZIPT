@@ -5,6 +5,8 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Splits a string equality at given indices into two equalities with optional padding.
+// Used to create progress branches by aligning prefixes/postfixes of both sides.
 public class EqSplitModifier : DirectedNielsenModifier {
 
     public StrEq Eq { get; }

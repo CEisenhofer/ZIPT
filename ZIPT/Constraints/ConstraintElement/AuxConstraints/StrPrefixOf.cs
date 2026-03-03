@@ -1,4 +1,6 @@
 ﻿using Microsoft.Z3;
+// Auxiliary prefix constraint used as an internal helper during propagation and rewriting.
+// Represents (possibly negated) `PrefixOf(Contained, S)` facts that are simplified eagerly.
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;

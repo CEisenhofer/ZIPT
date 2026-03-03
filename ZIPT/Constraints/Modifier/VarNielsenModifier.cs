@@ -5,6 +5,8 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.Modifier;
 
+// Variable-focused Nielsen splitting heuristics. Produces substitutions assigning one variable
+// to another or to concatenations of variables, with optional length side-constraints.
 public class VarNielsenModifier : DirectedNielsenModifier {
 
     public StrVarToken V1 { get; }
@@ -65,10 +67,8 @@ public class VarNielsenModifier : DirectedNielsenModifier {
         c.AddConstraints(sc); // 1 <= |V2|
         c.Parent!.SideConstraints.Add(sc.Clone());
 #else
-        // Legacy splitting
-        // V1 / V2 (progress)
-        // V1 / V1V2 (no progress)
-        // V2 / V2V1 (no progress)
+        // Legacy variable splitting: produce variants assigning one variable to another or
+        // concatenations of variables with optional length side constraints to prevent cycles.
         Str s = info.Env.MkString(V2);
         info.CurrentNode.MkChild(info, [new Subst(V1, s)], [], [], [], true);
         yield return info.CurrentNode.Outgoing[^1];

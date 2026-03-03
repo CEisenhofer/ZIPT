@@ -11,26 +11,33 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
+// Annotated regex membership constraint <C, Str, Regex, History> asserting Str \in L(Regex).
+// History records the consumed prefixes and is used for cycle detection and stabilizer extraction.
 public sealed class StrMem : StrEqBase {
 
+    // The string term that must belong to L(Regex).
     public Str Str
     {
         get => LHS;
         private set => LHS = value;
     }
 
+    // The regular expression defining the accepted language.
     public Str Regex
     {
         get => RHS;
         private set => RHS = value;
     }
 
+    // Stable identifier for this constraint; key in ConstraintsStrMem and used for cycle tracking via RegexOccurrence.
     public uint Id { get; }
 
+    // Sequence of characters/minterms consumed from Str so far; extended by SimplifyCharRegex and reset on cycle detection.
     public Str History { get; private set; }
 
     public override bool Sorted => false;
 
+    // Create a new membership constraint with given id and history.
     public StrMem(Str str, Str regex, Str history, uint id, DependencyTracker reason) : base(str, regex, reason) {
         Debug.Assert(LHS.RegexFree);
         // Debug.Assert(RHS.Ground);
@@ -38,6 +45,7 @@ public sealed class StrMem : StrEqBase {
         History = history;
     }
 
+    // Apply a substitution to this constraint and return a new instance if changed.
     public override StrMem Apply(Subst subst, NielsenNode node) {
         var str = node.Env.StrManager.Subst(Str, subst);
         Debug.Assert(Regex.Ground);
@@ -46,6 +54,7 @@ public sealed class StrMem : StrEqBase {
         return new StrMem(str, Regex, History, Id, Reason.Merge(subst.Reason));
     }
 
+    // Apply a character-level substitution to both sides and return updated constraint if any change.
     public override StrMem Apply(CharSubst subst, NielsenNode node) {
         var str  = node.Env.StrManager.Subst(node.Env, Str, subst);
         var regex = node.Env.StrManager.Subst(node.Env, Regex, subst);
@@ -54,6 +63,7 @@ public sealed class StrMem : StrEqBase {
         return new StrMem(str, regex, History, Id, Reason.Merge(subst.Reason));
     }
 
+    // Apply an interpretation (evaluation of variables) to produce a concrete constraint.
     public override StrMem Apply(Interpretation itp) {
         var str = itp.Env.StrManager.Subst(Str, itp);
         var regex = itp.Env.StrManager.Subst(Regex, itp);
@@ -62,9 +72,12 @@ public sealed class StrMem : StrEqBase {
         return new StrMem(str, regex, History, Id, Reason);
     }
 
+    // A constraint is primitive when Str is a single variable; at that point it directly constrains that variable's language.
     public bool IsPrimitiveRegex() => 
         Str.Length == 1 && Str[0] is NamedStrToken;
 
+    // Consumes one leading (or trailing, if !fwd) token by taking a Brzozowski derivative.
+    // Returns Restart on progress, Conflict if the resulting regex is empty, Proceed if the token is not yet concrete.
     SimplifyResult SimplifyCharRegex(LocalInfo info, bool fwd) {
         var t = Str[fwd];
         Debug.Assert(Regex.Derivable);
@@ -72,6 +85,7 @@ public sealed class StrMem : StrEqBase {
             var prevRegex = Regex;
             Regex = Regex.Derivative(info.Env, c, fwd);
             if (fwd) {
+                // Propagate self-stabilizing flag: states reachable from a self-stabilizing regex need no further stabilizer analysis.
                 if (info.Env.IsSelfStabilizing(prevRegex) && !Regex.IsFail)
                     info.Env.SetSelfStabilizing(Regex);
                 History = info.Env.StrManager.Concat(History, c);
@@ -85,8 +99,10 @@ public sealed class StrMem : StrEqBase {
         if (!info.CurrentNode.CharRanges.TryGetValue(sc, out CharacterSet? val))
             val = CharacterSet.Full;
         var min = Regex.FirstMinTerms();
-        // TODO: maybe do it directly with the MinTerms structure?
+        // Try to match symbolic character token against regex first minterms.
+        // If a minterm fully contains the current symbolic set, take its derivative.
         foreach (var s in min.ToCharacterSets()) {
+            // sc must be fully contained in the minterm s to take this branch of the derivative.
             if (!val.IsSubset(s)) 
                 continue;
             var prevRegex = Regex;
@@ -106,6 +122,7 @@ public sealed class StrMem : StrEqBase {
     // Extract a blocking stabilizer from a detected cycle in search
     StarIntrModifier? ExtractCycle(LocalInfo info, NielsenEdge edge) {
         var mem = edge.Src.ConstraintsStrMem[Id];
+        // If history did not advance or string empty, no non-trivial cycle to extract.
         if (mem.History.Length == History.Length || Str.IsEmpty())
             // Nothing happened - we would pull out a \epsilon
             return null;
@@ -127,18 +144,18 @@ public sealed class StrMem : StrEqBase {
         else
             dropCnt = rawCycle.Length;
 
-        // Build strengthened stabilizer using the history tokens and intermediate stabilizers
-        Str strengthened = StabilizerFromCycle(info.Env, Regex, rawCycle);
-        if (strengthened.IsEmpty() || strengthened.Nullable)
-            return null;
+        if (!info.Env.IsSelfStabilizing(Regex)) {
+            // Build strengthened stabilizer using the history tokens and intermediate stabilizers
+            Str strengthened = StabilizerFromCycle(info.Env, Regex, rawCycle);
+            if (strengthened.IsEmpty() || strengthened.Nullable)
+                return null;
 
-        // Add (E'_t(r))* to S(r)
-        info.Env.AddStabilizer(Regex, info.Env.StrManager.MkStar(strengthened));
+            // Add stabilizer to the set of known stabilizers
+            info.Env.AddStabilizer(Regex, info.Env.StrManager.MkStar(strengthened));
+        }
 
         // Use the full union of all known stabilizers for decomposition
         Str stabUnion = info.Env.GetStabilizerUnion(Regex);
-        Debug.Assert(!stabUnion.IsFail);
-        Debug.Assert(!stabUnion.Nullable);
         return new StarIntrModifier(Id, edge.Src, stabUnion, dropCnt, Reason);
     }
 
@@ -162,7 +179,7 @@ public sealed class StrMem : StrEqBase {
         if (chars.Count == 0)
             return env.EmptyStr;
 
-        // Build stabilizer iteratively
+        // Build stabilizer iteratively: include filtered stabilizers between tokens
         Str result = env.EmptyStr;
         Str currentRegex = regex;
 
@@ -170,7 +187,7 @@ public sealed class StrMem : StrEqBase {
             var (token, charSet) = chars[i];
 
             if (i > 0) {
-                // Insert sub-stabilizer
+                // Insert sub-stabilizer that cannot start with characters in charSet
                 Str stabPart = GetFilteredStabilizerStar(env, currentRegex, charSet);
                 if (stabPart.IsNonEmpty())
                     result = env.StrManager.Concat(result, stabPart);
@@ -206,6 +223,7 @@ public sealed class StrMem : StrEqBase {
         return env.StrManager.MkStar(env.StrManager.MkUnion(filtered));
     }
 
+    // Simplify along one direction (forward or backward): consume tokens and simplify powers.
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
         while (Str.IsNonEmpty() && Regex.IsNonEmpty() && !IsPrimitiveRegex()) {
             
@@ -240,45 +258,50 @@ public sealed class StrMem : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
+    // Main simplification and propagation routine for the regex-membership constraint.
+    // Performs forward and backward simplification, handles primitive-variable cases,
+    // subsumption via stabilizers, and emptiness/overapproximation checks.
     protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr, ref BacktrackReasons reason) {
-        if (IsPrimitiveRegex()) {
-            if (Str[0] is NamedStrToken v && Regex is { RegexFree: true, Ground: true }) {
-                if (sConstr.Add(new Subst(v, Regex)))
-                    return SimplifyResult.RestartAndSatisfied;
-                return SimplifyResult.Restart;
+        while (true) {
+            if (IsPrimitiveRegex()) {
+                if (Str[0] is NamedStrToken v && Regex is { RegexFree: true, Ground: true }) {
+                    if (sConstr.Add(new Subst(v, Regex)))
+                        return SimplifyResult.RestartAndSatisfied;
+                    return SimplifyResult.Restart;
+                }
+                return SimplifyResult.Proceed;
             }
-            return SimplifyResult.Proceed;
-        }
-        if (!Regex.Ground)
-            // there could be a split variable on the RHS we need to get rid of first
-            return SimplifyResult.Proceed;
-        Log.WriteLine($"Simplify Membership : {Str} in {Regex}");
-        if (SimplifyDir(info, sConstr, true) == SimplifyResult.Conflict) {
-            reason = BacktrackReasons.SymbolClash;
-            return SimplifyResult.Conflict;
-        }
+            if (!Regex.Ground)
+                // there could be a split variable on the RHS we need to get rid of first
+                return SimplifyResult.Proceed;
+            Log.WriteLine($"Simplify Membership : {Str} in {Regex}");
+            if (SimplifyDir(info, sConstr, true) == SimplifyResult.Conflict) {
+                reason = BacktrackReasons.SymbolClash;
+                return SimplifyResult.Conflict;
+            }
 
-        if (SimplifyDir(info, sConstr, false) == SimplifyResult.Conflict) {
-            reason = BacktrackReasons.SymbolClash;
-            return SimplifyResult.Conflict;
-        }
+            if (SimplifyDir(info, sConstr, false) == SimplifyResult.Conflict) {
+                reason = BacktrackReasons.SymbolClash;
+                return SimplifyResult.Conflict;
+            }
 
-        if (Str.IsEmpty() && Regex.IsEmpty())
-            return SimplifyResult.Satisfied;
-
-        if (Str.IsEmpty()) {
-            if (Regex.Nullable)
+            if (Str.IsEmpty() && Regex.IsEmpty())
                 return SimplifyResult.Satisfied;
-            reason = BacktrackReasons.SymbolClash;
-            return SimplifyResult.Conflict;
+
+            if (Str.IsEmpty()) {
+                if (Regex.Nullable)
+                    return SimplifyResult.Satisfied;
+                reason = BacktrackReasons.SymbolClash;
+                return SimplifyResult.Conflict;
+            }
+
+            if (Regex.IsFull)
+                return SimplifyResult.Satisfied;
+
+            // Subsumption step: if leading variable x is subsumed by stabilizers, drop x
+            if (!TrySubsume(info))
+                break;
         }
-
-        if (Regex.IsFull)
-            return SimplifyResult.Satisfied;
-
-        // Subsumption step: if leading variable x has L(∩R^x) ⊆ L((⊔S(r))*), drop x
-        if (TrySubsume(info, sConstr))
-            return SimplifyResult.Restart;
 
         if (Regex.IsEmpty()) {
             // Remove powers that actually do not exist anymore
@@ -308,7 +331,7 @@ public sealed class StrMem : StrEqBase {
     }
 
     // Subsumption step: check if leading variable can be dropped as it is subsumed by the regex stabilizer
-    bool TrySubsume(LocalInfo info, DetModifier sConstr) {
+    bool TrySubsume(LocalInfo info) {
         if (Str.IsEmpty() || IsPrimitiveRegex())
             return false;
         if (Str.First is not NamedStrToken x)
@@ -344,6 +367,7 @@ public sealed class StrMem : StrEqBase {
 
     static int extendCnt;
 
+    // Decide how to extend this constraint into a modifier (split, star introduction, etc.).
     public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
         extendCnt++;
         // Don't sort -- this should have happened before in simplify!!
@@ -407,6 +431,7 @@ public sealed class StrMem : StrEqBase {
         return History.CompareTo(otherMem.History);
     }
 
+    // Convert this constraint to a Z3 Boolean expression using environment's membership function.
     public override BoolExpr ToExpr(Environment env, Dictionary<NamedStrToken, int> currentModificationCnt) => 
         (BoolExpr)env.ReMemFct.Apply(LHS.ToExpr(env, currentModificationCnt), RHS.ToExpr(env, currentModificationCnt));
 

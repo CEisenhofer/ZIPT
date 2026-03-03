@@ -17,6 +17,9 @@ public enum SolveResult {
 
 public static class ZiptSolver {
 
+    // Top-level driver for the ZIPT solver. Parses options, wires the user-propagator and
+    // runs the solver loop that interacts with the Nielsen search via the propagator.
+
     [DoesNotReturn]
     static void Usage(string? error) {
         if (error is not null)

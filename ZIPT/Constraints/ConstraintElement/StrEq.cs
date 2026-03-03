@@ -11,13 +11,17 @@ using ZIPT.Strings.Tokens;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
+// String equality constraint used by the Nielsen search. Encapsulates LHS == RHS and
+// provides simplification, decomposition and substitution helpers used during splitting.
 public sealed class StrEq : StrEqBase {
 
+    // Simple string equality constraint constructor; ensures both sides are regex-free.
     public StrEq(Str lhs, Str rhs, DependencyTracker reason) : base(lhs, rhs, reason) {
         Debug.Assert(lhs.RegexFree);
         Debug.Assert(rhs.RegexFree);
     }
 
+    // Apply a string substitution to both sides and return a (possibly) new constraint.
     public override StrEq Apply(Subst subst, NielsenNode node) {
         var lhs = node.Env.StrManager.Subst(LHS, subst);
         var rhs = node.Env.StrManager.Subst(RHS, subst);
@@ -27,6 +31,7 @@ public sealed class StrEq : StrEqBase {
         return new StrEq(lhs, rhs, Reason.Merge(subst.Reason));
     }
 
+    // Apply a character-level substitution to both sides and maintain canonical ordering.
     public override StrEq Apply(CharSubst subst, NielsenNode node) {
         var lhs = node.Env.StrManager.Subst(node.Env, LHS, subst);
         var rhs = node.Env.StrManager.Subst(node.Env, RHS, subst);
@@ -36,6 +41,7 @@ public sealed class StrEq : StrEqBase {
         return new StrEq(lhs, rhs, Reason.Merge(subst.Reason));
     }
 
+    // Apply an interpretation (concrete evaluation) to both sides and sort.
     public override StrEq Apply(Interpretation itp) {
         var lhs = itp.Env.StrManager.Subst(LHS, itp);
         var rhs = itp.Env.StrManager.Subst(RHS, itp);
@@ -46,6 +52,7 @@ public sealed class StrEq : StrEqBase {
     }
 
 
+    // Collect direct Nielsen dependencies between named string variables and their copied prefixes.
     public void GetNielsenDep(Environment env, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, bool fwd) {
         if (LHS.IsEmpty() || RHS.IsEmpty())
             return;
@@ -89,6 +96,7 @@ public sealed class StrEq : StrEqBase {
         }
     }
 
+    // Detect whether there is a dependency path from x to "to" (used to avoid non-terminating unwinding).
     static bool HasDepCycle(NamedStrToken x, NamedStrToken to, Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep, HashSet<NamedStrToken> visited, List<(NamedStrToken v, List<StrToken> prefix)> path) {
         if (x.Equals(to))
             return true;
@@ -112,6 +120,8 @@ public sealed class StrEq : StrEqBase {
         return false;
     }
 
+    // Final simplification pass used at the end of preprocessing/search to emit substitutions
+    // and short-circuit simple cases (unit prefixes, dependent variables, etc.).
     public void SimplifyFinal(Environment env, DetModifier sConstr,
         Dictionary<NamedStrToken, Dictionary<NamedStrToken, List<StrToken>>> varDep,
         Dictionary<NamedStrToken, Dictionary<NamedStrToken, uint>> largerVars,
@@ -264,12 +274,14 @@ public sealed class StrEq : StrEqBase {
     }
 
     // Try to add the substitution: x / s ==> do an occurrence check. If it fails, we have to add it as an ordinary equation
+    // Try to add a definition v -> s if it passes the occurrence check; otherwise returns false.
     public bool AddDefinition(StrVarToken v, Str s, NielsenNode node, DetModifier sConstr) {
         if (s.ContainsVar(v))
             return false;
         return sConstr.Add(new Subst(v, s));
     }
 
+    // Simplify along one direction: consume matching tokens, handle powers and symbolic chars.
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
         while (LHS.IsNonEmpty() && RHS.IsNonEmpty()) {
             SortStr(fwd);
@@ -324,6 +336,8 @@ public sealed class StrEq : StrEqBase {
 
     static int simplifyCount;
 
+    // Main equality simplification driver called by the constraint framework. Performs both
+    // directional simplification passes and handles empty/partial cases.
     protected override SimplifyResult SimplifyAndPropagateInternal(LocalInfo info, DetModifier sConstr,
         ref BacktrackReasons reason) {
         simplifyCount++;

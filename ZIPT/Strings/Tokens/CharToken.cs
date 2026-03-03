@@ -6,6 +6,8 @@ using ZIPT.Strings.Chunks;
 
 namespace ZIPT.Strings.Tokens;
 
+// Concrete character token. Encapsulates a single character value and supports
+// conversion to SMT expressions and character-based derivatives.
 public sealed class CharToken : UnitToken {
 
     public uint Value { get; }
