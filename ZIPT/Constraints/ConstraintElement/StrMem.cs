@@ -162,46 +162,66 @@ public sealed class StrMem : StrEqBase {
     // Compute strengthened stabilizer from cycle
     static Str StabilizerFromCycle(Environment env, Str regex, Str cycleHistory) {
         // Extract character tokens from the cycle history 
-        List<(StrToken token, CharacterSet charSet)> chars = [];
+        EList<(StrToken token, CharacterSet charSet)> currentCycle = [];
+        HashSet<EList<(StrToken token, CharacterSet charSet)>> cycles = [];
+        Str s = regex;
         foreach (var t in cycleHistory.GetEnumerator()) {
-            if (t is KleeneToken)
-                continue;
             CharacterSet cs;
             if (t is CharToken ct)
                 cs = new CharacterSet(new CharacterRange(ct.Value));
             else if (t is SetToken st)
                 cs = st.Set;
-            else
+            else {
+                Debug.Assert(false);
                 continue;
-            chars.Add((t, cs));
+            }
+            currentCycle.Add((t, cs));
+            s = s.Derivative(env, cs, true);
+            if (ReferenceEquals(s, regex)) {
+                // We found a shorter cycle
+                // This can in fact happen in case we substituted a larger chunk before
+                // e.g., x... \in .* and we apply x / ab
+                // we would get both a "a" and a "b" cycle.
+                cycles.Add(currentCycle);
+                currentCycle = [];
+            }
         }
 
-        if (chars.Count == 0)
+        if (currentCycle.Count > 0)
+            cycles.Add(currentCycle);
+
+        if (cycles.Count == 0)
             return env.EmptyStr;
 
-        // Build stabilizer iteratively: include filtered stabilizers between tokens
-        Str result = env.EmptyStr;
-        Str currentRegex = regex;
+        Debug.Assert(cycles.All(o => o.Count > 0));
+        List<Str> cases = [];
 
-        for (int i = 0; i < chars.Count; i++) {
-            var (token, charSet) = chars[i];
+        foreach (var chars in cycles) {
+            // Build stabilizer iteratively: include filtered stabilizers between tokens
+            Str result = env.EmptyStr;
+            Str currentRegex = regex;
 
-            if (i > 0) {
-                // Insert sub-stabilizer that cannot start with characters in charSet
-                Str stabPart = GetFilteredStabilizerStar(env, currentRegex, charSet);
-                if (stabPart.IsNonEmpty())
-                    result = env.StrManager.Concat(result, stabPart);
+            for (int i = 0; i < chars.Count; i++) {
+                var (token, charSet) = chars[i];
+
+                if (i > 0) {
+                    // Insert sub-stabilizer that cannot start with characters in charSet
+                    Str stabPart = GetFilteredStabilizerStar(env, currentRegex, charSet);
+                    if (stabPart.IsNonEmpty())
+                        result = env.StrManager.Concat(result, stabPart);
+                }
+
+                // Append current token
+                result = env.StrManager.Concat(result, token);
+
+                // Compute derivative for next step
+                if (i < chars.Count - 1)
+                    currentRegex = currentRegex.Derivative(env, charSet, true);
             }
-
-            // Append current token
-            result = env.StrManager.Concat(result, token);
-
-            // Compute derivative for next step
-            if (i < chars.Count - 1)
-                currentRegex = currentRegex.Derivative(env, charSet, true);
+            cases.Add(result);
         }
 
-        return result;
+        return env.StrManager.MkUnion(cases);
     }
 
     // Gets a stabilizer from regex (that cannot start with any character in excludeCharSet)
