@@ -101,6 +101,49 @@ public class Environment : IDisposable {
     public readonly PDD<BigInteger>.PDDManager IntPDDManager = new();
     public readonly PDD<BigRational>.PDDManager RatPDDManager = new();
 
+    // Stabilizer; maps regex -> list of known stabilizers
+    // Global and non-backtrackable
+    readonly Dictionary<Str, List<Str>> stabilizers = [];
+
+    readonly HashSet<Str> selfStabilizing = [];
+
+    public void AddStabilizer(Str regex, Str stabilizer) {
+        if (stabilizer.IsFail || stabilizer.IsEmpty())
+            return;
+        if (!stabilizers.TryGetValue(regex, out var list))
+            stabilizers[regex] = list = [];
+        foreach (var s in list)
+            if (s.Equals(stabilizer))
+                return;
+        list.Add(stabilizer);
+    }
+
+    public Str GetStabilizerUnion(Str regex) {
+        if (!stabilizers.TryGetValue(regex, out var list) || list.Count == 0)
+            return StrManager.FailStr;
+        return StrManager.MkUnion(list);
+    }
+
+    public bool HasStabilizers(Str regex) =>
+        stabilizers.TryGetValue(regex, out var list) && list.Count > 0;
+
+    public bool IsSelfStabilizing(Str regex) {
+        bool isSelfStabilizing = selfStabilizing.Contains(regex);
+        Debug.Assert(!isSelfStabilizing || (stabilizers.TryGetValue(regex, out var stab) && stab.Count == 1));
+        return isSelfStabilizing;
+    }
+
+    public void SetSelfStabilizing(Str regex) {
+        if (!selfStabilizing.Add(regex)) {
+            Log.WriteLine("Skipping marking as self-stabilizing as it is already");
+            return;
+        }
+        stabilizers[regex] = [regex];
+    }
+
+    public IReadOnlyList<Str> GetStabilizers(Str regex) =>
+        stabilizers.TryGetValue(regex, out var list) ? list : [];
+
     public PDD<BigInteger> ZeroInt => IntPDDManager.Zero;
     public PDD<BigInteger> OneInt => IntPDDManager.One;
     public PDD<BigRational> ZeroRat => RatPDDManager.Zero;

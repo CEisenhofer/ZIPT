@@ -1292,7 +1292,7 @@ public class NielsenNode {
             if (v is [{ BasicRegex: true }])
                 // for more complex regex involving complements and intersection we have to check
                 continue;
-            if (!Intersect(v))
+            if (!CheckEmptiness(v))
                 return false;
         }
         return true;
@@ -1311,7 +1311,7 @@ public class NielsenNode {
         foreach (var (x, v) in regexList) {
             Debug.Assert(v.Count > 0);
             List<CharToken> witness = [];
-            Log.Verify(Intersect(v, witness));
+            Log.Verify(CheckEmptiness(v, witness));
             witnesses.Add(x, witness);
         }
         return witnesses;
@@ -1346,7 +1346,12 @@ public class NielsenNode {
                 continue;
             strApprox = Env.StrManager.Subst(strApprox, r, Env.StrManager.AllStr);
         }
-        return Intersect([strApprox, regex]);
+        return CheckEmptiness([strApprox, regex]);
+    }
+
+    public bool IsLanguageSubset(Str subset, Str superset) {
+        Str complement = Env.StrManager.MkComplement(superset);
+        return !CheckEmptiness([subset, complement]);
     }
 
     static string ToDfaDot(Str start, Dictionary<Str, (CharacterSet by, Str from)?> visited) {
@@ -1391,7 +1396,7 @@ public class NielsenNode {
 
     static int intersectCnt = 0;
 
-    bool Intersect(List<Str> regexes, List<CharToken>? witness = null) {
+    bool CheckEmptiness(List<Str> regexes, List<CharToken>? witness = null) {
         // or create the automaton
         intersectCnt++;
         Debug.Assert(witness is null || witness.Count == 0);

@@ -34,13 +34,11 @@ public class StarIntrModifier : ModifierBase {
         info.CurrentNode.Backedge = info.CurrentNode;
 
         Debug.Assert(!Base.Nullable);
-        //cases.Add(s);
-        //Str cycleBase = info.Env.StrManager.MkUnion(cases);
-        Debug.Assert(!Base.Nullable);
-        Str cycle = info.Env.StrManager.MkStar(
-            //o.IsEmpty() ? s : info.Env.StrManager.MkUnion([o, s])
-            Base
-        );
+        Str cycle = info.Env.StrManager.MkStar(Base);
+
+        // Self-stabilization: S(cycle) := { cycle }
+        info.Env.AddStabilizer(cycle, cycle);
+
         StrVarToken pr;
         StrVarToken po = info.Env.CreateFreshStrVar("X");
         StrMem mem = info.CurrentNode.ConstraintsStrMem[Id];

@@ -1,11 +1,13 @@
 ﻿using Microsoft.Z3;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using ZIPT.Constraints.Modifier;
 using ZIPT.IntUtils;
 using ZIPT.MiscUtils;
 using ZIPT.Strings.Chunks;
 using ZIPT.Strings.Tokens;
 using ZIPT.Strings.Tokens.RegexTokens;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ZIPT.Constraints.ConstraintElement;
 
@@ -67,15 +69,19 @@ public sealed class StrMem : StrEqBase {
         var t = Str[fwd];
         Debug.Assert(Regex.Derivable);
         if (t is CharToken c) {
+            var prevRegex = Regex;
             Regex = Regex.Derivative(info.Env, c, fwd);
-            if (fwd)
+            if (fwd) {
+                if (info.Env.IsSelfStabilizing(prevRegex) && !Regex.IsFail)
+                    info.Env.SetSelfStabilizing(Regex);
                 History = info.Env.StrManager.Concat(History, c);
+            }
             Str = info.Env.StrManager.Drop(Str, fwd);
             return Regex.IsFail ? SimplifyResult.Conflict : SimplifyResult.Restart;
         }
         if (t is not SymCharToken sc)
             return SimplifyResult.Proceed;
-        
+
         if (!info.CurrentNode.CharRanges.TryGetValue(sc, out CharacterSet? val))
             val = CharacterSet.Full;
         var min = Regex.FirstMinTerms();
@@ -83,9 +89,13 @@ public sealed class StrMem : StrEqBase {
         foreach (var s in min.ToCharacterSets()) {
             if (!val.IsSubset(s)) 
                 continue;
+            var prevRegex = Regex;
             Regex = Regex.Derivative(info.Env, s, fwd);
-            if (fwd)
+            if (fwd) {
+                if (info.Env.IsSelfStabilizing(prevRegex) && !Regex.IsFail)
+                    info.Env.SetSelfStabilizing(Regex);
                 History = info.Env.StrManager.Concat(History, new SetToken(s));
+            }
             Str = info.Env.StrManager.Drop(Str, fwd);
             return Regex.IsFail ? SimplifyResult.Conflict : SimplifyResult.Restart;
         }
@@ -93,10 +103,11 @@ public sealed class StrMem : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
+    // Extract a blocking stabilizer from a detected cycle in search
     StarIntrModifier? ExtractCycle(LocalInfo info, NielsenEdge edge) {
         var mem = edge.Src.ConstraintsStrMem[Id];
         if (mem.History.Length == History.Length || Str.IsEmpty())
-            // Nothing happened - we would pull out a \epsilon*
+            // Nothing happened - we would pull out a \epsilon
             return null;
         if (mem.History.Length >= History.Length ||
             !History.GetEnumerator().Take((int)mem.History.Length).SequenceEqual(mem.History.GetEnumerator()))
@@ -105,23 +116,94 @@ public sealed class StrMem : StrEqBase {
         var first = Str.First;
         if (first is not NamedStrToken and not PowerToken)
             return null;
-        Str b = info.Env.StrManager.DropLeft(History, mem.History.Length);
-        if (b is { Length: 1, First: KleeneToken })
+        Str rawCycle = info.Env.StrManager.DropLeft(History, mem.History.Length);
+        if (rawCycle is { Length: 1, First: KleeneToken })
             return null;
         uint dropCnt;
         if (mem.History.Length > 0 && mem.History[mem.History.Length - 1] is KleeneToken k) {
             Debug.Assert(mem.History.Length == 1 || mem.History[mem.History.Length - 2] is not KleeneToken);
-            dropCnt = b.Length + 1;
-            //b = info.Env.StrManager.MkUnion([k.Base, b]);
-            b = info.Env.StrManager.Concat(k, b);
+            dropCnt = rawCycle.Length + 1;
         }
         else
-            dropCnt = b.Length;
+            dropCnt = rawCycle.Length;
 
-        Debug.Assert(!b.Nullable);
-        //cases.Add(s);
-        //Str cycleBase = info.Env.StrManager.MkUnion(cases);
-        return new StarIntrModifier(Id, edge.Src, b, dropCnt, Reason);
+        // Build strengthened stabilizer using the history tokens and intermediate stabilizers
+        Str strengthened = StabilizerFromCycle(info.Env, Regex, rawCycle);
+        if (strengthened.IsEmpty() || strengthened.Nullable)
+            return null;
+
+        // Add (E'_t(r))* to S(r)
+        info.Env.AddStabilizer(Regex, info.Env.StrManager.MkStar(strengthened));
+
+        // Use the full union of all known stabilizers for decomposition
+        Str stabUnion = info.Env.GetStabilizerUnion(Regex);
+        Debug.Assert(!stabUnion.IsFail);
+        Debug.Assert(!stabUnion.Nullable);
+        return new StarIntrModifier(Id, edge.Src, stabUnion, dropCnt, Reason);
+    }
+
+    // Compute strengthened stabilizer from cycle
+    static Str StabilizerFromCycle(Environment env, Str regex, Str cycleHistory) {
+        // Extract character tokens from the cycle history 
+        List<(StrToken token, CharacterSet charSet)> chars = [];
+        foreach (var t in cycleHistory.GetEnumerator()) {
+            if (t is KleeneToken)
+                continue;
+            CharacterSet cs;
+            if (t is CharToken ct)
+                cs = new CharacterSet(new CharacterRange(ct.Value));
+            else if (t is SetToken st)
+                cs = st.Set;
+            else
+                continue;
+            chars.Add((t, cs));
+        }
+
+        if (chars.Count == 0)
+            return env.EmptyStr;
+
+        // Build stabilizer iteratively
+        Str result = env.EmptyStr;
+        Str currentRegex = regex;
+
+        for (int i = 0; i < chars.Count; i++) {
+            var (token, charSet) = chars[i];
+
+            if (i > 0) {
+                // Insert sub-stabilizer
+                Str stabPart = GetFilteredStabilizerStar(env, currentRegex, charSet);
+                if (stabPart.IsNonEmpty())
+                    result = env.StrManager.Concat(result, stabPart);
+            }
+
+            // Append current token
+            result = env.StrManager.Concat(result, token);
+
+            // Compute derivative for next step
+            if (i < chars.Count - 1)
+                currentRegex = currentRegex.Derivative(env, charSet, true);
+        }
+
+        return result;
+    }
+
+    // Gets a stabilizer from regex (that cannot start with any character in excludeCharSet)
+    static Str GetFilteredStabilizerStar(Environment env, Str regex, CharacterSet excludeCharSet) {
+        var stabilizers = env.GetStabilizers(regex);
+        if (stabilizers.Count == 0)
+            return env.EmptyStr;
+
+        List<Str> filtered = [];
+        foreach (var s in stabilizers) {
+            // Include s if it cannot start with any character in excludeCharSet
+            if (s.Derivative(env, excludeCharSet, true).IsFail)
+                filtered.Add(s);
+        }
+
+        if (filtered.Count == 0)
+            return env.EmptyStr;
+
+        return env.StrManager.MkStar(env.StrManager.MkUnion(filtered));
     }
 
     SimplifyResult SimplifyDir(LocalInfo info, DetModifier sConstr, bool fwd) {
@@ -194,6 +276,10 @@ public sealed class StrMem : StrEqBase {
         if (Regex.IsFull)
             return SimplifyResult.Satisfied;
 
+        // Subsumption step: if leading variable x has L(∩R^x) ⊆ L((⊔S(r))*), drop x
+        if (TrySubsume(info, sConstr))
+            return SimplifyResult.Restart;
+
         if (Regex.IsEmpty()) {
             // Remove powers that actually do not exist anymore
             while (Str.IsNonEmpty() && Str[true] is PowerToken p) {
@@ -221,6 +307,41 @@ public sealed class StrMem : StrEqBase {
         return SimplifyResult.Proceed;
     }
 
+    // Subsumption step: check if leading variable can be dropped as it is subsumed by the regex stabilizer
+    bool TrySubsume(LocalInfo info, DetModifier sConstr) {
+        if (Str.IsEmpty() || IsPrimitiveRegex())
+            return false;
+        if (Str.First is not NamedStrToken x)
+            return false;
+        if (!info.Env.HasStabilizers(Regex))
+            return false;
+
+        Str stabUnion = info.Env.GetStabilizerUnion(Regex);
+        Str stabStar = info.Env.StrManager.MkStar(stabUnion);
+
+        // Collect primitive regex constraints R^x for x
+        List<Str> xConstraints = [];
+        foreach (var c in info.CurrentNode.ConstraintsStrMem.Values) {
+            if (!c.IsPrimitiveRegex())
+                continue;
+            if (c.Str.First is NamedStrToken v && v.Equals(x))
+                xConstraints.Add(c.Regex);
+        }
+
+        if (xConstraints.Count == 0)
+            return false;
+
+        // Check if primitive constraints are subsumed the stabilizer
+        Str xRange = info.Env.StrManager.MkIntersection(xConstraints);
+        if (!info.CurrentNode.IsLanguageSubset(xRange, stabStar))
+            return false;
+
+        // Subsumption applies: drop leading x
+        Log.WriteLine($"Subsumption: dropping {x} from {Str} in {Regex}");
+        Str = info.Env.StrManager.DropLeft(Str);
+        return true;
+    }
+
     static int extendCnt;
 
     public override ModifierBase? Extend(LocalInfo info, Dictionary<NamedInt, PDD<BigRational>> intSubst) {
@@ -244,6 +365,14 @@ public sealed class StrMem : StrEqBase {
             var split = ExtractCycle(info, info.CurrentPath[ex]);
             if (split is not null)
                 return split;
+        }
+
+        // If stabilizers exist for this regex but no cycle was detected yet,
+        // still try stabilizer-based decomposition for leading variables
+        if (Str.First is NamedStrToken v2 && info.Env.HasStabilizers(Regex)) {
+            Str stabUnion = info.Env.GetStabilizerUnion(Regex);
+            if (!stabUnion.Nullable)
+                return new StarIntrModifier(Id, info.CurrentNode, stabUnion, 0, Reason);
         }
 
         var first = Regex.FirstMinTerms();

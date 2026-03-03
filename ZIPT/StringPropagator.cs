@@ -673,9 +673,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     public override NielsenGraph Graph { get; }
     public LocalInfo Info { get; set; }
 
-    List<(Expr lhs, Expr rhs)> reportedEqs = [];
-    List<Expr> reportedNonEmpty = [];
-    List<BoolExpr> reportedMems = [];
+    List<(Str s1, Str s2, Expr e1, Expr e2)> reportedEqs = [];
+    List<Str> reportedNonEmpty = [];
+    List<(Str s1, Str s2, BoolExpr e)> reportedMems = [];
     List<BoolExpr> reportedFixed = [];
 
     readonly HashSet<BoolExpr> forbidden = [];
@@ -725,7 +725,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             newInformation = true;
             undoStack.Add(() => newInformation = false);
         }
-        reportedEqs.Add((e1.Dup(), e2.Dup()));
+        reportedEqs.Add((s1, s2, e1.Dup(), e2.Dup()));
         undoStack.Add(() =>
         {
             reportedEqs.Pop();
@@ -734,7 +734,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
     public override void MemInternal(Str s1, Str s2, BoolExpr e) {
 
-        reportedMems.Add((BoolExpr)e.Dup());
+        reportedMems.Add((s1, s2, (BoolExpr)e.Dup()));
         undoStack.Add(() =>
         {
             reportedMems.Pop();
@@ -746,49 +746,15 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     }
 
     protected override void AddNotEpsilonInternal(Expr s) {
-        reportedNonEmpty.Add(s.Dup());
+        var parsed = Env.TryParseStr(s);
+        if (parsed is null)
+            return;
+        reportedNonEmpty.Add(parsed);
+        undoStack.Add(() => reportedNonEmpty.Pop());
         if (!newInformation) {
             newInformation = true;
             undoStack.Add(() => newInformation = false);
         }
-    }
-
-    NielsenNode CreateRoot() {
-        var root = new NielsenNode(Graph);
-        int constraintCnt = reportedEqs.Count + reportedNonEmpty.Count + reportedMems.Count;
-        int id = 0;
-        for (int i = 0; i < reportedEqs.Count; i++) {
-            var (lhs, rhs) = reportedEqs[i];
-            var s1 = Env.TryParseStr(lhs);
-            if (s1 is null)
-                throw new NotSupportedException("Could not parse " + lhs);
-            var s2 = Env.TryParseStr(rhs);
-            if (s2 is null)
-                throw new NotSupportedException("Could not parse " + rhs);
-            var dep = new DependencyTracker(constraintCnt, id++);
-            root.ConstraintsStrEq.Add(new StrEq(s1, s2, dep));
-            var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env), dep);
-            if (!la.Poly.IsZero) // u = v => |u| = |v|
-                root.ConstraintsIntEq.Add(la);
-        }
-        for (int i = 0; i < reportedNonEmpty.Count; i++) {
-            var s = Env.TryParseStr(reportedNonEmpty[i]);
-            if (s is null)
-                throw new NotSupportedException("Could not parse " + reportedNonEmpty[i]);
-            var c = IntLe.MkLt(Env.ZeroInt, LenVar.MkLenPoly(s, Env), new DependencyTracker(constraintCnt, id++));
-            root.ConstraintsIntLe.Add(c);
-        }
-        for (int i = 0; i < reportedMems.Count; i++) {
-            var e = reportedMems[i];
-            var s1 = Env.TryParseStr(e.Arg(0));
-            if (s1 is null)
-                throw new NotSupportedException("Could not parse " + e.Arg(0));
-            var s2 = Env.TryParseStr(e.Arg(1));
-            if (s2 is null)
-                throw new NotSupportedException("Could not parse " + e.Arg(1));
-            root.ConstraintsStrMem.Add((uint)i, new StrMem(s1, s2, Env.EmptyStr, (uint)i, new DependencyTracker(constraintCnt, id++)));
-        }
-        return root;
     }
 
     int finalCnt;
@@ -801,7 +767,28 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             finalCnt++;
             Log.WriteLine("Final (" + finalCnt + ")");
 
-            var root = CreateRoot();
+            // Create the root node and populate it directly from pre-parsed constraints
+            var root = new NielsenNode(Graph);
+            int constraintCnt = reportedEqs.Count + reportedNonEmpty.Count + reportedMems.Count;
+            int id = 0;
+            for (int i = 0; i < reportedEqs.Count; i++) {
+                var (s1, s2, _, _) = reportedEqs[i];
+                var dep = new DependencyTracker(constraintCnt, id++);
+                root.ConstraintsStrEq.Add(new StrEq(s1, s2, dep));
+                var la = new IntEq(LenVar.MkLenPoly(s1, Env), LenVar.MkLenPoly(s2, Env), dep);
+                if (!la.Poly.IsZero)
+                    root.ConstraintsIntEq.Add(la);
+            }
+            for (int i = 0; i < reportedNonEmpty.Count; i++) {
+                var s = reportedNonEmpty[i];
+                var c = IntLe.MkLt(Env.ZeroInt, LenVar.MkLenPoly(s, Env), new DependencyTracker(constraintCnt, id++));
+                root.ConstraintsIntLe.Add(c);
+            }
+            for (int i = 0; i < reportedMems.Count; i++) {
+                var (s1, s2, _) = reportedMems[i];
+                root.ConstraintsStrMem.Add((uint)i, new StrMem(s1, s2, Env.EmptyStr, (uint)i, new DependencyTracker(constraintCnt, id++)));
+            }
+
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
             Info = new LocalInfo(root, forbidden);
             var res = Graph.Check(Info);
@@ -811,8 +798,8 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             }
             // For now, we just add all the reported equations/fixed literals and the relevant blockings
             EqualityPairs pair = new();
-            foreach (var (lhs, rhs) in reportedEqs) {
-                pair.Add(lhs, rhs);
+            foreach (var (_, _, e1, e2) in reportedEqs) {
+                pair.Add(e1, e2);
             }
             if (res) {
                 var prev = selectedPath;
@@ -829,10 +816,11 @@ public sealed class SaturatingStringPropagator : StringPropagator {
                 undoStack.Add(() => selectedPath = prev);
             }
             else {
-                var f = new BoolExpr[Info.UsedForbidden.Count + reportedMems.Count + reportedFixed.Count];
+                var memExprs = reportedMems.Select(m => m.e).ToArray();
+                var f = new BoolExpr[Info.UsedForbidden.Count + memExprs.Length + reportedFixed.Count];
                 Info.UsedForbidden.CopyTo(f, 0);
-                reportedMems.CopyTo(f, Info.UsedForbidden.Count);
-                reportedFixed.CopyTo(f, Info.UsedForbidden.Count + reportedMems.Count);
+                memExprs.CopyTo(f, Info.UsedForbidden.Count);
+                reportedFixed.CopyTo(f, Info.UsedForbidden.Count + memExprs.Length);
                 Propagate(f, pair, Ctx.MkFalse());
             }
         }
