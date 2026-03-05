@@ -44,6 +44,7 @@ public abstract class StringPropagator : UserPropagator {
         Env.CreateFreshStrVar("x");
 
     public override void Push() {
+        Console.WriteLine("Push");
         if (Graph.OuterPropagator.Cancel)
             throw new SolverTimeoutException();
         Log.WriteLine("Push " + undoStack.Level);
@@ -51,6 +52,7 @@ public abstract class StringPropagator : UserPropagator {
     }
 
     public override void Pop(uint n) {
+        Console.WriteLine("Pop " + n);
         if (Graph.OuterPropagator.Cancel)
             throw new SolverTimeoutException();
         try {
@@ -75,6 +77,7 @@ public abstract class StringPropagator : UserPropagator {
             Debug.Assert(valExpr.IsTrue || valExpr.IsFalse);
             fixedCnt++;
             bool val = valExpr.IsTrue;
+            Console.WriteLine("Fixed " + e + ": " + val);
 
             var f = e.FuncDecl;
             if (Env.IsPrefixOf(f)) {
@@ -694,7 +697,9 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     List<BoolExpr> reportedFixed = [];
 
     readonly HashSet<BoolExpr> forbidden = [];
-    HashSet<BoolExpr>? selectedPath;
+    BoolExpr? currentPathMarker;
+    BoolExpr? nextPathMarker;
+    bool currentPathMarkerTrue;
     bool newInformation;
 
     public SaturatingStringPropagator(Solver solver, Environment env) : base(solver, env) {
@@ -712,21 +717,18 @@ public sealed class SaturatingStringPropagator : StringPropagator {
 
 
     protected override void GotPathLiteral(BoolExpr e, bool val) {
-        if (val) {
-            if (selectedPath is null)
-                return;
-            // Just chose another unassigned path literal
-            foreach (var path in selectedPath) {
-                if (NextSplit(path, 0, 1))
-                    break;
+        
+        if (currentPathMarker is not null && e.Equals(currentPathMarker)) {
+            Debug.Assert(!currentPathMarkerTrue);
+            if (val) {
+                currentPathMarkerTrue = true;
+                undoStack.Add(() => currentPathMarkerTrue = false);
             }
             return;
         }
-        if (selectedPath is not null && selectedPath.Contains(e)) {
-            var prev = selectedPath;
-            selectedPath = null;
-            undoStack.Add(() => selectedPath = prev);
-        }
+        if (e.FuncDecl.DeclKind == Z3_decl_kind.Z3_OP_UNINTERPRETED)
+            // Let's ignore some previously used path literals
+            return;
 
         var e2 = (BoolExpr)e.Dup();
         var s = forbidden.Add(e2);
@@ -780,7 +782,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     // emits blocking lemmas or model-based propagations accordingly.
     void FinalCB() {
         try {
-            if (!newInformation && selectedPath is not null && selectedPath.All(o => !forbidden.Contains(o)) && !Info.OutdatedModel)
+            if (!newInformation && currentPathMarkerTrue && !Info.OutdatedModel)
                 // We made our choice and the solver did not backtrack it/contradict it - we silently agree
                 return;
             finalCnt++;
@@ -823,6 +825,7 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             // used to get the set of blocked edges responsible for unsat (not all fixed path literals might be relevant)
             Info = new LocalInfo(root, forbidden);
             var res = Graph.Check(Info);
+            Console.WriteLine(res);
             if (newInformation) {
                 newInformation = false;
                 undoStack.Add(() => newInformation = true);
@@ -832,28 +835,46 @@ public sealed class SaturatingStringPropagator : StringPropagator {
             foreach (var (_, _, e1, e2) in reportedEqs) {
                 pair.Add(e1, e2);
             }
+
+            int add = res && currentPathMarker is not null ? 1 : 0;
+            var memExprs = reportedMems.Select(m => m.e).ToArray();
+            var f = new BoolExpr[Info.UsedForbidden.Count + memExprs.Length + reportedFixed.Count + add];
+            Info.UsedForbidden.CopyTo(f, 0);
+            memExprs.CopyTo(f, Info.UsedForbidden.Count);
+            reportedFixed.CopyTo(f, Info.UsedForbidden.Count + memExprs.Length);
+
             if (res) {
-                var prev = selectedPath;
-                selectedPath = [];
-                bool madeGuess = false;
+                var prev = (BoolExpr?)currentPathMarker?.Dup();
+                if (prev is not null) {
+                    Debug.Assert(f[^1] is null);
+                    f[^1] = prev;
+                }
+                if (currentPathMarker is null) {
+                    currentPathMarker = (BoolExpr)Ctx.MkFreshConst("P", Ctx.BoolSort);
+                    Register(currentPathMarker);
+                }
+
+                nextPathMarker = (BoolExpr)Ctx.MkFreshConst("P", Ctx.BoolSort);
+                Register(nextPathMarker);
+
+                List<BoolExpr> consequences = [];
                 foreach (var path in Info.CurrentPath) {
                     foreach (var r in path.Value.Asserted) {
-                        selectedPath.Add(r);
+                        consequences.Add(r);
                         Register(r);
-                        if (!madeGuess)
-                            madeGuess = NextSplit(r, 0, 1);
                     }
                 }
-                undoStack.Add(() => selectedPath = prev);
+                undoStack.Add(() =>
+                {
+                    nextPathMarker = currentPathMarker;
+                    currentPathMarker = prev;
+                });
+                NextSplit(currentPathMarker, 0, 1);
+                Propagate([], Ctx.MkImplies(currentPathMarker, Ctx.MkAnd(consequences)));
+                Propagate(f, pair, Ctx.MkOr(currentPathMarker, nextPathMarker));
             }
-            else {
-                var memExprs = reportedMems.Select(m => m.e).ToArray();
-                var f = new BoolExpr[Info.UsedForbidden.Count + memExprs.Length + reportedFixed.Count];
-                Info.UsedForbidden.CopyTo(f, 0);
-                memExprs.CopyTo(f, Info.UsedForbidden.Count);
-                reportedFixed.CopyTo(f, Info.UsedForbidden.Count + memExprs.Length);
+            else
                 Propagate(f, pair, Ctx.MkFalse());
-            }
         }
         catch (SolverTimeoutException) {
         }
@@ -863,9 +884,11 @@ public sealed class SaturatingStringPropagator : StringPropagator {
     }
 
     void DecideCB(Expr term, uint idx, bool phase) {
-        if (!phase && selectedPath is not null && selectedPath.Contains(term)) 
+        if (currentPathMarker is not null && currentPathMarker.Equals(term)) {
             // Path literals are better true
-            NextSplit(term, 0, 1);
+            bool succ = NextSplit(term, 0, 1);
+            Console.WriteLine("Decide " + term + ": " + succ);
+        }
     }
 
     // Extract a concrete Interpretation (model) from a completed successful Nielsen search.

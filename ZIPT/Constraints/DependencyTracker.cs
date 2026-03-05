@@ -19,8 +19,11 @@ public class DependencyTracker {
         o1 is null ? o2 : o1.Merge(o2);
 
     public DependencyTracker Merge(DependencyTracker? other) {
-        if (other is null)
+        if (other is null || other.hasDependency.Length == 0)
             return this;
+        if (hasDependency.Length == 0)
+            return other;
+
         Debug.Assert(hasDependency.Length == other.hasDependency.Length);
         if (IsSuperSet(other))
             return this;

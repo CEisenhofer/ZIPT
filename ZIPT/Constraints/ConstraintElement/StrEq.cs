@@ -193,7 +193,7 @@ public sealed class StrEq : StrEqBase {
         // x / u' x with u' <= u while u' incompatible with v and u' is char only
         i = 0;
         for (; i < s2.Length && s2[fwd, i] is CharToken; i++) {
-            // TODO: Use consistent prefix (requires some resource improvements first though)
+            // TODO: Use consistent prefix F(requires some resource improvements first though)
             int j1 = 1;
             int j2 = i;
             bool failed = false;
@@ -502,12 +502,12 @@ public sealed class StrEq : StrEqBase {
 
         //PDD<BigInteger> len = LenVar.MkLenPoly([LHS[dir]], env);
         //PDD<BigRational> lhsLen = len.Apply(intSubst);
-        var lhsLen = LenVar.MkLenPoly([LHS[fwd]], env, []);
+        var lhsLen = LenVar.MkLenPoly([LHS[fwd]], env);
         constDiff += lhsLen.ConstOffset;
 
         //len = LenVar.MkLenPoly([RHS[dir]], env);
         //PDD<BigRational> rhsLen = len.Apply(intSubst);
-        var rhsLen = LenVar.MkLenPoly([RHS[fwd]], env, []);
+        var rhsLen = LenVar.MkLenPoly([RHS[fwd]], env);
         constDiff -= rhsLen.ConstOffset;
 
         // We ignore equal cases until we find the first variable
@@ -540,7 +540,7 @@ public sealed class StrEq : StrEqBase {
                     }
                     seenVariable = true;
                 }
-                len = LenVar.MkLenPoly([t], env, []);
+                len = LenVar.MkLenPoly([t], env);
                 //ratLen = len.Apply(intSubst);
                 constDiff += len.ConstOffset;
                 lhsLen = lhsLen.Add(len);
@@ -560,7 +560,7 @@ public sealed class StrEq : StrEqBase {
                 }
                 seenVariable = true;
             }
-            len = LenVar.MkLenPoly([t], env, []);
+            len = LenVar.MkLenPoly([t], env);
             //ratLen = len.Apply(intSubst);
             constDiff -= len.ConstOffset;
             rhsLen = rhsLen.Add(len);

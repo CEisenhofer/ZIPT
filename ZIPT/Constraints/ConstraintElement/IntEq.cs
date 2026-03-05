@@ -155,8 +155,8 @@ public class IntEq : IntConstraint {
                 continue;
             }
             int i0 = i++;
-            if (n.Coefficient.IsOne || n.Coefficient == BigInteger.MinusOne)
-                continue;
+            //if (n.Coefficient.IsOne || n.Coefficient == BigInteger.MinusOne)
+            //    continue;
             var lb = PDD<BigInteger>.GetBounds(info.CurrentNode, monomials.Where((_, j) => i0 != j), out var dep);
             if (lb.IsFull)
                 continue;

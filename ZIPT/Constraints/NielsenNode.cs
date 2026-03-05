@@ -789,8 +789,6 @@ public class NielsenNode {
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-                if (!outSideCnstr.Trivial)
-                    break;
             }
             if (!outSideCnstr.Trivial)
                 // Better we integrate the new information 
@@ -1136,7 +1134,7 @@ public class NielsenNode {
         checkCnt++;
 
 #if DEBUG
-        if (info.CurrentPath.Count > 50)
+        if (info.CurrentPath.Count > 24)
             Console.WriteLine("Suspiciously deep nesting...");
 #endif
 
@@ -1182,14 +1180,13 @@ public class NielsenNode {
                     // We need a Z3 result so let's ask if we haven't already
                     if (z3Res == Status.UNKNOWN) {
                         Debug.Assert(!IsProgressNode);
-                        z3Res = Graph.SubSolver.Check(info.CurrentPath.SelectMany(o => o.Value.Asserted));
-                    }
-                    if (z3Res == Status.UNKNOWN) {
                         if (!delayedPush)
                             delayedPush = info.DelayedAssert();
+                        z3Res = Graph.SubSolver.Check(info.CurrentPath.SelectMany(o => o.Value.Asserted));
                         if (Graph.SubSolver.ReasonUnknown is "timeout" or "canceled")
                             throw new SolverTimeoutException();
-                        throw new Exception("Z3 returned unknown");
+                        if (z3Res == Status.UNKNOWN)
+                            throw new Exception("Z3 returned unknown");
                     }
                     // If Z3 says unsat, we backtrack
                     if (z3Res == Status.UNSATISFIABLE) {
@@ -1496,7 +1493,7 @@ public class NielsenNode {
             sb.Append(DotEscapeStr("Bounds:\n"));
             foreach (var (v, i) in IntBounds) {
                 sb.Append('\t').Append(i.bound.Min).Append(" \u2264 ").Append(v).Append(" \u2264 ")
-                    .AppendLine(i.bound.Max.ToString());
+                    .Append(DotEscapeStr(i.bound.Max.ToString()));
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();
@@ -1530,7 +1527,7 @@ public class NielsenNode {
             sb.Append(DotEscapeStr("Bounds:\\n"));
             foreach (var (v, i) in IntBounds) {
                 sb.Append(i.bound.Min).Append(" \u2264 ").Append(DotEscapeStr(v.ToString())).Append(" \u2264 ").Append(i.bound.Max)
-                    .Append("\\n");
+                    .Append(DotEscapeStr("\\n"));
             }
         }
         return sb.Length == 0 ? "\u22a4" : sb.ToString();

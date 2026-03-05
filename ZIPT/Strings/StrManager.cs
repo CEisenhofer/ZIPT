@@ -574,18 +574,29 @@ public sealed class StrManager {
     [Pure]
     public Str MkComplement(Str s) {
         if (s.Length == 0)
+            // !\epsilon = ..*
             return Concat(AllChar, AllStr);
         if (s is { Length: 1, First: NotToken n })
+            // !!u = u
             return n.Base;
         if (s is { Length: 1, IsFull: true })
+            // !all = \bot
             return FailStr;
         if (s is { Length: 1, IsFail: true })
+            // !(\bot) = all
             return AllStr;
-        // these are WRONG:
-        // if (s is { Length: 1, First: CharToken c })
-        //     return Single(new SetToken(new CharacterSet(new CharacterRange(c.Value)).Complement()));
-        // if (s is { Length: 1, First: SetToken set })
-        //     return Single(new SetToken(set.Set.Complement()));
+        if (s is { Length: 1, First: UnionToken u }) {
+            // !(u | v) = !u & !v
+            var t = new List<Str>(u.Cases.Count);
+            t.AddRange(u.Cases.Select(MkComplement));
+            return MkIntersection(t);
+        }
+        if (s is { Length: 1, First: IntersectToken i }) {
+            // !(u & v) = !u | !v
+            var t = new List<Str>(i.Cases.Count);
+            t.AddRange(i.Cases.Select(MkComplement));
+            return MkUnion(t);
+        }
         return Single(new NotToken(s));
     }
 
@@ -603,6 +614,10 @@ public sealed class StrManager {
         tokens.Sort();
         int copyIdx = 0;
         CharacterSet constSet = new();
+        // (u1 | ...| ui | u{i+1} | ... | un) && ui = u{i+1} => (u1 | ...| ui | ... | un)
+        // (u1 | ...| \bot | ... | un) => (u1 | ... | un)
+        // (u1 | ...| .* | ... | un) => .*
+        // ([cs1] | ...| [csn]) => merge cs1 ... csn into one character set
         for (int i = 0; i < tokens.Count; i++) {
             if (copyIdx > 0 && tokens[i].Equals(tokens[copyIdx - 1]))
                 continue;
@@ -748,23 +763,27 @@ public sealed class StrManager {
             if (s is { First: KleeneToken k })
                 return Single(k);
             if (s is { First: UnionToken u }) {
-                // TODO: What about intersection?
                 // pretty helpful rewrite:
                 // (u_1|...|u_k*|...|u_n)* 
                 // => (u_1|...|u_k|...|u_n)*
                 // if one of the u_i has a star (is nullable), we can drop top-level stars from all
+                // btw: Does not work for intersection
+                // (u|"")* => u*
                 var newCases = new List<Str>(u.Cases.Count);
-                bool hasKleene = false;
+                bool reconstruct = false;
                 foreach (var c in u.Cases) {
                     if (c is { Length: 1, First: KleeneToken k2 }) {
-                        hasKleene = true;
+                        reconstruct = true;
                         newCases.Add(k2.Base);
                     }
+                    else if (c.IsEmpty())
+                        reconstruct = true;
                     else
                         newCases.Add(c);
+                    
                 }
                 // TODO: for other cases as well?
-                if (hasKleene)
+                if (reconstruct)
                     return Single(new KleeneToken(MkUnion(newCases)));
             }
         }
@@ -786,15 +805,25 @@ public sealed class StrManager {
     public Str MkLoop(Str s, uint min, uint max) {
         Debug.Assert(min <= max);
         if (s.Length == 0 || max == 0)
+            // ""{l,h} => ""
+            // b{0,0} => ""
             return EmptyStr;
         if (s.Nullable)
+            // b{l,h} & b.Nullable => b{0,h}
             min = 0;
         if (max == 1) {
             if (min == 1 || s.Nullable)
+                // b{1,1} => b
+                // b{0,1} & b.Nullable => b
                 return s;
+            // b{0,1} && !b.Nullable => "" | b
             return MkUnion([EmptyStr, s]);
         }
+        if (s is { Length: 1, First: LoopToken l })
+            // s{l,h}{l',h'} => s{l*l'}{h*h'}
+            return MkLoop(l.Base, min * l.Min, max * l.Max);
         if (s is { Length: 1, First: KleeneToken })
+            // s*{l,h} => s*
             return s;
         return Single(new LoopToken(s, min, max));
     }

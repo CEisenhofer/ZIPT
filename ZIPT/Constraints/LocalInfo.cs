@@ -78,12 +78,12 @@ public class LocalInfo {
     public bool DelayedAssert(Solver solver, int last) {
         if (!CurrentPath.TryGetValue(last, out NielsenEdge? e))
             return false;
-        CurrentNode.Graph.SubSolver.Push();
+        solver.Push();
         LastPop.Add(CurrentPath.Count);
         SCharPopUndo.Add([]);
         do {
             foreach (var ex in e.Asserted) {
-                CurrentNode.Graph.SubSolver.Add(ex);
+                solver.Add(ex);
             }
             last = e.Tgt.Id;
         } while (CurrentPath.TryGetValue(last, out e));
@@ -97,7 +97,7 @@ public class LocalInfo {
                 Debug.Assert(!kvp.Key.Equals(o));
                 if (newC || AssertSChar(o)) {
                     Expr c2 = Env.ValOf.Apply(o.ToExpr(Env, CurrentModificationCnt));
-                    CurrentNode.Graph.SubSolver.Add(Env.Ctx.MkDistinct(c1, c2));
+                    solver.Add(Env.Ctx.MkDistinct(c1, c2));
                 }
             }
         }
